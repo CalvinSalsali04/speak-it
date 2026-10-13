@@ -59,6 +59,24 @@ enum Actionability: String, Equatable, Sendable {
 /// counterexample family that must not gain it.
 enum ActionabilityReader {
 
+    /// A choice is a state of deliberation until the speaker selects an option
+    /// or explicitly commits to the act of deciding. The negative perfect is
+    /// otherwise mistaken for an overdue task by the general obligation rule.
+    enum SelectionState {
+        case unresolved
+        case other
+
+        static func read(_ text: String) -> Self {
+            let negativeChoice = #"^(?:(?:well|so|but|also)\s+)?(?:i|we)\s+(?:still\s+)?(?:haven['’]?t|have\s+not)\s+(?:yet\s+)?(?:chosen|decided|selected)\b"#
+            if text.range(of: negativeChoice, options: .regularExpression) != nil {
+                return .unresolved
+            }
+            let negativePick = #"^(?:(?:well|so|but|also)\s+)?(?:i|we)\s+(?:still\s+)?(?:haven['’]?t|have\s+not)\s+(?:yet\s+)?picked\b.*\b(?:between|which|whether|option)\b"#
+            return text.range(of: negativePick, options: .regularExpression) != nil
+                ? .unresolved : .other
+        }
+    }
+
     // MARK: Vocabulary
 
     /// Verbs that name something to be performed. Present tense and imperative
@@ -90,21 +108,31 @@ enum ActionabilityReader {
     /// Also shared with `LocationIntentParser`, which needs the same list to
     /// know where a place name ends and the action begins in "when I get to the
     /// store buy batteries". One vocabulary, so the two cannot drift.
-    static let actionVerb = #"(?:buy|get|grab|pick\s+up|drop\s+off|finish|complete|submit|hand\s+in|send|call|phone|text|email|message|book|schedule|reserve|renew|do|return|pay|order|take|bring|pack|check|make|add|water|wash|clean|visit|meet|ask|tell|wish|say|print|fix|lock\s+up|follow\s+up|reply|respond|confirm|cancel|sign|file|mail|deliver|charge|refill|top\s+up"#
+    static let actionVerb = #"(?:inspect|publish|buy|purchase|get|grab|pick\s+up|drop\s+off|finish|complete|submit|hand\s+in|send|call|phone|text|email|message|invite|book|schedule|reserve|renew|do|return|pay|order|take|bring|pack|check|test|make|add|keep|save|water|wash|clean|visit|meet|ask|tell|wish|say|print|reprint|open|fix|lock\s+up|follow\s+up|reply|respond|confirm|cancel|sign|file|mail|deliver|charge|refill|top\s+up"#
         // Everyday verbs that were simply missing. Their absence was not
         // cosmetic: a capture whose only verb was one of these had no
         // recognisable action in it, so an obligation carrying it collapsed to
         // "Review captured thought" and the reminder inside it never fired.
         // "Honestly I'm exhausted, remind me to go to bed at ten" scheduled
         // nothing at all.
-        + #"|go|walk|feed|write|read|study|practice|practise|apply|move|start|put|watch|attend|drive|ride|drop|collect|book\s+in|sort|tidy|organize|organise|prepare|cook|bake|exercise|stretch|run|swim|register|enrol|enroll|upload|download|scan|forward|share|post|ship|wrap|donate|recycle|replace|install|update|back\s+up|charge\s+up|defrost|iron|fold|vacuum|mop|sweep|dust|weed|mow|rake|shovel|contact|set|wake|let\s+(?!me\b|us\b|him\b|her\b|them\b|it\b)\p{L}[\p{L}'\u2019-]*\s+know"#
+        + #"|go|walk|leave|feed|write|read|study|practice|practise|apply|move|start|put|watch|attend|drive|ride|drop|collect|book\s+in|sort|tidy|organize|organise|prepare|cook|bake|exercise|stretch|run|swim|register|enrol|enroll|upload|download|scan|forward|share|post|ship|wrap|donate|recycle|replace|install|update|back\s+up|charge\s+up|defrost|iron|fold|vacuum|mop|sweep|dust|weed|mow|rake|shovel|contact|set|wake|let\s+(?!me\b|us\b|him\b|her\b|them\b|it\b)\p{L}[\p{L}'\u2019-]*\s+know"#
         // Found missing in a batch of everyday captures (2026-09-09): the
         // office ("transfer $400", "cc Dana", "draft the memo") and the
         // house ("unload the dishwasher", "scrub the tub").
         // "Review", "draft" and "edit" are left out on purpose: they are
         // nouns as often as verbs ("the second draft is due Wednesday"), and
         // as imperatives the determiner shape already reads them.
-        + #"|transfer|deposit|withdraw|prep|finalize|finalise|proofread|rehearse|cc|bcc|loop\s+in|unload|load|empty|scrub|wipe|hang|declutter|descale|chase|chase\s+up|invoice)"#
+        + #"|transfer|deposit|withdraw|split|swap|ring|sharpen|unclog|reheat|create|prep|finalize|finalise|proofread|rehearse|cc|bcc|loop\s+in|unload|load|empty|scrub|wipe|hang|mend|declutter|descale|chase|chase\s+up|invoice|photograph|label|clear|find|look\s+for|give|copy)"#
+
+    /// Everyday imperative stems recognised at the *head* of a sentence
+    /// without the part-of-speech tagger. The `.lexicalClass` scheme is not
+    /// installed on every system (the iOS 26.5 simulator reports only
+    /// Language, Script and TokenType), and without it "Count the rice
+    /// packets" or "Sew the loose button" was filed in Memory. These are
+    /// deliberately *not* in `actionVerb`: that list also opens new clauses
+    /// mid-sentence, and "people tie the two together" must not be cut into
+    /// a job. Noun-first words (draft, review, note, list, record) stay out.
+    static let headOnlyImperativeVerb = #"(?:archive|arrange|assemble|attach|bathe|boil|borrow|brush|carry|chill|chop|compare|count|cover|cut|deflate|delete|detach|double-check|drain|dry|fetch|fill|floss|flush|freeze|fry|glue|grease|greet|grill|harvest|heat|highlight|inflate|inform|inspect|introduce|lend|lift|loosen|lower|marinate|measure|microwave|notify|oil|paint|peel|plant|polish|postpone|pour|prune|pump|rearrange|rebook|reboot|remove|rename|reorganise|reorganize|repair|reschedule|reset|restart|restock|rinse|roast|rotate|sand|sew|shave|shut|soak|stack|stir|straighten|tape|teach|thank|thaw|tie|tighten|trim|unlock|unpack|unplug|untie|verify|warm|warn|weigh|welcome)"#
 
     /// Ways of saying "this is on me". These frame an action rather than being
     /// one, so they are stripped before the head verb is read.
@@ -120,24 +148,10 @@ enum ActionabilityReader {
     /// tested **unanchored** (`isOutstanding`), so a bare entry would read "the
     /// weather is better tomorrow" as an errand. Only the forms carrying their
     /// subject or auxiliary are admitted.
-    ///
-    /// `got\s+ta` was here as a second spelling of `gotta` and has been
-    /// removed. It occurs nowhere else: not in the four other obligation
-    /// vocabularies, not in a test, and not once in the seven development
-    /// sets. Worse, it could not do its job even where it matched, because
-    /// clause splitting runs first and does not hold `ta`, so "I got ta call
-    /// Dave" was cut after `ta` into a Memory row titled "I got ta" and an
-    /// errand — the `I hafta` defect, reached by the one spelling this entry
-    /// existed to serve. Adding `ta` to `clauseInternalLead` was the other way
-    /// out and costs more than it buys: `ta` is also a noun people say ("email
-    /// the TA send the form"), so holding it would suppress a real boundary to
-    /// protect a spelling with no observed instance.
-    /// `Tools/CorpusRunner/test_parser_vocabulary.py` now fails if a form is
-    /// added to any of these lists whose last word the splitter does not hold.
-    static let obligationLead = #"(?:i\s+)?(?:really\s+)?(?:gotta|need\s+to|needs\s+to|have\s+to|has\s+to|had\s+to|got\s+to|['’]ve\s+got\s+to|must|should|ought\s+to|wanna|want\s+to|meant\s+to|am\s+supposed\s+to|['’]m\s+supposed\s+to|hafta|oughta|needa|(?:i|we)\s+better|['’]d\s+better|had\s+better)"#
+    static let obligationLead = #"(?:i\s+)?(?:really\s+)?(?:gotta|need\s+to|needs\s+to|have\s+to|has\s+to|had\s+to|got\s+to|['’]ve\s+got\s+to|must|should|ought\s+to|wanna|want\s+to|meant\s+to|(?:i|we)\s+mean\s+to|am\s+supposed\s+to|['’]m\s+supposed\s+to|hafta|oughta|needa|(?:i|we)\s+will|(?:i|we)['’]ll|(?:i|we)\s+better|['’]d\s+better|had\s+better)"#
 
     /// Past-tense verbs that report something already done.
-    private static let completedVerb = #"(?:bought|got|called|phoned|texted|emailed|messaged|sent|submitted|handed\s+in|finished|completed|paid|booked|reserved|renewed|ordered|returned|packed|picked\s+up|dropped\s+off|did|met|saw|went|talked|spoke|asked|told|visited|attended|cancelled|canceled)"#
+    private static let completedVerb = #"(?:bought|got|took|made|created|scanned|printed|wrote|prepared|recorded|called|phoned|texted|emailed|messaged|sent|submitted|handed\s+in|finished|completed|paid|booked|reserved|renewed|ordered|returned|packed|picked\s+up|dropped\s+off|did|met|saw|went|talked|spoke|asked|told|visited|attended|cancelled|canceled)"#
 
     /// A stated point on the calendar. Used only as *corroboration* — it can
     /// turn a sentence with nothing to do in it into an event, and it can never
@@ -180,7 +194,11 @@ enum ActionabilityReader {
     /// starts the 15th" carried no date: the ordinal parser could read it, and
     /// nothing ever asked the parser, because the sentence had already been
     /// classified as a fact with nothing to do about it.
-    static let dayOfMonthCue = #"\bthe\s+(?:\d{1,2}(?:st|nd|rd|th)|\#(ordinalWord))\b"#
+    // An ordinal followed by an open-class noun counts that noun ("the second
+    // line"), rather than naming a day. A temporal/function word may follow
+    // a date ("the second at noon", "the second of May"). Without this
+    // boundary a reported preference about a second line becomes an event.
+    static let dayOfMonthCue = #"\bthe\s+(?:\d{1,2}(?:st|nd|rd|th)|\#(ordinalWord))\b(?!\s+(?!(?:at|on|by|before|after|in|for|of|is|was|will|and|or|then|to|don['’]?t|do)\b)[a-z][a-z'’]*\b)"#
 
     static let ordinalWord = #"(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|thirteenth|fourteenth|fifteenth|sixteenth|seventeenth|eighteenth|nineteenth|twentieth|twenty[\s-]?(?:first|second|third|fourth|fifth|sixth|seventh|eighth|ninth)|thirtieth|thirty[\s-]?first)"#
 
@@ -192,6 +210,30 @@ enum ActionabilityReader {
     /// a party, a deadline and a flight all happen at a time, while a password
     /// and a parking level do not.
     private static let scheduledNoun = #"(?:party|meeting|appointment|deadline|flight|train|conference|wedding|interview|concert|game|match|exam|midterm|midterms|final|finals|quiz|test|class|lecture|dinner|lunch|breakfast|brunch|reservation|standup|stand-up|ceremony|recital|rehearsal|showing|viewing|closing|hearing|launch|shift|checkup|check-up|screening|cleaning|visit|trip|vacation|holiday|deadline|due\s+date|session|call|surgery|procedure|festival|reunion|graduation|funeral|service)"#
+
+    /// A bare "off" can describe an appliance, taste or measurement. Only a
+    /// scheduled noun at the subject's head licenses the cancellation reading.
+    /// A scheduled noun inside a compound modifier ("meeting light") does not.
+    static func hasScheduledNominalHead(_ text: String) -> Bool {
+        // Read the head before its first prepositional modifier. Searching
+        // the whole subject's suffix would make "power for the meeting"
+        // inherit permission from the meeting instead of describing power.
+        let boundary = text.range(
+            of: #"(?<!\S)(?:on|at|with|for|in|from|to|of|after|before|under|over|near|behind|beside|inside|outside|during|without)(?=\s)"#,
+            options: [.regularExpression, .caseInsensitive]
+        )
+        let head = String(text[..<(boundary?.lowerBound ?? text.endIndex)])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return matches(head, #"\b\#(scheduledNoun)$"#)
+    }
+
+    static func describesNonScheduledOffState(_ text: String) -> Bool {
+        guard let regex = NSRegularExpression.speakItCached(
+            #"(?i)^(?:the|my|our|a|an|this|that)\s+(.+?)\s+(?:is|was|are|were|has\s+been|have\s+been)\s+off[.!?]*$"#
+        ), let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let subject = Range(match.range(at: 1), in: text) else { return false }
+        return !hasScheduledNominalHead(String(text[subject]))
+    }
 
     // Deliberately absent from `scheduledNoun`: birthday and anniversary.
     // "Alex's birthday is October 12" is a fact filed under Alex, which is the
@@ -209,7 +251,7 @@ enum ActionabilityReader {
     /// the obligation family below, because `want to` is in `obligationLead`.
     /// A birthday then arrived on Today as a task. The lead is what carries the
     /// meaning, not its position in the sentence.
-    static let recordingVerb = #"(?:remember|(?:make|take|add)\s+a\s+note(?:\s+of)?|note|jot\s+(?:this|that|it)\s+down|write\s+(?:this|that|it)\s+down|keep\s+in\s+mind|log|forgetting(?!\s+to\b))"#
+    static let recordingVerb = #"(?:remember|(?:make|take|add)\s+a\s+note(?:\s+of)?|keep\s+(?:a|the)\s+note\s+(?:about|of|that)|note|jot\s+(?:this|that|it)\s+down|write\s+(?:this|that|it)\s+down|keep\s+in\s+mind|log|forgetting(?!\s+to\b))"#
 
     /// Optional framing in front of a recording verb: "I want to remember",
     /// "I need to remember", "let's remember", "just remember".
@@ -217,6 +259,142 @@ enum ActionabilityReader {
     // a fact the person wants kept, said as a lapse; "I keep forgetting to
     // call Mom" opens on "to" and stays an errand.
     static let recordingFrame = #"(?:i\s+(?:just\s+)?(?:want|need|have|wanted|would\s+like|['’]d\s+like)\s+to\s+|let['’]?s\s+|please\s+|just\s+|can\s+you\s+|could\s+you\s+|i\s+(?:keep|always)\s+)"#
+
+    /// The proposition follows this lead. Shared with title polishing so
+    /// routing and the visible Memory name agree on what is only a request to
+    /// record a fact.
+    static let propositionalRetentionFrame = #"what\s+i\s+(?:(?:actually|really|also)\s+)?(?:want|need)\s+to\s+(?:keep|save|retain)\s+is\s+that\s+"#
+
+    /// An explicit classification of retained content owns its noun phrase.
+    /// A label may have descriptive modifiers. Independent conjuncts still
+    /// end the frame, rather than becoming part of the retained content.
+    /// A free-relative report is the object being retained. Its optional
+    /// reason remains source context; a separate finite conjunction is not
+    /// licensed by this frame. Return the spoken speaker reference so the
+    /// existing quoted-account planner can establish its unique owner.
+    static func retainedReportSpeaker(_ text: String) -> String? {
+        let pattern = #"(?i)^(?:(?:i|we)\s+(?:want|need|would\s+like)\s+to\s+)?(?:keep|save|retain|record|store)\s+what\s+([\p{L}'’-]+)\s+\#(ClauseScope.reportingVerb)\s+(?:as\s+(?:part\s+of\s+)?|in\s+)(?:(?:the|my|our|this|that)\s+)?(?:[\p{L}'’-]+\s+){0,4}(?:notes?|memory|memories|reference|context|record)[.!?]*(?:\s+because\b[^.!?]*[.!?]*)?$"#
+        guard let regex = NSRegularExpression.speakItCached(pattern),
+              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let speaker = Range(match.range(at: 1), in: text),
+              !RuleBasedThoughtExtractor.retentionModifierContainsIndependentClause(text)
+        else { return nil }
+        return String(text[speaker])
+    }
+
+    /// A complete request to keep capture content, rather than a real-world
+    /// saving task. The external label or deictic knowledge noun owns purpose;
+    /// quoted commands and labels remain data. This proof uses source grammar
+    /// only, so unavailable lexical assets cannot promote it into an errand.
+    /// No partial match grants authority over an independent continuation.
+    static func explicitCaptureRetentionKind(_ text: String) -> ItemType? {
+        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let lead = value.range(of:
+                #"(?i)^(?:(?:i|we)\s+(?:want|need|would\s+like)\s+to\s+|please\s+)?(?:keep|save|retain|record|store|file)\s+"#,
+                options: .regularExpression),
+              value.utf8.count <= 8_192,
+              !QuotedSpeechScope.hasUnclosedQuote(value) else { return nil }
+        let body = String(value[lead.upperBound...])
+        let pointer = #"(?i)^(?:this|that|these|those)\s+((?:[\p{L}\p{M}'’-]+\s+){0,3})(guidance|advice|information|context|reference|facts?|notes?|ideas?|thoughts?|memory|memories|reflections?)[.!?]*$"#
+        if let regex = NSRegularExpression.speakItCached(pointer),
+           let match = regex.firstMatch(in: body, range: NSRange(body.startIndex..., in: body)),
+           let modifiers = Range(match.range(at: 1), in: body),
+           let label = Range(match.range(at: 2), in: body),
+           retentionNominalWords(String(body[modifiers]), maximum: 3) {
+            let kind = body[label].lowercased()
+            return kind.hasPrefix("idea") || kind.hasPrefix("thought") ? .idea : .note
+        }
+        let classification = #"(?i)\s+as\s+(?:(?:a|an|the)\s+)?((?:[\p{L}\p{M}'’-]+\s+){0,3})(ideas?|thoughts?|facts?|notes?|memory|memories|reference|context|information|reflections?)[.!?]*$"#
+        guard let regex = NSRegularExpression.speakItCached(classification),
+              let match = regex.firstMatch(in: body, range: NSRange(body.startIndex..., in: body)),
+              let classificationRange = Range(match.range, in: body),
+              let modifiers = Range(match.range(at: 1), in: body),
+              let label = Range(match.range(at: 2), in: body),
+              retentionNominalWords(String(body[modifiers]), maximum: 3) else { return nil }
+        let quotes = QuotedSpeechScope.ranges(in: body)
+        guard quotes.allSatisfy({ !$0.overlaps(classificationRange) }) else { return nil }
+        let object = String(body[..<classificationRange.lowerBound])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard retentionContentObject(object) else { return nil }
+        let kind = body[label].lowercased()
+        return kind.hasPrefix("idea") || kind.hasPrefix("thought") ? .idea : .note
+    }
+
+    /// Opaque nominal slots can describe content but cannot carry a new actor,
+    /// predicate, condition, clock, destination or conjunction. The final
+    /// content/knowledge head is proved separately; no POS asset is required.
+    private static func retentionNominalWords(_ text: String, maximum: Int) -> Bool {
+        let words = text.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
+        guard words.count <= maximum else { return false }
+        let excluded: Set<String> = ["i", "we", "you", "he", "she", "they", "it", "me", "us",
+            "him", "her", "them", "the", "a", "an", "my", "our", "your", "his", "their",
+            "this", "that", "these", "those", "is", "are", "was", "were", "am", "has", "have",
+            "had", "will", "shall", "must", "should", "can", "could", "may", "might", "would",
+            "need", "needs", "want", "wants", "and", "or", "but", "then", "also", "plus", "so",
+            "if", "unless", "when", "once", "because", "before", "after", "until", "while",
+            "who", "whom", "whose", "which", "not", "never", "no", "instead", "actually",
+            "to", "from", "for", "with", "at", "on", "in", "as", "by", "into", "through",
+            "tomorrow", "today", "tonight", "yesterday", "morning", "afternoon", "evening",
+            "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+        return words.allSatisfy { word in
+            !excluded.contains(word)
+                && word.range(of: #"^[\p{L}\p{M}][\p{L}\p{M}'’-]*$"#, options: .regularExpression) != nil
+                && word.range(of: #"(?i)^(?:\#(actionVerb)|\#(headOnlyImperativeVerb))(?:s|es)?$"#,
+                              options: .regularExpression) == nil
+        }
+    }
+
+    private static func retentionContentObject(_ text: String) -> Bool {
+        guard !text.isEmpty, !QuotedSpeechScope.hasUnclosedQuote(text) else { return false }
+        let quotes = QuotedSpeechScope.ranges(in: text)
+        if let quote = quotes.first {
+            guard quotes.count == 1,
+                  text[quote.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  !text[quote].dropFirst().dropLast().trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else { return false }
+            let prefix = text[..<quote.lowerBound].trimmingCharacters(in: .whitespacesAndNewlines)
+            return prefix.isEmpty || prefix.range(of:
+                #"(?i)^(?:(?:the|a|an|this|that|my|our)\s+)?(?:phrase|quote|quotation|wording|words|sentence|caption|slogan|label|text)$"#,
+                options: .regularExpression) != nil
+        }
+        if ["this", "that", "these", "those", "it"].contains(text.lowercased()) { return true }
+        let pattern = #"(?i)^(?:the|a|an|my|our|this|that|these|those)\s+((?:[\p{L}\p{M}'’-]+\s+){0,4})(phrase|quotes?|quotation|wording|words|sentences?|caption|slogan|label|text|description|thoughts?|ideas?|concept|sketch|design|layout|pattern|guidance|advice|information|facts?|notes?|reference|context|details?|reflection)$"#
+        guard let regex = NSRegularExpression.speakItCached(pattern),
+              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let modifiers = Range(match.range(at: 1), in: text) else { return false }
+        return retentionNominalWords(String(text[modifiers]), maximum: 4)
+    }
+
+    /// Existing bare retention frames also must not absorb a coordinated own
+    /// instruction merely because a later substring says "as a note". Inspect
+    /// only the speaker's projection, including the shared head-only stems.
+    private static func retentionHasIndependentContinuation(_ text: String) -> Bool {
+        guard let own = QuotedSpeechScope.voiceProjection(in: text)?.ownVoiceText else { return true }
+        let boundary = #"(?:[,;:.!?]\s*|\b(?:and|but|then|plus)\s+)"#
+        let actor = #"(?:(?:i|we|you|he|she|they)\s+(?:need|have|want|will|must|should|can|could|would|am|are)|[\p{L}\p{M}'’-]+\s+(?:will|must|should|needs|wants|has|is|was))\b"#
+        let command = #"(?:please\s+)?(?:\#(actionVerb)|\#(headOnlyImperativeVerb))\b"#
+        return own.range(of: "(?i)" + boundary + "(?:" + actor + "|" + command + ")",
+                         options: .regularExpression) != nil
+    }
+
+    static func retainedContentKind(_ text: String) -> ItemType? {
+        if let proved = explicitCaptureRetentionKind(text) { return proved }
+        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let pattern = #"(?i)^(?:please\s+)?(?:keep|save|retain|record|store|file)\s+[^.!?;:]+\s+as\s+(?:(?:a|an|the)\s+)?(?:[\p{L}'’-]+\s+){0,3}(ideas?|facts?|notes?|memory|memories|reference|context|information|reflections?)(\s+(?:with|including|about|for)\b[^.!?;:]*)?[.!?]*$"#
+        guard let regex = NSRegularExpression.speakItCached(pattern),
+              let match = regex.firstMatch(in: value, range: NSRange(value.startIndex..., in: value)),
+              let label = Range(match.range(at: 1), in: value),
+              !QuotedSpeechScope.hasUnclosedQuote(value),
+              !retentionHasIndependentContinuation(value),
+              !QuotedSpeechScope.ranges(in: value).contains(where: { $0.overlaps(label) }) else { return nil }
+        if let modifier = Range(match.range(at: 2), in: value) {
+            // Inspect each right-hand conjunct before prepositional scope
+            // can absorb it into the retained description.
+            let suffix = String(value[modifier]).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !RuleBasedThoughtExtractor.retentionModifierContainsIndependentClause(suffix) else { return nil }
+        }
+        return value[label].lowercased().hasPrefix("idea") ? .idea : .note
+    }
 
     /// Past-tense verbs that report a change that already happened.
     ///
@@ -274,11 +452,132 @@ enum ActionabilityReader {
     /// rule that could legitimately outrank it, because most of these families
     /// overlap in surface words: "I forgot to call Catherine" contains a
     /// completed-looking verb, and "don't let me forget" opens with a negation.
+    /// A report that no execution time was chosen does not itself commit to
+    /// the infinitive it mentions. A later independent commitment vetoes it.
+    /// An anaphoric statement declares the role of an already spoken
+    /// commitment. With no action complement it cannot be another task.
+    static func isAnaphoricTaskDeclaration(_ text: String) -> Bool {
+        text.range(
+            of: #"(?i)^(?:that|this|it)\s+(?:is|was)\s+(?:a|an)\s+(?:[\p{L}'’-]+\s+)?(?:commitment|obligation|task)\s+(?:from|by|for)\s+(?:me|us)(?:[,]?\s+and\s+(?:it|that|this)\s+should\s+become\s+(?:a|an)\s+task)?[.!?]*$"#,
+            options: .regularExpression
+        ) != nil
+    }
+
+    /// A negative status of an existing output is not an instruction to
+    /// perform the negated operation. Preserve a real independent action in
+    /// the prefix and addressed/reported content through the ordinary path.
+    private static func isNegatedOutputOperationStatus(_ text: String) -> Bool {
+        let pattern = #"(?i)\b(?:i|we)\s+(?:still\s+)?(?:have\s+not|haven['’]?t)\s+(?:withdrawn|cancelled|canceled|deleted|removed|changed|retracted)\s+(?:this|that|the|my|our)\s+(?:task|job|action|reminder|obligation|commitment)(?:\s+yet)?[.!?]*$"#
+        guard let range = text.range(of: pattern, options: .regularExpression),
+              !QuotedSpeechScope.protects(range, in: text),
+              ClauseScope.read(text).act == .direct,
+              !ReminderPhrasing.requestsReminder(text) else { return false }
+        let prefix = String(text[..<range.lowerBound])
+            .trimmingCharacters(in: CharacterSet(charactersIn: " ,;.!?"))
+        return prefix.isEmpty || !read(prefix).belongsOnToday
+    }
+
+    /// Negating adoption of an act does not say that the act is overdue.
+    /// This classifies only the own matrix; independent commitments retain
+    /// their ordinary reading and quoted/addressed matrices do not match.
+    static let unadoptedActionPrefix = #"(?:i|we)\s+(?:have\s+not|haven['’]?t)\s+(?:agreed|promised|committed)\s+to\s+"#
+
+    static func isUnadoptedAction(_ text: String) -> Bool {
+        let pattern = #"(?i)^\#(unadoptedActionPrefix)\#(actionVerb)\b[^.!?]*[.!?]*$"#
+        guard matches(text, pattern),
+              !RuleBasedThoughtExtractor.retentionModifierContainsIndependentClause(text),
+              !matches(text, #"(?i)(?:[,;]|\b(?:and|but|also|separately))\s*(?:(?:i|we)\s+(?:will|shall|must|should|need\s+to|have\s+to|am\s+going\s+to|are\s+going\s+to)\b|\#(actionVerb)\b)"#)
+        else { return false }
+        return true
+    }
+
+    static func isUnchosenActionTime(_ text: String) -> Bool {
+        let value = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let frame = #"^(?:i|we)\s+(?:have\s+not|haven['’]?t)\s+(?:(?:said|specified|decided)\s+when\b|(?:given\s+(?:a|the|any)\s+(?:[\p{L}]+\s+){0,2}(?:day|date|time)|(?:chosen|picked|specified|selected|decided\s+on)\s+(?:a|the|any)\s+(?:day|date|time))(?:\s+or\s+(?:reminder\s+)?time)?\b)"#
+        guard value.range(of: frame, options: .regularExpression) != nil else { return false }
+        return value.range(
+            of: #"(?i)(?:[,;]|\b(?:and|but|also))\s*(?:i|we)\s+(?:will|must|need\s+to|have\s+to|am\s+going\s+to|are\s+going\s+to)\b"#,
+            options: .regularExpression
+        ) == nil
+    }
+
+    /// A finite negative statement about the capture's list is an exclusion,
+    /// not a new task named after the nominal action word. Keep the complete
+    /// current statement; an independently adopted action in a reason declines
+    /// this narrow source-only reading and takes the ordinary scope path.
+    static func isExcludedListEntry(_ text: String) -> Bool {
+        let pattern = #"(?i)^\s*there\s+(?:should|must|will)\s+be\s+no\s+(?:[\p{L}'’-]+\s+){0,6}(?:task|item|purchase|action)\b(?:\s+(?:hiding|listed|included))?\s+(?:in|on)\s+(?:the|my|our)\s+(?:(?:task|shopping|action)\s+)?list(?:\s+because\s+[^.!?;]+)?[.!?]*\s*$"#
+        guard matches(text,pattern) else { return false }
+        if let because = text.range(of: #"(?i)\s+because\s+"#,options: .regularExpression) {
+            // The bounded reason is shorter than the complete frame. Reuse
+            // the existing source speech-act reader, including contractions
+            // and adopted promises, instead of another commitment vocabulary.
+            let reason = String(text[because.upperBound...])
+            guard !read(reason).belongsOnToday else { return false }
+        }
+        return true
+    }
+
     static func read(_ text: String) -> Actionability {
         let value = text
             .lowercased()
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { return .ambiguous }
+        if retainedContentKind(value) != nil || retainedReportSpeaker(value) != nil
+            || isUnchosenActionTime(value) || isAnaphoricTaskDeclaration(value)
+            || isNegatedOutputOperationStatus(value) || isUnadoptedAction(value)
+            || isExcludedListEntry(value)
+            || ClauseScope.isDeniedCitedAction(value) {
+            return .knowledge
+        }
+
+        // The declared task's command is the speech act; status predicates
+        // do not declare a command and cannot complete a saved target.
+        if matches(value, #"^(?:my|our)\s+(?:own\s+)?(?:task|job|commitment)\s+(?:is|was)\s+(?:already\s+)?(?:complete|completed|done|finished|cancelled|canceled)\s*[.!?]?\s*$"#) {
+            return .knowledge
+        }
+        if matches(value,
+            #"^the\s+(?:first|second|third|last|final|next)\s+(?:(?:definite|actual|current|outstanding|possible)\s+)?(?:task|action|obligation|thing)\s+(?:was\s+(?:to\s+)?|would\s+be\s+to\s+)(?=\#(actionVerb)\b)"#) {
+            return .knowledge
+        }
+        if let body = taskEntryBody(value) { return read(body) }
+
+        // A complete written calendar date is an adjunct to a factual
+        // predicate too. Read that predicate before the calendar fallback;
+        // the organizer still reads time from the unchanged source. This
+        // branch can only retain knowledge, never promote a new action.
+        if matches(value,
+            #"^(?:on\s+)?(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+(?:\d{1,2}(?:st|nd|rd|th)?|\#(ordinalWord)),?\s+\d{4}\b"#) {
+            let body = actionBody(value)
+            if body != value && read(body) == .knowledge { return .knowledge }
+        }
+
+        // A spoken step marker chooses order, not Today versus Memory. Read
+        // the proposition after it with the same rules as a standalone one.
+        // Require the comma so ordinary compounds such as "first aid" keep
+        // their own subject.
+        if let opener = value.range(
+            of: #"^(?:first|next|separately),\s*"#,
+            options: .regularExpression
+        ) {
+            return read(String(value[opener.upperBound...]))
+        }
+        if let opener = value.range(
+            of: #"^separately\s+(?=\#(actionVerb)\b)"#,
+            options: .regularExpression
+        ) {
+            return read(String(value[opener.upperBound...]))
+        }
+        // "Now" carries timing/urgency; "then" carries sequence. Neither
+        // changes the following command's speech act. Keep the original
+        // marker in source/metadata while reading that head, including noun
+        // uses of the same verb ("then call records are archived").
+        if let opener = value.range(
+            of: #"^(?:now|then),?\s+(?=\#(actionVerb)\b)"#,
+            options: .regularExpression
+        ) {
+            return read(String(value[opener.upperBound...]))
+        }
 
         if CaptureContentScope.explicitlyMemory(value) || isPastModalReflection(value) {
             return .knowledge
@@ -301,11 +600,59 @@ enum ActionabilityReader {
             return .ambiguous
         }
 
+        // A quoted imperative in a stated hypothetical is being mentioned,
+        // not issued. The negative speech-act clause is required; "If I say
+        // 'call Mom', remind me to call her" still contains a real request.
+        if matches(value, #"^(?:if|when)\s+i\s+say\b.*['“‘].*['”’].*\bnot\b.*\b(?:task|action|errand|shopping|asking|request|instruction|list)\b"#) {
+            return .knowledge
+        }
+
+        // "I mean to call" is the speaker's intention. A bare "I mean,"
+        // is discourse, but the infinitive is the complement of "mean" and
+        // must survive both the repair pass and speech-act reading.
+        if matches(value, #"^(?:i|we)\s+mean\s+to\s+\#(actionVerb)\b"#) {
+            return .actionable
+        }
+
+        // A tentative outcome of an opening condition is not a commitment.
+        // A later explicit own commitment or reminder remains independently
+        // actionable; the ordinary acquisition idiom "could use" is retained.
+        if matches(value, #"^if\s+[^.!?;]+\s+(?:i|we)\s+(?:might|may|could(?!\s+use\b))\s+\#(actionVerb)\b"#),
+           !ReminderPhrasing.requestsReminder(value),
+           !matches(value, #"(?:[,;.!?]|\b(?:and|but|also|separately))\s*(?:i|we)\s+(?:will|shall|must|need\s+to|have\s+to|am\s+going\s+to|are\s+going\s+to)\b"#) {
+            return .knowledge
+        }
+
+        // A historical reason explains the governing command; it does not
+        // report that this command has already been performed. Read the
+        // prefix in its own scope before a past predicate inside the reason
+        // can demote it. Explicit completion before the reason still wins.
+        if let reasonRegex = NSRegularExpression.speakItCached(#"\b(?:because|since|cause|cuz)\b"#),
+           let reason = reasonRegex.matches(in: value, range: NSRange(value.startIndex..., in: value))
+            .compactMap({ Range($0.range, in: value) })
+            .first(where: { !QuotedSpeechScope.protects($0, in: value) }) {
+            let head = String(value[..<reason.lowerBound])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if hasActionVerbHead(head), read(head).belongsOnToday {
+                return .actionable
+            }
+        }
+
         // A negated past with a reason attached is being explained, not owed.
         // "I didn't call Catherine because she cancelled" closes the loop
         // rather than opening one, and it has to be read before the obligation
         // rules because it is word-for-word one of them plus a clause.
         if isExplainedPast(value) { return .knowledge }
+
+        // A conditional can mention a possible speaker obligation without
+        // making the matrix proposition an obligation. Classify the finite
+        // proposition before "if" in its own scope. A committed matrix action
+        // still wins, and an independent later commitment vetoes this shortcut.
+        if hasDescriptiveConditionalMatrix(value) { return .knowledge }
+
+        // No option has been committed by an unresolved selection report.
+        // Keep it as knowledge while a separate spoken action retains Today.
+        if SelectionState.read(value) == .unresolved { return .knowledge }
 
         // Unfulfilled obligations run before completed history, because they
         // are *made of* completed history: "I forgot to call" and "I never
@@ -317,6 +664,38 @@ enum ActionabilityReader {
         if isDischargedObligation(value) { return .knowledge }
 
         if isUnfulfilledObligation(value) || isAbandonedIntention(value) { return .outstanding }
+
+        // A stated required result is unfinished work even when the speaker
+        // leaves themselves out of the grammar: "the house needs the gutters
+        // cleared". Require an object plus a result participle/particle;
+        // "the house needs paint" remains a fact until an act is specified.
+        if matches(value,
+            #"\bneeds\s+(?:the|a|an|my|our|its|their)\s+.+\s+(?:[\p{L}]+ed|on|off|out|in|up|down)[.!?]?$"#) {
+            return .actionable
+        }
+
+        // Learning a proposition reports knowledge, even when the setting is
+        // a dated meeting. If the proposition explicitly says the speaker
+        // owes an action, that obligation still wins.
+        if matches(value, #"\b(?:learned|learnt|found\s+out|discovered)\s+that\b"#) {
+            return carriesOwnObligation(value) ? .actionable : .knowledge
+        }
+        // The relative clause states why a completed discovery is being
+        // recorded. Its "want to remember" is a Memory request, not a new
+        // future action to remember something.
+        if matches(value, #"\bwhich\s+i\s+(?:want|need|would\s+like)\s+to\s+remember\b"#) {
+            return .knowledge
+        }
+
+        // A first-person promise to perform a named act is still an open
+        // commitment. The reporting-verb reader sees "promised" too, but its
+        // knowledge default would otherwise archive the action before the
+        // speaker has done it. A quoted or third-person promise has another
+        // owner and does not match this frame.
+        if matches(value, #"^(?:(?:separately|also|then|and)\s*,?\s*)?(?:i|we)\s+(?:have\s+)?(?:promised|agreed|committed)\s+to\s+\#(actionVerb)\b"#),
+           !matches(value, #"\b(?:and|but)\s+(?:i|we)\s+(?:already\s+)?(?:did|finished|completed|\#(completedVerb))\b"#) {
+            return .actionable
+        }
 
         // An obligation does not stop being one because of how it was learned.
         // "Remember Catherine said I need to call Alex Friday" is knowledge in
@@ -334,10 +713,14 @@ enum ActionabilityReader {
         // read here, ahead of the rule that files every report as knowledge.
         if reportedActionBelongsToUser(value) { return .actionable }
 
-        // An imperative to record something repeatedly is an ongoing task,
-        // unlike storing a fact whose content merely mentions a schedule.
-        if matches(value, #"^(?:log|record)\s+(?!that\b)"#),
-           RecurrenceIntentParser.parse(value) != nil { return .actionable }
+        // Naming one's present task is a direct commitment, even though the
+        // finite copula would otherwise make the sentence look like a fact.
+        // Keep the first-person owner, present tense and action complement as
+        // the licence; another person's or a past task remains a report.
+        if matches(value,
+                   #"^(?:(?:also|separately)\s*,?\s*)?\#(ownedNominalTaskEntryFramePattern)(?=\#(nominalTaskActionHeadPattern)\b)"#) {
+            return .actionable
+        }
 
         if isCompletedHistory(value) || isReportedSpeech(value) || isRecordedFact(value) {
             return .knowledge
@@ -364,7 +747,8 @@ enum ActionabilityReader {
         // was arriving on Today as a task. Both of these run ahead of the lead
         // for that reason: they describe the *frame* the lead sits in, and the
         // frame outranks the word.
-        if isOpenQuestion(value) || isHedgedAspiration(value) { return .knowledge }
+        if isOpenQuestion(value) || isHedgedAspiration(value)
+            || isDeferredKnowledgeWish(value) { return .knowledge }
 
         // Whose obligation is it? `obligationLead` matches "should" and "needs
         // to" wherever they appear, and never asked. "Mike should call Sarah"
@@ -373,6 +757,15 @@ enum ActionabilityReader {
         // have to do, indistinguishable from the ones they took on.
         if obligationBelongsToAnotherPerson(value) { return .knowledge }
 
+        // A named third party's present state is theirs, even when the iOS
+        // tagger calls their name an imperative verb. Reuse the existing
+        // stative-predicate family: "Catherine needs a copy" records a need;
+        // "I need a copy" may still be the speaker's open action. A bare
+        // command such as "Move boxes" has no stative predicate in this slot.
+        if matches(value,
+            #"^(?!(?:i|we|you|someone|somebody|anyone|anybody|everyone|everybody)\b)[\p{L}'’-]+\s+\#(stativeVerb)\b"#
+        ) { return .knowledge }
+
         // "Had better" is also past possession plus a comparison: "I had
         // better luck last time". Read that noun phrase before the modal word
         // list, but after explicit reminder requests. A verb anywhere in the
@@ -380,6 +773,15 @@ enum ActionabilityReader {
         if isPastPossessionComparison(value) { return .knowledge }
 
         if hasObligationLead(value) { return .actionable }
+        if startsCompoundNominalPredicate(value), !carriesOwnObligation(value),
+           !matches(value, #"\b(?:and|but)\s+\#(actionVerb)\b"#),
+           !matches(value, #"(?<!to )\b\#(actionVerb)\s+(?:it|them|that|those|him|her)\s*[.!?]?\s*$"#),
+           ClauseJuxtaposition.pieces(in: value).count == 1 {
+            let scope = ClauseScope.read(value)
+            if scope.act != .communicating || scope.complement == nil {
+                return .knowledge
+            }
+        }
         if hasActionVerbHead(value)
             || hasImperativeShape(value)
             || hasDeterminerlessImperativeShape(value) { return .actionable }
@@ -406,9 +808,32 @@ enum ActionabilityReader {
         // one of them was becoming a dated appointment on Today.
         if isPastExperience(value) { return .knowledge }
 
+        // A physical state does not acquire an obligation from a calendar
+        // noun inside its subject: "the meeting light is off" describes light.
+        if describesNonScheduledOffState(value) { return .knowledge }
+
+        // Complete historical event/routine reference scope can name a clock
+        // without adopting another event. Current instructions and reminders
+        // have already been read above; the shared proof declines independent
+        // continuations and never supplies a future instant by itself.
+        if TemporalReferenceScope.read(value) != nil { return .knowledge }
+
+        // A service's offering or another party's held obligation is a fact.
+        // Earlier own-action/reminder rules retain their authority, and an
+        // appointment-headed subject still reaches the calendar reader.
+        if isThirdPartyHoldingOrOffering(value) { return .knowledge }
+
         // Nothing to perform, but a stated time and no fact-shape either. This
         // is the "Dentist Tuesday at 2" family: a commitment on the calendar.
         if isCalendarCommitment(value) { return .event }
+
+        // A nominal subject followed by a third-person present predicate
+        // states a fact. The iOS tagger may call "opens" a noun; adding the
+        // imperative "open" must not promote that descriptive clause.
+        if matches(value,
+            #"^(?:the|a|an|this|that|my|our|your|his|her|their)\s+(?:[\p{L}'’-]+\s+){1,3}\#(actionVerb)(?:s|es)\b"#
+        ) { return .knowledge }
+
 
         return .ambiguous
     }
@@ -534,15 +959,15 @@ enum ActionabilityReader {
     private static func isCompletedHistory(_ text: String) -> Bool {
         // "I got to call Mom" is an obligation wearing a past-tense verb, so a
         // completed verb followed by "to" is not completed at all.
-        if matches(text, #"^(?:i\s+)?(?:already\s+|just\s+|finally\s+)?\#(completedVerb)\s+to\b"#) {
+        if matches(text, #"^(?:(?:i|we)\s+)?(?:already\s+|just\s+|finally\s+)?\#(completedVerb)\s+to\b"#) {
             return false
         }
         let patterns = [
-            #"^(?:i\s+)?(?:already\s+|just\s+|finally\s+|actually\s+)?\#(completedVerb)\b"#,
-            #"\bi\s+(?:already\s+|just\s+|finally\s+)?\#(completedVerb)\b"#,
+            #"^(?:(?:i|we)\s+)?(?:already\s+|just\s+|finally\s+|actually\s+)?\#(completedVerb)\b"#,
+            #"\b(?:i|we)\s+(?:already\s+|just\s+|finally\s+)?\#(completedVerb)\b"#,
             #"\b\#(completedVerb)\s+me\b"#,
         ]
-        return patterns.contains { matches(text, $0) }
+        return patterns.contains { matches(text, $0) } || isNominalPastReport(text)
     }
 
     /// Something someone else said. Attributed information is knowledge even
@@ -557,7 +982,9 @@ enum ActionabilityReader {
         // a promise inside it ("I told Sarah I'd drop off the dish") the
         // obligation rule upstream keeps the errand, and without one it is
         // history like the rest.
-        matches(text, #"\b(?:said|says|told\s+me|reminded\s+(?:me|us)|mentioned|according\s+to|i\s+(?:told|promised)\s+\S+)\b"#)
+        matches(text, #"\b(?:said|says|explained|explains|told\s+me|reminded\s+(?:me|us)|mentioned|according\s+to|i\s+(?:told|promised)\s+\S+|(?:agreed|agrees)\s+that)\b"#)
+            || (matches(text, #"^(?:i|we)\s+(?:just\s+|also\s+)?heard\s+that\b"#)
+                && !matches(text, independentContinuation))
     }
 
     /// "Remember Alex likes golf", "I want to remember that Priya's birthday is
@@ -584,10 +1011,51 @@ enum ActionabilityReader {
     /// actually speak fell out of the fact family and into the obligation
     /// family, because `want to` is an obligation lead. That is how a birthday
     /// became a task on Today.
+    /// An explicit recording object followed by a relative retention clause.
+    /// Dictation may omit the colon only when a fresh finite fact begins;
+    /// an open object phrase does not establish that boundary.
+    static let nominalFactRecordingFramePattern = #"(?:a|one|the|this|that)\s+(?:fact|note|memory|detail)\s+(?:that\s+)?(?:i|we)\s+(?:want|need|would\s+like)\s+to\s+(?:keep|save|retain|remember|preserve)(?:\s+(?:at|in|near)\s+(?:the\s+)?(?:start|beginning|middle|end)(?:\s+of\s+(?:this|the)(?:\s+(?:recording|capture))?)?)?\s*(?::\s*|\s+(?=(?:the|a|an|this|that|my|our|your)\s+(?:[\p{L}'’-]+\s+){1,6}(?:is|are|was|were|has|have|had)\b))"#
+
+    static func declaredFactRecordingBody(_ text: String) -> String? {
+        guard let frame = text.range(
+            of: #"(?i)^(?:please\s+)?(?:keep|save|record|retain)\s+(?:a|an|one|the|this|that)\s+(?:reference\s+)?(?:fact|note|memory)\s*:\s*"#,
+            options: .regularExpression
+        ) ?? text.range(
+            of: #"(?i)^(?:please\s+)?(?:keep|save|record|retain)\s+(?:this|that)\s+as\s+(?:a|an|the)\s+(?:fact|note|memory)(?:\s+in\s+(?:my\s+)?(?:memory|notes))?\s*:\s*"#,
+            options: .regularExpression
+        ) ?? text.range(
+            of: #"(?i)^(?:please\s+)?(?:keep|save|record|retain)\s+(?:only\s+)?(?:this|that|the)\s+(?:fact|note|information|detail)\s+as\s+(?:a|an|the)\s+(?:fact|note|memory)(?:\s*,?\s*not\s+(?:a|an|the)\s+(?:task|action|reminder))?\s*:\s*"#,
+            options: .regularExpression
+        ) ?? text.range(
+            of: #"(?i)^\#(nominalFactRecordingFramePattern)"#,
+            options: .regularExpression
+        ) else { return nil }
+        let body = String(text[frame.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        return body.isEmpty ? nil : body
+    }
+
     static func recordedFactBody(_ text: String) -> String? {
+        if let body = declaredFactRecordingBody(text) { return body }
+        // A speaker may name the retrieval object before stating the fact:
+        // "I want to keep a detail: ...". The colon makes the proposition
+        // the object of recording; without it "keep a file" stays an action.
+        if let range = text.range(
+            of: #"(?i)^(?:(?:at|near)\s+(?:the\s+)?(?:start|beginning|end)\s+of\s+(?:this|the)\s+(?:recording|capture)\s+)?i\s+(?:want|need|would\s+like)\s+to\s+(?:keep|save|retain)\s+(?:a|this|that)\s+(?:detail|fact|note|memory)\s*:\s*"#,
+            options: .regularExpression
+        ) {
+            return String(text[range.upperBound...])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        if let range = text.range(
+            of: #"(?i)^\#(propositionalRetentionFrame)"#,
+            options: .regularExpression
+        ) {
+            return String(text[range.upperBound...])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         // The trailing `[\s,]*` can match nothing, so the opener needs its own
         // boundary or it clips the first word: "Okonkwo" opened with "ok".
-        let pattern = #"^(?:(?:okay|ok|so|well|oh|also|and|um+|uh+)\b)?[\s,]*"#
+        let pattern = #"^(?:(?:okay|ok|so|well|oh|also|and|first|next|separately|um+|uh+)\b)?[\s,]*"#
             + #"(?:\#(recordingFrame))?"#
             + #"\#(recordingVerb)\s+(?:that\s+|about\s+|saying\s+)?"#
         guard let range = text.range(of: pattern, options: [.regularExpression, .caseInsensitive]),
@@ -651,6 +1119,42 @@ enum ActionabilityReader {
             || matches(text, #"^\s*(?:kinda|sort\s+of|kind\s+of)\b"#)
             || matches(text, #"\bi\s+wonder\s+(?:if|whether)\b"#)
             || matches(text, #"\b(?:always\s+wanted\s+to|would\s+love\s+to|it\s+would\s+be\s+nice\s+to)\b"#)
+    }
+
+    private static let independentContinuation =
+        #"(?:[,;]|\b(?:and|but|then|so))\s*(?:(?:i|we)\b|please\b|remind\b|\#(actionVerb)\b)"#
+
+    /// Keeping a question for later does not commit to researching it now.
+    /// A research verb or independent action still uses the ordinary reader.
+    private static func isDeferredKnowledgeWish(_ text: String) -> Bool {
+        matches(text, #"^(?:(?:and|also|so)\s+)?(?:i|we)\s+(?:(?:really|just)\s+)?(?:want|need|would\s+like)\s+to\s+(?:know|recall)\s+(?:(?:later|afterwards|again)\s+)?(?:what|who|which|where|when|how|whether)\b[^.!?;]*[.!?]*$"#)
+            && matches(text, #"\b(?:later|afterwards|again|next\s+time|in\s+(?:the\s+)?future)\b"#)
+            && !matches(text, independentContinuation)
+    }
+
+    private static func isThirdPartyHoldingOrOffering(_ text: String) -> Bool {
+        let pattern = #"^(?:the|a|an|this|that|my|our|your|his|her|their|(?!(?:it|he|she|that|there|what|who|let|here)['’]s\b)[\p{L}'’-]+['’]s)\s+(?:[\p{L}'’-]+\s+){0,2}?([\p{L}'’-]+)\s+(?!(?:is|was)\b)(?:has|have|[\p{L}-]*[^s\s'’]s)\s+(?:a|an|the|its|their|his|her|some|no)\s+\S"#
+        guard let regex = NSRegularExpression.speakItCached(pattern),
+              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let head = Range(match.range(at: 1), in: text),
+              !matches(String(text[head]), #"^(?:\#(scheduledNoun)|\#(deadlineNoun))$"#),
+              !matches(text, #"\b(?:i|we|me|us)\b|\b(?:i|we)['’]"#),
+              !matches(text, independentContinuation) else { return false }
+        return true
+    }
+
+    /// A complete third-person past declaration can follow a nominal adjunct.
+    /// Own obligations, clocks, reminders and independent acts veto this proof.
+    private static func isNominalPastReport(_ text: String) -> Bool {
+        let adjunct = #"(?:(?:at|in|on|during|after|before)\s+(?:(?:the|a|an|our|my|this|that|last)\s+)?[\p{L}'’-]+\s*,?\s+)?"#
+        let subject = #"(?:the|a|an|my|our|his|her|their)\s+(?:[\p{L}'’-]+\s+){0,2}?"#
+        return matches(text, "^" + adjunct + subject + #"(?:already\s+|just\s+)?\#(completedVerb)\b(?!\s+to\b)"#)
+            && !matches(text, calendarCue)
+            && !ThoughtOrganizer.statesAClock(text)
+            && !hasObligationLead(text)
+            && !ReminderPhrasing.requestsReminder(text)
+            && !matches(text, #"\b(?:i|we)\b"#)
+            && !matches(text, independentContinuation)
     }
 
     /// A report of how something already went, rather than of when it happens.
@@ -742,17 +1246,53 @@ enum ActionabilityReader {
             of: #"^(?:i|we)\s+had\s+better\s+"#,
             options: [.regularExpression, .caseInsensitive]
         ) else { return false }
-        let complement = SentenceContextCache.context(for: text).tokens.filter {
-            $0.range.lowerBound >= frame.upperBound
+        let body = String(text[frame.upperBound...])
+        // A comparative possession has a noun phrase after "better". A
+        // genuine modal has a performable verb and an object/particle. Use
+        // those grammatical shapes rather than platform-dependent NL tags.
+        if matches(body, #"^(?:not|never|just)\s+\#(actionVerb)\b"#) { return false }
+        guard matches(body, #"^\#(actionVerb)\b"#) else { return true }
+        if matches(body, #"^\#(actionVerb)\s+(?:the|a|an|my|our|your|his|her|their|this|that|these|those|it|them|him|me|us|off|up|down|out|in|over)\b"#) {
+            return false
         }
-        guard let head = complement.first,
-              head.lexicalClass == .noun || head.lexicalClass == .adjective else { return false }
-        return complement.contains { $0.lexicalClass == .noun }
-            && !complement.contains { $0.isVerb }
+        let objectStart = body.range(
+            of: #"^\#(actionVerb)\s+"#,
+            options: [.regularExpression, .caseInsensitive]
+        ).map(\.upperBound)
+        return !PersonMentionResolver.mentions(in: body).contains {
+            $0.confidence >= .medium && $0.sourceRange.lowerBound == objectStart
+        }
     }
 
     private static func hasObligationLead(_ text: String) -> Bool {
         matches(text, #"\b\#(obligationLead)\b"#)
+    }
+
+    private static func hasDescriptiveConditionalMatrix(_ text: String) -> Bool {
+        guard let condition = text.range(
+            of: #"\bif\b"#, options: .regularExpression
+        ) else { return false }
+        let matrix = String(text[..<condition.lowerBound])
+            .trimmingCharacters(in: CharacterSet(charactersIn: " ,;:.!?"))
+        guard !matrix.isEmpty else { return false }
+        let finiteFact = matrix.range(
+            of: #"^(?:(?:the|a|an|my|our|your)\s+)?[\p{L}'’-]+(?:\s+[\p{L}'’-]+){0,3}\s+(?:is|are|was|were|has|have|had)\b"#,
+            options: .regularExpression
+        ) != nil
+        let context = SentenceContextCache.context(for: matrix)
+        let descriptiveSchedule = isDescriptiveSchedule(matrix)
+        guard finiteFact || descriptiveSchedule || context.hasSubjectPredicate(
+            in: matrix.startIndex..<matrix.endIndex
+        ) else { return false }
+        // A descriptive schedule can be promoted by an earlier generic
+        // action-verb cue even when its standalone organizer correctly files
+        // it as a fact. Use the dedicated schedule reading for that matrix.
+        guard descriptiveSchedule || !read(matrix).belongsOnToday
+        else { return false }
+        let tail = String(text[condition.upperBound...])
+        return !matches(tail,
+            #"(?:[,;.]\s*|\b(?:and|but|so)\s+)(?:i|we)\s+(?:will|must|should|need|have|am\s+going|are\s+going)\b"#
+        )
     }
 
     /// Obligation markers that can be predicated of somebody other than the
@@ -805,7 +1345,7 @@ enum ActionabilityReader {
         let pattern = #"(?i)^(?:(?:and|but|so|also|okay|ok|well|yeah)\s+)*"#
             + #"((?!(?:i|we|you|someone|somebody|anyone|anybody|everyone|everybody"#
             + #"|nobody|no\s+one|there|it|this|that|these|those|our|us)\b)"#
-            + #"(?:my|his|her|their)?\s*[\p{L}'’-]+(?:\s+[\p{L}'’-]+)?)"#
+            + #"(?:my|his|her|their)?\s*[\p{L}'’-]+(?:\s+[\p{L}'’-]+){0,2})"#
             + #"\s+\#(thirdPersonObligation)\s+(?!be\b)[\p{L}'’-]+"#
         guard let regex = NSRegularExpression.speakItCached(pattern),
               let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
@@ -818,6 +1358,8 @@ enum ActionabilityReader {
         // slot swallowing "tomorrow".
         let head = String(text[text.startIndex..<subjectRange.upperBound])
         guard !matches(head, #"\b(?:i|we|i'?m|i'?ve|i'?ll)\b"#) else { return false }
+        guard !matches(head, #"\b(?:someone|somebody|anyone|anybody|everyone|everybody|nobody|no\s+one)\b"#)
+        else { return false }
 
         // "No verb in the subject slot" rather than "a noun in the subject
         // slot": the text here is lowercased, and NLTagger tags an unfamiliar
@@ -898,6 +1440,7 @@ enum ActionabilityReader {
         // neighbours" and "dinner at the Kims" have the same shape as an
         // errand.
         return headTag(of: body) == .verb
+            || matches(body, #"^\#(headOnlyImperativeVerb)\b"#)
     }
 
     /// An imperative whose object carries no determiner: "sharpen knives",
@@ -954,6 +1497,12 @@ enum ActionabilityReader {
         // head is an ordinary English verb and the 57,000-word vocabulary knows
         // it, while a personal name usually is not in there at all.
         guard !laterTokenIsVerb(body) else { return false }
+        // "un-" reverses a performable action (unpack, unload, undo). On
+        // iOS the tagger can label a novel prefixed imperative as a noun even
+        // though the root is already in the action vocabulary. Require the
+        // productive prefix and a known action stem; an arbitrary "un-" word
+        // cannot promote a noun phrase to Today.
+        if matches(words[0], #"^un\#(actionVerb)$"#) { return true }
         guard let embedding = personNameEmbedding,
               isOrdinaryEnglishWord(words[0].lowercased(), in: embedding) else { return false }
 
@@ -1108,6 +1657,15 @@ enum ActionabilityReader {
             // 7:05" is a commitment today, not a fact about flights.
             return namesASpecificDay(text) || statesAClock
         }
+        // A first-person activity with a stated day is a scheduled commitment
+        // even when its verb belongs to the shared action vocabulary. That
+        // vocabulary is used below to reject a *described* action in a fact;
+        // it cannot also veto "we leave for Spain Friday" merely because
+        // "leave" was taught to the clause splitter as an imperative.
+        if namesASpecificDay(text),
+           matches(text, #"\b(?:i|we)\s+(?:(?:will|shall)\s+)?\#(actionVerb)\b"#) {
+            return true
+        }
         // Anything with a verb in it was already handled above; reaching here
         // with one means the verb was not at the head, and a sentence like
         // "the report Sam sent Friday" is not the person's appointment.
@@ -1153,15 +1711,46 @@ enum ActionabilityReader {
     /// Shared with `ThoughtOrganizer.actionBody` in intent but not in code,
     /// because that one also has to survive title formatting; this one only has
     /// to expose the head verb.
+    /// A task-entry wrapper declares the speech act inside it. Require an
+    /// actual action head so adding a task to an existing list stays literal.
+    // Only a present first-person declaration licenses the complement. The
+    // subject permits a bounded quantifier/status modifier, and one complete
+    // temporal adjunct; arbitrary relative clauses and modal/past copulas do
+    // not become executable wrappers. Timing still reads the original source.
+    private static let nominalTaskTemporalAdjunct = #"(?:(?:for\s+)?(?:today|tomorrow|tonight|this\s+(?:morning|afternoon|evening|week))|(?:before|after)\s+(?:(?:my|our|the)\s+)?(?:breakfast|lunch|dinner|work|school|meeting|appointment|shift|call)|on\s+(?:Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday))"#
+    // Number agreement is structural: a singular task uses "is"; several
+    // owned tasks use "are to". Keep these branches separate because the local
+    // completion receipt is licensed for only one task and one object.
+    // A proved nominal complement is a clause head. Reuse the portable
+    // head-only stems here without adding them to global clause discovery.
+    static let nominalTaskActionHeadPattern = #"(?:\#(actionVerb)|\#(headOnlyImperativeVerb))"#
+    static let ownedSingularNominalTaskEntryFramePattern = #"(?:my|our)\s+(?:own\s+)?(?:(?:one|only|single|first|next|last|final)\s+)?(?:(?:actual|current|remaining|outstanding)\s+)?(?:task|job|responsibility|commitment)\s+(?:\#(nominalTaskTemporalAdjunct)\s+)?is\s+(?:to\s+)?"#
+    static let ownedPluralNominalTaskEntryFramePattern = #"(?:my|our)\s+(?:own\s+)?(?:(?:only|two|three|four|five|six|seven|eight|nine|ten|next|last|final)\s+)?(?:(?:actual|current|remaining|outstanding)\s+)?(?:tasks|jobs|responsibilities|commitments)\s+(?:\#(nominalTaskTemporalAdjunct)\s+)?are\s+to\s+"#
+    static let ownedNominalTaskEntryFramePattern = #"(?:\#(ownedSingularNominalTaskEntryFramePattern)|\#(ownedPluralNominalTaskEntryFramePattern))"#
+    static let nominalTaskEntryFramePattern = #"(?:\#(ownedNominalTaskEntryFramePattern)|(?:a|an|the)\s+(?:definite|actual|current|outstanding)\s+(?:task|job|action|obligation|commitment)\s+is\s+to\s+|the\s+(?:first|second|third|last|final|next)\s+(?:(?:definite|actual|current|outstanding)\s+)?(?:task|action|obligation|thing)\s+is\s+(?:(?:this|that)\s*:?\s+)?(?:to\s+)?)(?=\#(nominalTaskActionHeadPattern)\b)"#
+
+    static func taskEntryBody(_ text: String) -> String? {
+        guard let frame = text.range(
+            of: #"(?i)^(?:add|put|save)\s+(?:my|a|the)\s+(?:task|to[- ]?do)\s+to\s+(?=\#(actionVerb)\b)"#,
+            options: .regularExpression
+        ) ?? text.range(
+            of: #"(?i)^\#(nominalTaskEntryFramePattern)"#,
+            options: .regularExpression
+        ) else { return nil }
+        return String(text[frame.upperBound...])
+    }
+
     static func actionBody(_ text: String) -> String {
         // The title and consolidation readers share this guarded structural
         // peeling, including nested present-tense obligations and hedges.
         var value = ObligationFrame.peeled(text, using: ObligationFrame.actionable)
+        if let task = taskEntryBody(value) { value = task }
         if let locationAction = LocationIntentParser.actionBody(in: value) {
             value = locationAction
         }
         value = replace(value, ReminderPhrasing.sentenceLeadThroughAction, "")
         value = replace(value, #"^(?:okay|ok|alright|well|so|like|um+|uh+)\b[\s,]*"#, "")
+        value = replace(value, #"^now,?\s+(?=\#(actionVerb)\b)"#, "")
         // Priority labels frame the action; they are not its verb. Without
         // stripping them, "Urgent: call Mom" was correctly marked urgent but
         // filed as a Memory note because the action reader stopped at the
@@ -1173,6 +1762,10 @@ enum ActionabilityReader {
         )
         value = replace(value, #"^(?:i\s+)?(?:forgot\s+to|was\s+(?:supposed|meant)\s+to|never\s+got\s+a?round\s+to|still\s+(?:need|have)\s+to|keep\s+forgetting\s+to)\s*,?\s*"#, "")
         value = replace(value, #"^(?:remember\s+to|please)\s*,?\s*"#, "")
+        value = replace(value,
+            #"^what\s+i\s+(?:actually\s+)?need\s+(?:instead\s+)?is\s+(?:to\s+)?(?=\#(actionVerb)\b)"#, "")
+        value = replace(value,
+            #"^instead\s+i\s+need\s+to\s+(?=\#(actionVerb)\b)"#, "")
         value = replace(value, #"^(?:make\s+sure\s+(?:that\s+)?i|note\s+to\s+self\s*[:,]?)\s*,?\s*"#, "")
         value = replace(value, #"^\#(obligationLead)\s*,?\s*"#, "")
         // Before the day list as well as after it: the list strips a bare
@@ -1208,11 +1801,19 @@ enum ActionabilityReader {
         // A fronted day is context for the action, not the action.
         value = replace(
             value,
-            #"^(?:(?:today|tomorrow|tonight|this\s+(?:morning|afternoon|evening)|next\s+\w+|(?:on\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))|(?:on\s+)?(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+(?:\d{1,2}(?:st|nd|rd|th)?|\#(ordinalWord)))(?:\s+at\s+\S+(?:\s*[ap]\.?m\.?)?)?\s*,?\s+"#,
+            #"^(?:(?:today|tomorrow(?:\s+(?:morning|afternoon|evening|night))?|tonight|this\s+(?:morning|afternoon|evening)|next\s+\w+|(?:on\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+(?:morning|afternoon|evening|night))?)|(?:on\s+)?(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+(?:\d{1,2}(?:st|nd|rd|th)?|\#(ordinalWord))(?:,?\s+\d{4})?)(?:\s+at\s+\S+(?:\s*[ap]\.?m\.?)?)?\s*,?\s+"#,
             ""
         )
         value = withoutFrontedAdjunct(value)
         value = withoutFrontedCondition(value)
+        // Sequence markers are discourse context, not the head of a new
+        // Memory note. Require the spoken pause so "first aid" stays intact.
+        value = replace(value, #"^(?:first|next|finally|separately)\s*,\s*"#, "")
+        // Dictation often omits the comma in a spoken sequence. The following
+        // action verb, rather than punctuation, proves "first" is an ordinal
+        // instruction frame; "first aid" has no such verb at this position.
+        value = replace(value,
+            #"^(?:first|next|finally|separately)\s+(?=\#(actionVerb)\b)"#, "")
         // A second pass: "I need to, um, send Catherine…" leaves filler behind
         // the lead-in it just removed.
         value = replace(value, #"^(?:um+|uh+|you\s+know|like)\b[\s,]*"#, "")
@@ -1242,7 +1843,53 @@ enum ActionabilityReader {
     /// the tagging of the whole sentence, holds no verb and no subject before
     /// the first verb. "After I get paid book the trip" keeps its subject and
     /// is left alone; so is a span with no verb behind it at all.
+    private static func startsCompoundNominalPredicate(_ body: String) -> Bool {
+        body.range(
+            of: #"(?i)^\#(actionVerb)\s+(?!(?:the|a|an|my|our|your|this|that|if|whether)\b)(?:(?!(?:if|whether|when|after|before|once|who|that|which|because|i|we|he|she|they|you)\b)[\p{L}\p{N}'’-]+\s+){1,3}(?:is|are|was|were|has|have)\b"#,
+            options: .regularExpression
+        ) != nil
+    }
+
     private static func withoutFrontedAdjunct(_ text: String) -> String {
+        // A word that can command an action can also head a compound noun.
+        // After a fronted place/time, "call button is broken" and "print
+        // quality is poor" are nominal subjects, not imperatives. The finite
+        // predicate after the bare noun phrase is the structural evidence;
+        // a true command such as "call Mom" has no such predicate.
+        // The iOS 26 tagger may label an ordinal or meal as a verb and never
+        // find the real command. These are closed temporal adjunct forms;
+        // the next word must be a known action head. Read them directly so
+        // the same capture behaves on device and in the host corpus.
+        let temporalHead = #"(?:on|by|before|after)\s+(?:the\s+)?(?:\d{1,2}(?:st|nd|rd|th)|\#(ordinalWord)|monday|tuesday|wednesday|thursday|friday|saturday|sunday|breakfast|lunch|dinner|bed|work|that)"#
+        let daypartHead = #"(?:in|at)\s+the\s+(?:morning|afternoon|evening|night)"#
+        let deicticHead = #"(?:today|tonight|tomorrow(?:\s+(?:morning|afternoon|evening|night|at\s+\d{1,2}(?::\d{2})?))?|this\s+(?:morning|afternoon|evening|night))"#
+        let deterministic = #"(?i)^(?:\#(temporalHead)|\#(daypartHead)|\#(deicticHead))\s*,?\s+(?=\#(actionVerb)\b)"#
+        if let range = text.range(of: deterministic, options: .regularExpression) {
+            let body = String(text[range.upperBound...])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return startsCompoundNominalPredicate(body) ? text : body
+        }
+        // A bounded prepositional phrase can also name a place or a span of
+        // time not in the closed day vocabulary: "at the store buy milk",
+        // "on the way home pick up milk". A personal subject vetoes this
+        // adjunct reading; a known action head must follow the phrase.
+        // Dictation may put a comma after the context or omit it entirely.
+        // Require a known command head after the bounded phrase either way;
+        // a factual subject such as "the microphone" is not an imperative.
+        let adjunctWord = #"(?!(?:i|we|you|he|she|they)\b)[\p{L}\p{N}'’:-]+"#
+        let boundedAdjunct = #"(?i)^(?:at|in|on|after|before)\s+(?:\#(adjunctWord)\s+){0,5}\#(adjunctWord)\s*,?\s+(?=\#(actionVerb)\b)"#
+        if let range = text.range(of: boundedAdjunct, options: .regularExpression) {
+            let body = String(text[range.upperBound...])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return startsCompoundNominalPredicate(body) ? text : body
+        }
+        if let range = text.range(
+            of: #"(?i)^(?:this|next)\s+(?:weekend|week|month|year)\s+(?=\#(actionVerb)\b)"#,
+            options: .regularExpression
+        ) {
+            return String(text[range.upperBound...])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         guard let opener = text.split(whereSeparator: \.isWhitespace).first,
               frontingPreposition.contains(opener.lowercased()) else { return text }
         let context = SentenceContextCache.context(for: text)
@@ -1285,13 +1932,14 @@ enum ActionabilityReader {
         // "tomorrow at 9 call sarah" made "sarah" the verb and "call" part
         // of the adjunct.
         for end in candidateCuts where matches(rest(end), #"^\#(actionVerb)\b"#) {
-            return rest(end)
+            let body = rest(end)
+            return startsCompoundNominalPredicate(body) ? text : body
         }
         if let verb = tokens.firstIndex(where: \.isVerb), verb > 0, verb <= 6 {
             guard isAdjunct(tokens[..<verb]),
                   !finiteAuxiliary.contains(tokens[verb].text.lowercased()) else { return text }
             let remainder = rest(verb)
-            return remainder.isEmpty ? text : remainder
+            return remainder.isEmpty || startsCompoundNominalPredicate(remainder) ? text : remainder
         }
         // "After dinner call Mom" tags no verb at all: the tagger reads
         // "dinner call" as one compound noun. The same sentence with a comma
@@ -1305,7 +1953,7 @@ enum ActionabilityReader {
             guard !remainder.isEmpty else { break }
             let padded = SentenceContextCache.context(for: head + ", " + remainder)
             guard padded.tokens.count > end, padded.tokens[end].isVerb else { continue }
-            return remainder
+            return startsCompoundNominalPredicate(remainder) ? text : remainder
         }
         return text
     }
@@ -1334,6 +1982,21 @@ enum ActionabilityReader {
     /// separates the two. "When I was young I loved the beach" fails both:
     /// the word after "young" is a pronoun.
     private static func withoutFrontedCondition(_ text: String) -> String {
+        let contractedSubject = #"(?i)^(?:when|whenever|once|if|after|before|until|till|while)\s+(?:i['’]m|we['’]re)\s+(?:[\p{L}'’-]+\s+){1,6}?(?=\#(actionVerb)\b)"#
+        if let range = text.range(of: contractedSubject, options: .regularExpression) {
+            return String(text[range.upperBound...])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        // A condition owns its first predicate; a second bare action verb is
+        // the command after it. This bounded structural reading covers the
+        // common unpunctuated shape when NLTagger labels the command as a
+        // noun on device. A modal/obligation immediately after the subject
+        // vetoes the cut, so "when I need to call" remains one condition.
+        let deterministic = #"(?i)^(?:(?:when|whenever|once|if|after|before|until|till|while)|as\s+soon\s+as)\s+(?:i|we)\s+(?!(?:need|have|want|should|must|can|could|will)\b)(?:[\p{L}'’-]+\s+){1,6}?(?=\#(actionVerb)\b)"#
+        if let range = text.range(of: deterministic, options: .regularExpression) {
+            return String(text[range.upperBound...])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         let context = SentenceContextCache.context(for: text)
         let tokens = context.tokens
         guard tokens.count >= 4 else { return text }
@@ -1395,10 +2058,17 @@ enum ActionabilityReader {
     }
 
     private static func replace(_ text: String, _ pattern: String, _ template: String) -> String {
-        text.replacingOccurrences(
-            of: pattern,
-            with: template,
-            options: [.regularExpression, .caseInsensitive]
+        // Prefix peeling runs repeatedly while the same clause is read by
+        // extraction, organization and title shaping. Reuse the compiled ICU
+        // expression while retaining the same case-insensitive replacement
+        // semantics and UTF-16 range as Foundation's string convenience API.
+        guard let regex = NSRegularExpression.speakItCached(pattern, options: .caseInsensitive) else {
+            return text
+        }
+        return regex.stringByReplacingMatches(
+            in: text,
+            range: NSRange(text.startIndex..., in: text),
+            withTemplate: template
         )
     }
 }

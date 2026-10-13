@@ -11,6 +11,54 @@ import XCTest
 @MainActor
 final class ObligationFrameTests: XCTestCase {
 
+    func testPostposedConditionPreservesIndependentSentenceAfterCausalAside() {
+        for source in [
+            "Email the scan to Fariha once I have checked that both pages are readable they are different people the check matters because I sent a cropped scan once. Buy eggs.",
+            "Email the scan to Farah once I have checked both pages because I sent a cropped scan once. Buy eggs.",
+            "Email the scan to Farah once I have checked both pages. Buy eggs."
+        ] {
+            let items = ThoughtExtractionEngine.extractWithRules(source).items
+            XCTAssertEqual(items.count, 2, source)
+            XCTAssertTrue(items.first?.sourceQuote.contains("once I have checked") ?? false, source)
+            XCTAssertFalse(items.first?.sourceQuote.contains("Buy eggs") ?? true, source)
+            XCTAssertEqual(items.last?.organization.itemType, .shopping, source)
+            XCTAssertEqual(items.last?.sourceQuote, "Buy eggs.", source)
+        }
+    }
+
+    func testAdditiveWordKeepsOwnObligationAndOppositeFrames() {
+        for source in ["I also need to buy a folder", "We also have to order envelopes",
+                       "I need to also buy a folder"] {
+            let items = ThoughtExtractionEngine.extractWithRules(source).items
+            XCTAssertEqual(items.count, 1, source)
+            XCTAssertEqual(items.first?.organization.itemType, .shopping, source)
+            XCTAssertFalse(items.first?.needsReview ?? true, source)
+        }
+        for source in ["She also needs to buy a folder", "I also needed to buy a folder",
+                       "I also do not need to buy a folder", "I also must not buy a folder",
+                       "Look into whether buying a folder makes sense", "Listen to the recording"] {
+            XCTAssertEqual(ObligationFrame.peeled(source, using: ObligationFrame.actionable), source, source)
+        }
+    }
+
+    func testShoppingDescriptionIsNotAnotherProduct() {
+        for source in ["I also need to buy a folder, which has no date",
+                       "Buy a charger, which has a braided cable",
+                       "Order a notebook, whose cover has a clasp",
+                       "Buy coffee, we have none left",
+                       "Buy dog food, the bag has a red label"] {
+            let items = ThoughtExtractionEngine.extractWithRules(source).items
+            XCTAssertEqual(items.count, 1, source)
+            XCTAssertEqual(items.first?.organization.itemType, .shopping, source)
+            XCTAssertEqual(items.first?.sourceQuote, source, source)
+        }
+        for source in ["Buy a folder, a notebook", "Order coffee, tea, and milk"] {
+            let items = ThoughtExtractionEngine.extractWithRules(source).items
+            XCTAssertGreaterThan(items.count, 1, source)
+            XCTAssertTrue(items.allSatisfy { $0.organization.itemType == .shopping }, source)
+        }
+    }
+
     func testLowercaseInstructionAfterMemoryKeepsItsOwnRow() {
         for source in [
             "remember alex singh likes socks. go to elm shop to buy socks.",
@@ -44,7 +92,7 @@ final class ObligationFrameTests: XCTestCase {
             XCTAssertEqual(items.map {
                 ThoughtTitleFormatter.polished($0.suggestedTitle ?? $0.sourceQuote, itemType: $0.organization.itemType).lowercased()
             }, ["go eat at lucky star", "go to bendy melville and get some clothes",
-                "go to mooji and get some socks"])
+                "go to mooji and get some socks"], transcript)
             for item in items {
                 XCTAssertEqual(item.organization.dueDate, calendar.startOfDay(for: reference))
                 XCTAssertNil(item.organization.reminderDate)
@@ -62,6 +110,64 @@ final class ObligationFrameTests: XCTestCase {
                 transcript, referenceDate: reference, calendar: calendar
             ).items.count, count, transcript)
         }
+    }
+
+    func testListHeadingOwnershipDoesNotDependOnRecognizerPunctuation() {
+        for source in [
+            "We have some goals that we need to finish number one we need to call Mom and then we need to buy milk",
+            "We have some goals that we need to finish. Number one. We need to call Mom and then we need to buy milk"
+        ] {
+            let items = ThoughtExtractionEngine.extractWithRules(source).items
+            XCTAssertEqual(items.count, 2, source)
+            XCTAssertTrue(items.allSatisfy { $0.organization.itemType.isActionable }, source)
+            XCTAssertTrue(items[0].analysisText.lowercased().contains("call mom"), source)
+            XCTAssertTrue(items[1].analysisText.lowercased().contains("buy milk"), source)
+            XCTAssertFalse(items.contains(where: \.needsReview), source)
+        }
+        let fact = "My goals include that we need to call Mom and buy milk"
+        let result = ThoughtExtractionEngine.extractWithRules(fact)
+        XCTAssertTrue(result.items.contains { $0.analysisText.lowercased().contains("my goals include") })
+    }
+
+    func testListWideDayBelongsToEachActionButAnExplicitItemDayWins() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Toronto")!
+        let reference = calendar.date(from: DateComponents(year: 2026, month: 8, day: 3, hour: 10))!
+        let common = "Tomorrow I have a few errands that I need to do, number one, I need to call Mom. Number two, I need to buy milk"
+        let shared = ThoughtExtractionEngine.extractWithRules(common, referenceDate: reference, calendar: calendar).items
+        XCTAssertEqual(shared.count, 2)
+        XCTAssertEqual(shared.map(\.organization.dueDate), [
+            calendar.date(from: DateComponents(year: 2026, month: 8, day: 4)),
+            calendar.date(from: DateComponents(year: 2026, month: 8, day: 4))
+        ])
+        let override = ThoughtExtractionEngine.extractWithRules(common + " Friday", referenceDate: reference, calendar: calendar).items
+        XCTAssertEqual(override.count, 2)
+        XCTAssertEqual(override[0].organization.dueDate, calendar.date(from: DateComponents(year: 2026, month: 8, day: 4)))
+        XCTAssertEqual(override[1].organization.dueDate, calendar.date(from: DateComponents(year: 2026, month: 8, day: 7)))
+        let ordinary = ThoughtExtractionEngine.extractWithRules("Tomorrow call Mom. Buy milk", referenceDate: reference, calendar: calendar).items
+        XCTAssertEqual(ordinary.count, 2)
+        XCTAssertNil(ordinary[1].organization.dueDate)
+        let ended = ThoughtExtractionEngine.extractWithRules(
+            common + ". Remember my sister likes tea. Email Dad.",
+            referenceDate: reference, calendar: calendar
+        ).items
+        XCTAssertNil(ended.last?.organization.dueDate)
+    }
+
+    func testDatedShoppingRestartKeepsIndependentVisitsWithoutLexicalAssets() {
+        let previous = SentenceContext.taggerDisabledForEvaluation
+        SentenceContext.taggerDisabledForEvaluation = true
+        defer { SentenceContext.taggerDisabledForEvaluation = previous }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Toronto")!
+        let reference = calendar.date(from: DateComponents(year: 2026, month: 8, day: 3, hour: 10))!
+        let source = "Tomorrow when we go shopping, I want to go to or actually first I wanna go to the bookstore and then I want to go to the market to buy apples."
+        let result = ThoughtExtractionEngine.extractWithRules(source, referenceDate: reference, calendar: calendar)
+        XCTAssertEqual(result.items.count, 2)
+        let tomorrow = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: reference))!
+        XCTAssertTrue(result.items.allSatisfy { $0.organization.dueDate == tomorrow && $0.organization.reminderDate == nil })
+        XCTAssertTrue(result.items.contains { ($0.suggestedTitle ?? $0.sourceQuote).localizedCaseInsensitiveContains("bookstore") })
+        XCTAssertTrue(result.items.contains { ($0.suggestedTitle ?? $0.sourceQuote).localizedCaseInsensitiveContains("market") })
     }
 
     func testShoppingCaptureRemovesRestartAndSignoff() {
@@ -84,6 +190,12 @@ final class ObligationFrameTests: XCTestCase {
         XCTAssertEqual(title("Say bye"), "Say bye")
         XCTAssertEqual(title("Buy Goodbye"), "Buy Goodbye")
         XCTAssertEqual(title("Buy a book by Bye"), "Buy a book by Bye")
+        XCTAssertEqual(ThoughtExtractionEngine.extractWithRules(
+            "I want to go to the library and I want to go to the park"
+        ).items.count, 2)
+        XCTAssertEqual(ThoughtExtractionEngine.extractWithRules(
+            "I want to email the contract and get it back by Friday"
+        ).items.count, 1)
     }
 
     func testHadBetterRequiresAClearActionComplement() {

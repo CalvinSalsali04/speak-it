@@ -20,6 +20,7 @@ struct FamilyResult {
 
 let args = CommandLine.arguments.dropFirst()
 var familyFilter: String? = nil
+var utteranceFile: String? = nil
 var renderingName = "identity"
 var verbose = false
 var listCases = false
@@ -28,6 +29,12 @@ var it = args.makeIterator()
 while let a = it.next() {
     switch a {
     case "--family": familyFilter = it.next()
+    case "--utterance-file":
+        guard let path = it.next() else {
+            fputs("corpus-run: --utterance-file requires a path\n", stderr)
+            exit(2)
+        }
+        utteranceFile = path
     case "--rendering": renderingName = it.next() ?? "identity"
     case "--verbose": verbose = true
     case "--list": listCases = true
@@ -35,6 +42,19 @@ while let a = it.next() {
     default: break
     }
 }
+let utteranceFilter: Set<String>?
+if let path = utteranceFile {
+    guard let text = try? String(contentsOfFile: path, encoding: .utf8) else {
+        fputs("corpus-run: cannot read utterance file\n", stderr)
+        exit(2)
+    }
+    let requested = Set(text.components(separatedBy: .newlines).filter { !$0.isEmpty })
+    guard !requested.isEmpty else {
+        fputs("corpus-run: utterance file is empty\n", stderr)
+        exit(2)
+    }
+    utteranceFilter = requested
+} else { utteranceFilter = nil }
 
 func unpunctuated(_ text: String) -> String {
     text.replacingOccurrences(of: #"[,;:.!?]"#, with: "", options: .regularExpression)
@@ -58,11 +78,17 @@ let evaluator = CorpusEvaluator(rendering: rendering)
 var results: [FamilyResult] = []
 var totalCases = 0, totalFailing = 0
 var sev: [Int: Int] = [:]
+var evaluatedUtterances = Set<String>()
 
-for (family, cases) in CorpusEvaluator.allFamilies {
+for (family, familyCases) in CorpusEvaluator.allFamilies {
     if let f = familyFilter, !family.rawValue.lowercased().contains(f.lowercased()) { continue }
+    let cases = familyCases.filter { utteranceFilter?.contains($0.utterance) ?? true }
+    guard !cases.isEmpty else { continue }
     var ds: [CorpusDisagreement] = []
-    for c in cases { ds.append(contentsOf: evaluator.evaluate(c)) }
+    for c in cases {
+        evaluatedUtterances.insert(c.utterance)
+        ds.append(contentsOf: evaluator.evaluate(c))
+    }
     var local: [Int: Int] = [:]
     for d in ds { local[d.severity.rawValue, default: 0] += 1; sev[d.severity.rawValue, default: 0] += 1 }
     let failing = Set(ds.map(\.utterance)).count
@@ -79,6 +105,14 @@ for (family, cases) in CorpusEvaluator.allFamilies {
     }
 }
 
+if let utteranceFilter {
+    let missing = utteranceFilter.subtracting(evaluatedUtterances)
+    guard missing.isEmpty else {
+        fputs("corpus-run: \(missing.count) requested utterances did not match the selected corpus\n", stderr)
+        exit(2)
+    }
+    print("Selected \(evaluatedUtterances.count) distinct requested utterances (\(totalCases) corpus cases).")
+}
 if listCases { exit(0) }
 
 // --preservation: does every content word the person said survive into some
@@ -109,7 +143,8 @@ if preservation {
     }
 
     var checked = 0, lost = 0, invented = 0
-    for (_, cases) in CorpusEvaluator.allFamilies {
+    for (_, familyCases) in CorpusEvaluator.allFamilies {
+        let cases = familyCases.filter { utteranceFilter?.contains($0.utterance) ?? true }
         for testCase in cases {
             let utterance = rendering(testCase.utterance)
             let result = ThoughtExtractionEngine.extractWithRules(

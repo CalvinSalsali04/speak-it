@@ -139,3 +139,11 @@ history with gitleaks; example configuration files are allow-listed in
 
 App Store Connect stays the source of truth for prices and availability; nothing
 in this repository changes it.
+
+## Full local reference bank
+
+The app bundles the complete 510,000-row SQLite example bank. Its 1.4 GB
+resource is stored with Git LFS; install Git LFS before cloning and run
+`git lfs pull` in an existing checkout before building. The iOS and TestFlight
+workflows request LFS resources explicitly. No LFS runtime or third-party
+package is included in the iPhone app.

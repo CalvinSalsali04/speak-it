@@ -28,7 +28,10 @@ struct ReminderScheduleRequest: Hashable, Sendable {
 
     @MainActor
     init?(item: CapturedItem) {
-        guard let fireDate = item.reminderDate, fireDate > .now else { return nil }
+        // A known clock does not resolve a missing action, person or object.
+        // Keep that clock for editing, but never deliver an unresolved thought.
+        guard !item.needsClarification,
+              let fireDate = item.reminderDate, fireDate > ReminderSchedulingClock.now else { return nil }
         let originalText = item.originalTextSegment
         // The same memoized reading the rows render from. Today rebuilds these
         // requests on every render pass to keep its scheduling signature live,
@@ -383,6 +386,19 @@ enum ReminderSchedulingResult: Equatable, Sendable {
     case failed
 }
 
+/// A scheduling result belongs to the actual members of a delivered group.
+/// An expired or omitted request has no acknowledgment; an empty batch can
+/// never prove that a particular reminder was armed.
+struct ReminderBatchAcknowledgment: Sendable {
+    var results: [ReminderSchedulingResult] = []
+    var items: [UUID: ReminderSchedulingResult] = [:]
+    var requests: [UUID: ReminderScheduleRequest] = [:]
+    /// Notification removal was observed before replacement groups were armed.
+    /// This does not assert AlarmKit cancellation; that separate effect stays pending.
+    var cancelledItemIDs: Set<UUID> = []
+    var cancelledAlarmItemIDs: Set<UUID> = []
+}
+
 /// The external systems a reminder actually lives in, behind a substitutable
 /// seam.
 ///
@@ -412,6 +428,8 @@ struct ReminderDeliverySink: Sendable {
     /// only observe teardown that was already targeted by id, which is the half
     /// that was never in doubt.
     var pendingIdentifiers: @Sendable () async -> [String]
+    /// Nil means the device or test seam supplied no AlarmKit state proof.
+    var armedAlarmIDs: (@Sendable () async -> Set<UUID>?)? = nil
 
     static let live = ReminderDeliverySink(
         removeNotifications: { identifiers in
@@ -432,13 +450,48 @@ struct ReminderDeliverySink: Sendable {
         },
         pendingIdentifiers: {
             await UNUserNotificationCenter.current().pendingNotificationRequests().map(\.identifier)
+        },
+        armedAlarmIDs: {
+            guard #available(iOS 26.0, *) else { return nil }
+            guard let alarms = try? AlarmManager.shared.alarms else { return nil }
+            return Set(alarms.map(\.id))
         }
     )
 }
 
+enum ReminderSchedulingClock {
+#if DEBUG
+    @TaskLocal static var testNow: Date? = nil
+#endif
+    static var now: Date {
+#if DEBUG
+        if let testNow { return testNow }
+#endif
+        return .now
+    }
+}
+
 enum ReminderScheduler {
+#if DEBUG
+    @TaskLocal static var testNotificationScheduling:
+        (@Sendable (String, [ReminderScheduleRequest]) async -> ReminderSchedulingResult)? = nil
+#endif
+#if DEBUG
+    static func waitForPendingSynchronization() async { await synchronizationTail?.value }
+#endif
     /// Swapped by tests to observe teardown. Never reassigned in production.
     nonisolated(unsafe) static var delivery: ReminderDeliverySink = .live
+
+    /// Retire only the old build's notification namespace after its library
+    /// has been durably imported. Normal reminders are reconciled separately.
+    static func retireBuild20Notifications() async {
+        let center = UNUserNotificationCenter.current()
+        let ids = await center.pendingNotificationRequests().map(\.identifier).filter {
+            $0.hasPrefix("SpeakItPreview.reminder.") || $0.hasPrefix("SpeakItPreview.session.")
+        }
+        center.removePendingNotificationRequests(withIdentifiers: ids)
+        center.removeDeliveredNotifications(withIdentifiers: ids)
+    }
 
     static let reminderCategoryIdentifier = "SpeakIt.reminder-actions"
     static let completeActionIdentifier = "SpeakIt.reminder.complete"
@@ -616,7 +669,8 @@ enum ReminderScheduler {
         _ requests: [ReminderScheduleRequest],
         requestAuthorizationIfNeeded: Bool,
         scope: ReminderSynchronizationScope? = nil,
-        onCompletion: (([ReminderSchedulingResult]) -> Void)? = nil
+        onCompletion: (@MainActor ([ReminderSchedulingResult]) -> Void)? = nil,
+        onAcknowledgment: (@MainActor (ReminderBatchAcknowledgment) -> Void)? = nil
     ) {
         let predecessor = synchronizationTail
         synchronizationTail = Task {
@@ -629,7 +683,11 @@ enum ReminderScheduler {
                 requestAuthorizationIfNeeded: requestAuthorizationIfNeeded,
                 scope: scope
             )
-            onCompletion?(results)
+            // Scheduling runs off the UI actor. Durable acknowledgment reads
+            // SwiftData's mainContext and completion may update UI state, so
+            // both callbacks must explicitly hop to their owning actor.
+            await onCompletion?(results.results)
+            await onAcknowledgment?(results)
         }
     }
 
@@ -643,7 +701,7 @@ enum ReminderScheduler {
             requests,
             requestAuthorizationIfNeeded: requestAuthorizationIfNeeded,
             scope: scope
-        )
+        ).results
     }
 
     static func scheduleAndVerify(
@@ -779,7 +837,7 @@ enum ReminderScheduler {
             requestAuthorizationIfNeeded: false,
             scope: nil
         )
-        return !results.isEmpty && results.allSatisfy { $0 == .scheduled }
+        return !results.results.isEmpty && results.results.allSatisfy { $0 == .scheduled }
     }
 
     /// What to tell the person their capture became, immediately after saving.
@@ -868,7 +926,7 @@ enum ReminderScheduler {
         _ request: ReminderScheduleRequest,
         requestAuthorizationIfNeeded: Bool
     ) async -> ReminderSchedulingResult {
-        guard request.fireDate > .now else {
+        guard request.fireDate > ReminderSchedulingClock.now else {
             cancel(itemID: request.itemID)
             return .failed
         }
@@ -954,6 +1012,11 @@ enum ReminderScheduler {
         _ group: NotificationGroup,
         requestAuthorizationIfNeeded: Bool
     ) async -> ReminderSchedulingResult {
+#if DEBUG
+        if let testNotificationScheduling {
+            return await testNotificationScheduling(group.identifier, group.requests)
+        }
+#endif
         let center = UNUserNotificationCenter.current()
         var settings = await center.notificationSettings()
         var authorizationStatus = settings.authorizationStatus
@@ -1051,8 +1114,8 @@ enum ReminderScheduler {
         _ requests: [ReminderScheduleRequest],
         requestAuthorizationIfNeeded: Bool,
         scope: ReminderSynchronizationScope?
-    ) async -> [ReminderSchedulingResult] {
-        let futureRequests = requests.filter { $0.fireDate > .now }
+    ) async -> ReminderBatchAcknowledgment {
+        let futureRequests = requests.filter { $0.fireDate > ReminderSchedulingClock.now }
         var resolvedScope = scope ?? ReminderSynchronizationScope(requests: requests)
         resolvedScope.include(requests)
 
@@ -1061,20 +1124,36 @@ enum ReminderScheduler {
         }
         await clearExistingNotifications(scope: resolvedScope)
 
-        var results: [ReminderSchedulingResult] = []
+        var results = ReminderBatchAcknowledgment()
+        let remaining = await delivery.pendingIdentifiers()
+        if notificationIdentifiersToRemove(from: remaining,scope: resolvedScope).isEmpty {
+            results.cancelledItemIDs = resolvedScope.itemIDs.subtracting(Set(requests.map(\.itemID)))
+        }
+        if let observeAlarms = delivery.armedAlarmIDs, let remainingAlarms = await observeAlarms() {
+            results.cancelledAlarmItemIDs = resolvedScope.itemIDs
+                .subtracting(Set(requests.map(\.itemID))).subtracting(remainingAlarms)
+        }
         for request in futureRequests where request.delivery == .alarm {
-            results.append(await schedule(
+            let result = await schedule(
                 request,
                 requestAuthorizationIfNeeded: requestAuthorizationIfNeeded
-            ))
+            )
+            results.results.append(result)
+            results.items[request.itemID] = result
+            results.requests[request.itemID] = request
         }
         for group in notificationGroups(
             from: futureRequests.filter { $0.delivery == .notification }
         ) {
-            results.append(await scheduleNotification(
+            let result = await scheduleNotification(
                 group,
                 requestAuthorizationIfNeeded: requestAuthorizationIfNeeded
-            ))
+            )
+            results.results.append(result)
+            for request in group.requests {
+                results.items[request.itemID] = result
+                results.requests[request.itemID] = request
+            }
         }
         return results
     }

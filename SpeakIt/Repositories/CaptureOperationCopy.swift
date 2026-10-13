@@ -24,9 +24,18 @@ enum CaptureOperationCopy {
                 return Copy(title: "Completed", detail: title, symbol: "checkmark.circle")
             case .reschedule:
                 return Copy(title: "Rescheduled", detail: title, symbol: "calendar.badge.clock")
+            case .revise:
+                return Copy(title: "Updated", detail: title, symbol: "pencil")
             case .create, .retract:
                 return Copy(title: "Done", detail: title, symbol: "checkmark")
             }
+
+        case let .performedMany(operation, count):
+            return Copy(
+                title: operation == .complete ? "Completed" : "Cancelled",
+                detail: count == 1 ? "1 saved item" : "\(count) saved items",
+                symbol: operation == .complete ? "checkmark.circle" : "bell.slash"
+            )
 
         case .retracted:
             return Copy(title: "Discarded", detail: "Nothing was saved", symbol: "arrow.uturn.backward")
@@ -35,6 +44,7 @@ enum CaptureOperationCopy {
             let what = switch operation {
             case .complete: "complete"
             case .reschedule: "move"
+            case .revise: "update"
             default: "cancel"
             }
             return Copy(
@@ -43,7 +53,16 @@ enum CaptureOperationCopy {
                 symbol: "questionmark.circle"
             )
 
-        case let .ambiguous(_, candidateIDs):
+        case let .ambiguous(operation, candidateIDs):
+            if operation == .revise {
+                return Copy(
+                    title: "Review change",
+                    detail: candidateIDs.count > 1
+                        ? "Several saved items match — choose in Needs review"
+                        : "Saved item unchanged — review the requested edit",
+                    symbol: "pencil.circle"
+                )
+            }
             return Copy(
                 title: "Which one?",
                 detail: candidateIDs.count > 1

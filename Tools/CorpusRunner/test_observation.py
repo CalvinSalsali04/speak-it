@@ -622,7 +622,10 @@ class TheMotivatingFiguresAtTheTopAreRecomputed(unittest.TestCase):
     #: forms the module docstring is about, recomputed below rather than
     #: trusted. Same shape as `SHAPE_ON_PHASE_TWO` in #73 and for the same
     #: reason: a figure lives where something recomputes it.
-    MOTIVATING = {"plus": (48, 8, 12, 65), "wait": (58, 18, 30, 33)}
+    # Integrated Build 22 source, recomputed through the unchanged reader.
+    # New Swift literals widen the population; no concentration threshold or
+    # source/stem counting rule changes to preserve the old classification.
+    MOTIVATING = {"plus": (62, 8, 26, 50), "wait": (121, 18, 71, 16)}
 
     def test_the_corpus_still_says_what_the_bullets_say(self):
         forms = {phrase: "anywhere" for phrase in self.MOTIVATING}
@@ -891,6 +894,14 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         quotes the old practice hint `"Say it naturally, or use your own
         words"`; four literals out, three in, enumerated by diffing against
         `origin/main`. None was a language fixture.
+        4064 -> 9904 on 2026-10-12, remeasured after integrating the Build 21
+        source and its expanded regression tests into Build 22. This is the
+        distinct literal population of the whole current SpeakItTests tree,
+        including fixture text, expectations, messages and quoted prose; it
+        is not a count of independent captures or passing tests. The first
+        integrated reading was 9905. Removing NaturalLanguageEnvironmentTests'
+        abstaining helper removed its unique skip-message literal, yielding
+        9904. Both multi-word rules still produce exactly the same set.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -900,7 +911,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 4064)
+        self.assertEqual(len(space), 9904)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

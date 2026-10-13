@@ -274,8 +274,9 @@ enum SemanticCorpusC {
                    due: [CorpusDate(month: 8, day: 31, hour: nil)], remind: [nil]),
         corpusCase(.dateOnly, "The party is Saturday", count: 1, type: [.event], route: [.today],
                    due: [CorpusDate(month: 8, day: 8, hour: nil)], remind: [nil]),
-        corpusCase(.dateOnly, "Book the flight next week", count: 1, review: [true], severityCeiling: .metadata,
-                   note: "Arguable: \"next week\" is not an instant, and the matching reminder case is held for review. Recorded, not gated."),
+        corpusCase(.dateOnly, "Book the flight next week", count: 1,
+                   kind: [.calendarWindow], due: [nil], remind: [nil], review: [false],
+                   note: "A task can carry a calendar week without inventing a due day; a request to alert during that week still needs review."),
     ]
 
     static let all: [CorpusCase] =

@@ -79,6 +79,124 @@ enum FollowUpTarget: Equatable, Sendable {
 
 enum PersonMentionResolver {
 
+    /// An offline corroboration signal when iOS has no personal-name tag for a
+    /// bare transport object. This is the Census 2020 top 1,000 first-name
+    /// table, not a list of names from product fixtures. It is consulted
+    /// inside transport frames and an established communication addressee;
+    /// it never turns an arbitrary capitalized noun
+    /// elsewhere in a capture into a person. Names outside the table still
+    /// depend on spoken role/context or the system name tagger.
+    /// Source: https://www.census.gov/topics/population/genealogy/data/2020_names.html
+    private static let commonFirstNames: Set<String> = Set((
+        "aaliyah aaron abby abel abigail abraham adam addison adrian adriana adrienne aidan aiden aimee " +
+        "alan alana albert alberto alec alejandra alejandro alex alexa alexander alexandra alexandria " +
+        "alexis alfonso alfred alfredo ali alice alicia alisha alison allan allen allison allyson alma " +
+        "alvin alyssa amanda amber amelia amy ana anastasia andre andrea andres andrew andy angel " +
+        "angela angelica angelina angelo angie anita ann anna annabelle anne annette annie anthony " +
+        "antoinette antonia antonio april aria ariana arianna ariel arlene armando arnold arthur arturo " +
+        "asher ashley ashton aubrey audrey aurora austin autumn ava avery ayden bailey barbara barry " +
+        "beatrice beatriz becky belinda bella ben benjamin bernadette bernard bernice bertha beth " +
+        "bethany betty beverly bianca bill billie billy blake blanca bob bobbie bobby bonnie brad " +
+        "braden bradley brady brandi brandon brandy braxton brayden breanna brenda brendan brent brett " +
+        "brian briana brianna bridget brittany brittney brody brooke brooklyn bruce bryan bryce bryson " +
+        "byron caden caitlin caitlyn caleb callie calvin camden cameron camila camille candace candice " +
+        "cara carl carla carlos carly carmen carol carole carolina caroline carolyn carrie carson " +
+        "carter casey cassandra cassidy catherine cathy cecilia celeste celia cesar chad chance " +
+        "charlene charles charlie charlotte chase chelsea cheryl cheyenne chloe chris christian " +
+        "christina christine christopher christy cindy claire clara clarence claudia clayton clifford " +
+        "clinton clyde cody colby cole colin colleen collin colton conner connie connor constance " +
+        "cooper cora corey cory courtney craig cristian cristina crystal curtis cynthia daisy dakota " +
+        "dale dallas dalton damian damien damon dan dana daniel daniela danielle danny darlene darrell " +
+        "darren darryl daryl dave david dawn dean deanna debbie deborah debra delores denise dennis " +
+        "derek derrick desiree destiny devin devon diana diane dianna dianne diego dillon dolores " +
+        "dominic dominick dominique don donald donna donovan dora doris dorothy doug douglas drew duane " +
+        "dustin dwayne dwight dylan earl easton eddie edgar edith edna eduardo edward edwin eileen " +
+        "elaine eleanor elena eli elias elijah elisa elisabeth elise elizabeth ella ellen ellie elliot " +
+        "elliott elsa elsie emerson emilia emilio emily emma emmanuel enrique eric erica erick erik " +
+        "erika erin ernest ernesto esmeralda esther ethan eugene eva evan evelyn everett ezra faith " +
+        "fatima felicia felipe felix fernando florence floyd frances francis francisco frank franklin " +
+        "fred frederick gabriel gabriela gabriella gabrielle gage gail garrett gary gavin gayle gene " +
+        "genesis genevieve geoffrey george georgia gerald geraldine gerardo gianna gilbert gina " +
+        "giovanni gladys glen glenda glenn gloria gordon grace gracie graham grant grayson greg gregory " +
+        "gretchen guadalupe guillermo gustavo guy gwendolyn hailey haley hanna hannah harley harold " +
+        "harper harrison harry harvey hayden hayley hazel heather hector heidi helen henry herbert " +
+        "hilda holly hope howard hudson hugo hunter ian ingrid irene iris irma isaac isabel isabella " +
+        "isabelle isaiah ismael israel ivan ivy jace jack jackie jackson jaclyn jacob jacqueline " +
+        "jacquelyn jada jade jaden jaime jake james jamie jan jana jane janelle janet janice jared " +
+        "jasmine jason javier jaxon jaxson jay jayden jean jeanette jeanne jeff jeffery jeffrey jenna " +
+        "jennifer jenny jeremiah jeremy jerome jerry jesse jessica jessie jesus jill jillian jim jimmie " +
+        "jimmy jo joan joann joanna joanne jocelyn jodi jody joe joel joey johanna john johnathan " +
+        "johnnie johnny jon jonah jonathan jonathon jordan jordyn jorge jose josefina joseph josephine " +
+        "josh joshua josiah josie josue joy joyce juan juana juanita judith judy julia julian juliana " +
+        "julie julio june justin kaden kai kaitlin kaitlyn kaleb kara karen kari karina karl karla kate " +
+        "katelyn katherine kathleen kathryn kathy katie katrina kay kayden kayla kaylee keith kelley " +
+        "kelli kellie kelly kelsey kelvin ken kendall kendra kennedy kenneth kenny kent kerry kevin " +
+        "kiara kim kimberly kirk kirsten krista kristen kristi kristin kristina kristine kristopher " +
+        "kristy krystal kurt kyle kylie lacey lana lance landon larry laura lauren laurie lawrence " +
+        "layla leah lee lena leo leon leonard leonardo leroy leslie lester leticia levi lewis liam lila " +
+        "liliana lillian lilly lily lincoln linda lindsay lindsey lisa lloyd logan lois lonnie lorena " +
+        "lorenzo loretta lori lorraine louis louise lourdes lucas lucia lucille lucy luis luke luz " +
+        "lydia lynda lynn lynne mackenzie madeline madelyn madison maggie makayla mallory manuel marc " +
+        "marcia marco marcos marcus margaret margarita maria mariah marian mariana marianne maribel " +
+        "marie marilyn marina mario marion marisa marisol marissa marjorie mark marlene marsha marshall " +
+        "marta martha martin marvin mary maryann mason mateo mathew matt matthew maureen maurice max " +
+        "maxine maxwell maya mayra mckenzie megan meghan melanie melinda melissa melody melvin mercedes " +
+        "meredith mia micah michael michaela micheal michele michelle miguel mikayla mike mila mildred " +
+        "miles milton miranda miriam misty mitchell mohamed mohammad mohammed molly monica monique " +
+        "morgan mya nadia nancy naomi natalia natalie natasha nathan nathaniel neil nelson nevaeh " +
+        "nicholas nichole nick nicolas nicole nikki nina noah noel nolan nora norma norman olga oliver " +
+        "olivia omar orlando oscar owen pablo paige pam pamela parker patricia patrick patsy patty paul " +
+        "paula pauline payton pedro peggy penelope penny perry peter peyton philip phillip phyllis " +
+        "piper preston priscilla quinn rachael rachel rafael ralph ramon ramona randall randy raquel " +
+        "raul ray raymond reagan rebecca rebekah reese regina reginald rene renee rhonda ricardo " +
+        "richard rick ricky riley rita robert roberta roberto robin robyn rodney rodolfo rodrigo " +
+        "rogelio roger roland roman ron ronald ronnie rosa rose rosemarie rosemary ross roxanne roy " +
+        "ruben ruby russell ruth ryan ryder rylee sabrina sadie sally salvador sam samantha samuel " +
+        "sandra sandy santiago sara sarah saul savannah sawyer scarlett scott sean sebastian selena " +
+        "serenity sergio seth shane shannon sharon shaun shawn sheila shelby shelley shelly sheri " +
+        "sherri sherry sheryl shirley sidney sierra silvia simon skylar skyler sofia son sonia sonya " +
+        "sophia sophie spencer stacey stacy stanley stella stephanie stephen steve steven stuart sue " +
+        "summer susan susana suzanne sydney sylvia tabitha tamara tammy tanner tanya tara tatiana " +
+        "taylor ted teresa terrance terrence terri terry tessa thelma theodore theresa thomas tiffany " +
+        "tim timothy tina todd tom tomas tommy toni tony tonya tracey traci tracy travis trent trenton " +
+        "trevor trinity tristan troy ty tyler tyrone valentina valeria valerie vanessa vera vernon " +
+        "veronica vicki vickie vicky victor victoria vincent violet virginia vivian wade walter wanda " +
+        "warren wayne wendy wesley weston whitney will william willie wilma wyatt xavier yesenia " +
+        "yolanda yvette yvonne zach zachary zane zoe zoey"
+    ).split(separator: " ").map(String.init))
+
+    static func isCommonFirstName(_ text: String) -> Bool {
+        commonFirstNames.contains(text.lowercased())
+    }
+
+    /// The complete literal human relation in a direct communication slot.
+    /// This is closed noun-phrase grammar, independent of names/lexical tags;
+    /// consuming only "my brother's" would move "partner" into the message.
+    static let communicationRelationPhrasePattern: String = {
+        let step = Set(["mother","father","mom","dad","sister","brother","son","daughter"].map { "step" + $0 })
+        let extended: Set<String> = ["half-brother","half-sister","half brother","half sister",
+            "mother-in-law","father-in-law","sister-in-law","brother-in-law","son-in-law","daughter-in-law",
+            "great-grandmother","great-grandfather","great grandmother","great grandfather"]
+        let collateralAncestors: Set<String> = ["great-aunt","great-uncle","great aunt","great uncle"]
+        let qualified = Set(["foster", "adoptive", "step", "half"].flatMap { modifier in
+            ["mother", "father", "mom", "dad", "sister", "brother", "son", "daughter", "parents", "child", "children"].flatMap { [modifier + " " + $0, modifier + "-" + $0] }
+        })
+        let relations = relationNouns.union(step).union(extended).union(qualified).union(collateralAncestors)
+        let relation = "(?:" + relations.sorted().map(NSRegularExpression.escapedPattern(for:)).joined(separator:"|") + ")"
+        let name = #"\p{L}[\p{L}\p{M}'’-]*"#
+        let suffix = "(?:['’]s\\s+" + relation + ")*"
+        // Two adjacent names can instead be an addressee followed by a
+        // possessed message subject. Only an explicit complement boundary
+        // certifies the two-word owner of this particular human relation.
+        let twoWordOwner = name + "\\s+" + name + "['’]s\\s+" + relation
+            + "(?=" + suffix + "\\s+(?:about|to|that|how|whether|if)\\b)"
+        // The gated complete owner phrase must precede a bare relative:
+        // "Uncle Bob's sister about ..." has one complete recipient.
+        let base = "(?:" + twoWordOwner + "|(?:my|our|your|his|her|their|the)\\s+" + relation
+            + "|" + relation + "|" + name + "['’]s\\s+" + relation + ")"
+        return base + suffix
+    }()
+
     // MARK: Reading
 
     /// Whether the text is cased the way dictation cases a sentence whose names
@@ -195,6 +313,48 @@ enum PersonMentionResolver {
         let lowercaseOnly = isCasuallyCased(text)
         let list = words(in: source)
 
+        // The communication reader already established the addressee's
+        // occurrence before its message. Consume that role instead of letting
+        // a context-free calendar/function-word veto erase a personal name.
+        // Lexical corroboration remains required: a bare time or department
+        // in an object slot is not made into a person by this scope alone.
+        let scope = ClauseScope.read(text)
+        if let range = scope.recipientRange {
+            // Keep the lexical corroboration computed in the whole
+            // sentence. Re-tagging only the name discards that evidence.
+            let addressed = list.filter {
+                $0.range.lowerBound >= range.lowerBound && $0.range.upperBound <= range.upperBound
+            }
+            var monthCalendar = Calendar(identifier: .gregorian)
+            monthCalendar.locale = Locale(identifier: "en_US_POSIX")
+            let monthSlot = addressed.count == 1
+                && monthCalendar.monthSymbols.contains { $0.caseInsensitiveCompare(addressed[0].core) == .orderedSame }
+            let adjunct = String(text[range.upperBound...])
+            let calendarDateObject = monthSlot && adjunct.range(
+                of: #"^\s+\d{1,2}(?:st|nd|rd|th)?\b"#, options: .regularExpression) != nil
+            // A separate relative day closes the named object slot. A
+            // number completing a month/day expression does not: June 12
+            // cannot become an addressee because the verb is "call".
+            let monthAddressee = monthSlot && addressed[0].isCapitalized
+                && adjunct.range(of: #"(?i)^\s+(?:today|tomorrow|tonight)\b"#,
+                                 options: .regularExpression) != nil
+            if !calendarDateObject, let phrase = personPhrase(in: addressed, at: 0,
+                                         allowLowercase: lowercaseOnly) {
+                return .person(PersonMention(label: phrase.label,
+                    sourceRange: phrase.range, confidence: phrase.confidence,
+                    role: .followUpTarget))
+            }
+            if !calendarDateObject, let first = addressed.first, addressed.count <= 2,
+               (commonFirstNames.contains(first.lower) || first.isPersonalName || monthAddressee), !first.isPossessive,
+               !addressed.dropFirst().contains(where: { organisationSuffixes.contains($0.lower) }),
+               addressed.dropFirst().allSatisfy({ isNameToken($0, allowLowercase: lowercaseOnly) }) {
+                return .person(PersonMention(
+                    label: addressed.map { display($0.core) }.joined(separator: " "),
+                    sourceRange: range, confidence: .high, role: .followUpTarget
+                ))
+            }
+        }
+
         // Every verb is tried, not just the first: "Call, uh, call Mom"
         // survives disfluency stripping as a restart, and the name is behind
         // the second one.
@@ -275,6 +435,16 @@ enum PersonMentionResolver {
     /// `index` is not one.
     private static func objectIndex(after index: Int, in list: [Word], allowLowercase: Bool = false) -> Int? {
         let verb = list[index].lower
+        // Scheduling a message names its addressee through the message noun;
+        // the article belongs to that noun, not to a purchased phone/text.
+        if verb == "schedule" {
+            var noun = index + 1
+            if noun < list.count, ["a", "an", "the"].contains(list[noun].lower) { noun += 1 }
+            if noun + 2 < list.count, ["message", "text", "email"].contains(list[noun].lower),
+               list[noun + 1].lower == "to" {
+                return noun + 2
+            }
+        }
         // A communication word inside an acquired noun phrase is not an
         // address predicate: a phone case and contact solution name things.
         // Bare words after purpose "for" likewise fill a nominal slot; an
@@ -396,7 +566,24 @@ enum PersonMentionResolver {
         }
         if let transportObject, transportObject < list.count {
             let object = list[transportObject]
-            if kinship.contains(object.lower) || (object.isCapitalized && object.isPersonalName) {
+            // NaturalLanguage does not consistently tag ordinary given names
+            // in this frame on iOS. A collection/drop-off venue supplies an
+            // independent role cue: schools, care settings and transit hubs
+            // are where a person is collected or delivered. The cue is local
+            // to this verb's object and never turns a bare capitalized brand
+            // into a person. A determiner still identifies a thing.
+            let following = list.dropFirst(transportObject + 1).prefix(4).map(\.lower)
+            let transportPreposition = following.first == "from" || following.first == "at"
+            let venue = following.dropFirst().first(where: { $0 != "the" && $0 != "a" })
+            let personVenue: Set<String> = [
+                "school", "daycare", "kindergarten", "practice", "airport",
+                "station", "terminal", "clinic", "hospital"
+            ]
+            let venueSupportsPerson = transportPreposition && venue.map(personVenue.contains) == true
+            if kinship.contains(object.lower)
+                || (object.isCapitalized && (object.isPersonalName
+                    || venueSupportsPerson
+                    || isCommonFirstName(object.core))) {
                 return transportObject
             }
         }
@@ -800,6 +987,14 @@ enum PersonMentionResolver {
         "mechanic", "therapist",
     ]
 
+    /// A complete literal service role from the same existing role seeds.
+    /// This grants no contact identity. Every word is consumed, so an extra
+    /// action/condition cannot hide in a described target without lexical tags.
+    static func isLiteralServiceDescription(_ text: String) -> Bool {
+        let words=text.lowercased().split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        return words.count == 2 && ["the","my","our"].contains(words[0]) && occupationSeeds.contains(words[1])
+    }
+
     /// Held once. Loading the embedding is the expensive part; the lookups are
     /// not, and a capture does only a handful.
     private static let englishEmbedding = NLEmbedding.wordEmbedding(for: .english)
@@ -1163,9 +1358,11 @@ enum PersonMentionResolver {
         "mom", "mum", "mother", "mommy", "mama",
         "dad", "father", "daddy", "papa",
         "grandma", "grandmother", "granny", "nana", "grandpa", "grandfather",
+        "granddad", "grandad", "grandmom", "grandmum",
         "sis", "sister", "bro", "brother", "aunt", "auntie", "uncle", "cousin",
         "nephew", "niece", "wife", "husband", "spouse", "partner", "fiance",
-        "fiancee", "son", "daughter",
+        "fiancee", "son", "daughter", "child", "children", "sibling", "siblings",
+        "sisters", "brothers", "sons", "daughters", "grandchild", "grandchildren",
     ]
 
     private static let relationNouns: Set<String> = kinship.union([
@@ -1221,10 +1418,12 @@ enum PersonMentionResolver {
 
     private static let functionWords: Set<String> = determiners.union([
         "and", "or", "but", "about", "at", "in", "on", "to", "for", "from",
-        "with", "by", "of", "these", "those", "when", "while", "if", "so",
+        "with", "by", "of", "as", "these", "those", "when", "while", "if", "so",
         "back", "up", "off", "out", "over", "around", "re", "regarding",
         "until", "before", "after", "during", "all", "also", "plus", "just",
         "still", "yet", "here", "there", "because", "whether", "into", "per",
+        // Quantified objects such as "send any files" do not name a recipient.
+        "any", "some", "each", "every", "either", "neither", "both",
         // Negations and auxiliaries. A capitalized "Don't" opens a sentence far
         // more often than any real name does, and without these "Don't call
         // Catherine tomorrow, call her Friday" filed a person called *Don't* —

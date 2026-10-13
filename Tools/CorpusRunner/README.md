@@ -25,6 +25,7 @@ Families are sorted by blocking failures first, so triage starts at the top.
 | flag | effect |
 |---|---|
 | `--family <substring>` | run only families whose name matches |
+| `--utterance-file <path>` | run only exact utterances listed one per line; fail if any requested source has no selected corpus case |
 | `--rendering <name>` | `identity` (default), `comma-free`, `unpunctuated`, `lowercased` |
 | `--verbose` | print the full clustered disagreement report per family |
 | `--list` | dump every case as `family<TAB>utterance` |

@@ -33,6 +33,7 @@ MUTATIONS=(
   "action-ownership|SpeakIt/Repositories/Actionability.swift|private static func obligationBelongsToAnotherPerson(_ text: String) -> Bool {|return false"
   "unsettled-time|SpeakIt/Repositories/ClauseStructure.swift|static func unsettled(in text: String) -> Unsettled? {|return nil"
   "day-month-order|SpeakIt/Repositories/ThoughtOrganizer.swift|private static func dayBeforeMonth(|return nil"
+  "calendar-date|SpeakIt/Repositories/ThoughtOrganizer.swift|private static func date(|return nil"
   "zero-padded-morning|SpeakIt/Repositories/ThoughtOrganizer.swift|private static func isZeroPaddedMorning(_ hourToken: String) -> Bool {|return false"
   "bare-half-hour|SpeakIt/Repositories/ThoughtOrganizer.swift|private static func bareHalfHour(in text: String) -> ParsedTime? {|return nil"
   "spoken-24-hour|SpeakIt/Repositories/ThoughtOrganizer.swift|private static func twentyFourHourSpoken(in text: String) -> ParsedTime? {|return nil"

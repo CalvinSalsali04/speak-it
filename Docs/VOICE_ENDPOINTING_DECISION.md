@@ -4,6 +4,11 @@
 **Decision date:** 2026-08-24  
 **Audience:** Product, engineering, QA, and beta support
 
+> **October 12, Build 22 default change.** The in-app voice screen starts in
+> **Auto finish** again, so an ordinary completed thought saves after a natural
+> pause without a second tap. Continuous capture remains an explicit option
+> for thinking pauses and long recordings; its protected recovery is unchanged.
+
 > **Window sizes, corrected.** The finished-sentence window is **1.9 s**
 > (`completeThoughtPauseMilliseconds`), settled in build 16 — this document
 > previously quoted 2.1 s throughout, which sent the pre-submission tester
@@ -27,6 +32,40 @@ The implemented behavior is:
 | Ending is ambiguous | Show **Still listening…** | 4 seconds | More speech resets the decision; a pulse tap finishes immediately; otherwise save at the cap |
 | Wording appears clearly incomplete | Show **Still listening…** | 8 seconds | More speech resets the decision; a pulse tap finishes immediately; otherwise save at the cap |
 | No recognized words | Keep the existing listening UI | 10 seconds | Speech begins, or the existing no-speech recovery/timeout runs |
+
+## Continuous capture
+
+The capture screen offers **Continuous capture** before recording and while listening,
+including when an outside-the-app route starts voice automatically. Auto finish
+is the default; Continuous is an explicit choice. When Continuous is on, neither the 1.9/4/8-second natural-pause timers nor the
+10-second no-speech timer ends the recording. The screen says **Long capture ·
+Listening** and tells the person to tap the pulse to finish and save. Switching
+back to automatic mode resumes the normal endpoint policy from the current
+transcript. Once Long capture has been enabled for a recording, whole-recording
+verification remains required even if the person switches it off before
+finishing; changing pause behavior cannot turn a partial transcript into a
+complete save. An early backend final or recognizer error never marks long capture
+complete; recording continues when the microphone and protected file remain
+available, and interruption still enters visible recovery. Long capture does
+not change extraction or persistence after audio is finalized.
+
+On older iOS versions the live SFSpeech task may stop before a long recording
+does. Long mode keeps writing the protected local audio until the person taps
+Finish, then transcribes frame-bounded pieces on device. Every piece must return
+a final result, and adjacent pieces must have a clear spoken overlap before the
+assembled text can save. A missing piece, uncertain join, unreadable recording,
+or unavailable local speech model leaves the recording in Capture history with
+a visible failure instead of saving the last live partial as a complete thought.
+Long mode starts only after protected recording storage is prepared. The audio
+queue admits at most three seconds of pending microphone frames. A buffer-copy,
+queue-backlog, or protected-file write failure stops capture visibly and retains
+the partial recording. Analyzer forwarding failures force whole-recording
+recovery. Finishing drains accepted frames off the main thread before asking
+the recognizer to finalize or checking the saved file.
+The whole-recording requirement stays with the protected draft after Long is
+switched off or the app relaunches. Every recovery entry point reads that
+durable requirement and uses strict chunk verification. Audio drafts from older
+builds with no recorded length mode use the conservative strict path.
 
 For the exact beta report — “Remind me to pick up Ice wine at LCBO tomorrow.
 At.” — the final spoken word **at** enters the clearly incomplete path. The
@@ -222,6 +261,17 @@ opt-in testers, let them self-describe only when necessary for an agreed study,
 and keep endpoint telemetry content-free.
 
 ## Privacy and analytics
+
+DEBUG builds emit a local `SpeechEndpointTrace` unified-log sequence for each
+capture. Filter by that category in Console to see relative milliseconds from
+capture start for lexical changes, the selected 1.9/4/8-second timer, timer
+fire, finalization source (`manual`, `backend_final`, or the selected automatic
+window), audio-input stop, ASR final arrival, grace expiry, and the completion
+callback. These fixed event names, source labels, and elapsed times contain no
+spoken words or recording data. They are not stored in the app model or sent to
+analytics, and the trace is compiled out of Release builds. A timer fire proves
+the endpoint decision occurred; the callback marker shows when the saved text
+was delivered after the recognizer finished or the grace period expired.
 
 No transcript, final word, audio, name, reminder, or classification token may be
 sent to analytics. If rollout instrumentation is added, it should use only a

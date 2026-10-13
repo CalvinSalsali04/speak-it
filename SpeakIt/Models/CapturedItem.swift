@@ -185,7 +185,9 @@ final class CapturedItem: Identifiable {
             // A time intent that actually expresses a time makes this a time
             // trigger. An intent of kind `.none` — which is what an unsupported
             // place trigger stores — must not claim the item is time-triggered.
-            if let newValue, newValue.kind != .none {
+            if let newValue,
+               newValue.kind != .none,
+               newValue.kind != .calendarWindow {
                 reminderTriggerKindRawValue = ReminderTriggerKind.time.rawValue
             } else if reminderTriggerKindRawValue == ReminderTriggerKind.time.rawValue {
                 reminderTriggerKindRawValue = nil
@@ -217,7 +219,9 @@ final class CapturedItem: Identifiable {
     /// what keeps that sentence expressible without a combined rule engine.
     var reminderTrigger: ReminderTrigger? {
         if let locationIntent { return .location(locationIntent) }
-        if let temporalIntent, temporalIntent.kind != .none { return .time(temporalIntent) }
+        if let temporalIntent,
+           temporalIntent.kind != .none,
+           temporalIntent.kind != .calendarWindow { return .time(temporalIntent) }
         return nil
     }
 
@@ -486,10 +490,11 @@ final class CapturedItem: Identifiable {
     /// True when this item still carries its capture's entire transcript and that
     /// transcript reads like it holds more than one intention. Extraction keeps a
     /// capture whole when splitting it would be unsafe (negation, reported speech,
-    /// destructive phrasing) and when the person undoes an organization, and both
-    /// land here.
+    /// destructive phrasing). An explicit grouping decision closes that question.
     private var holdsWholeUnsplitTranscript: Bool {
-        guard let session = captureSession, session.items.count == 1 else { return false }
+        // A user-confirmed grouping is durable. Other recorded gaps still
+        // take priority above; reviewing one thought does not answer them.
+        guard !isReviewed, let session = captureSession, session.items.count == 1 else { return false }
         let transcript = session.originalTranscription.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !transcript.isEmpty,
               originalTextSegment.trimmingCharacters(in: .whitespacesAndNewlines) == transcript else {
@@ -557,6 +562,8 @@ enum ClarificationRequirement: String, CaseIterable, Sendable {
     case reportedSpeech
     /// The structure does not say whose action this is.
     case ambiguousActor
+    /// The action is clear but "it" or "that" needs an object name.
+    case ambiguousObject
     /// A day or a clock was stated and never settled on — "Tuesday or
     /// Wednesday", "maybe Thursday", "was the meeting Wednesday". The words are
     /// kept and nothing is scheduled.
@@ -582,6 +589,7 @@ enum ClarificationRequirement: String, CaseIterable, Sendable {
         case .ambiguousPerson: "Who is this about?"
         case .reportedSpeech: "Someone else's words"
         case .ambiguousActor: "Whose to do?"
+        case .ambiguousObject: "Which item?"
         case .ambiguousTemporalScope: "Time not settled"
         case .incompleteThought: "Unfinished thought"
         }
@@ -606,6 +614,7 @@ enum ClarificationRequirement: String, CaseIterable, Sendable {
         case .ambiguousPerson: "Confirm who this is about"
         case .reportedSpeech: "This quotes someone else — confirm it is yours to do"
         case .ambiguousActor: "Confirm whose task this is"
+        case .ambiguousObject: "Name what this action refers to"
         case .ambiguousTemporalScope: "Pick the day you meant"
         case .incompleteThought: "Finish the thought, or keep it as it is"
         }
@@ -623,6 +632,7 @@ enum ClarificationRequirement: String, CaseIterable, Sendable {
         case .ambiguousTemporalScope: .time
         case .ambiguousPerson: .person
         case .missingAction, .ambiguousActor, .reportedSpeech, .incompleteThought: .type
+        case .ambiguousObject: self
         case .time, .person, .type, .splitDecision, .confirmation,
              .unsupportedLocationTrigger, .unsupportedConditionTrigger,
              .locationTrigger, .combinedTimeAndPlace, .pendingOperation: self
@@ -642,6 +652,7 @@ enum ClarificationRequirement: String, CaseIterable, Sendable {
         case .unsupportedCondition: self = .unsupportedConditionTrigger
         case .uncertainClauseBoundary: self = .splitDecision
         case .ambiguousActor: self = .ambiguousActor
+        case .ambiguousObject: self = .ambiguousObject
         case .ambiguousTemporalScope: self = .ambiguousTemporalScope
         case .incompleteThought: self = .incompleteThought
         }

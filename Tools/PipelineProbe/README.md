@@ -14,6 +14,19 @@ list and quote.
 Utterances are one per line; blank lines and lines starting with `#` are
 skipped. With no file arguments it reads stdin.
 
+`--partition-coverage` emits one JSON line per capture with the meaningful
+post-repair words left without a retained clause, operation, withdrawn local
+target, or source-owned connector. It reads the same production repair and
+operation-partition code as the app. An empty `unownedWords` list proves only
+this boundary; it does not audit words removed earlier by speech repair.
+
+`--repair-coverage` emits the original word occurrence IDs for which the repaired
+text has no surviving origin, plus the stage that first removed each ID.
+These are **candidates for classification**, not
+automatically defects: fillers, corrections, and normalized compounds can all
+appear there. The output is useful for building a raw-source disposition audit
+without confusing a licensed edit with silent loss.
+
 The frame of reference is fixed at **Monday 2026-08-03 10:00 America/Toronto**,
 matching `SemanticCorpusTests` exactly — so anything you observe here reproduces
 as a corpus case, and a corpus case reproduces here.
@@ -25,6 +38,9 @@ suite means a 4-minute simulator run per question. The probe answers in
 milliseconds, which is the difference between checking six phrasings and
 checking six hundred. Every finding in `Docs/PipelineSweep/` was produced this
 way.
+
+`--tagger-disabled` reproduces extraction without Apple lexical/name assets.
+This diagnostic switch is never set by the app.
 
 ## What it cannot tell you
 
@@ -51,41 +67,6 @@ If a build fails after those files are restructured, the section markers
 `probe --json utterances.txt` emits one JSON object per capture, including items,
 source wording, dates as Unix seconds, and detected operations. This is the
 input to `Tools/UnderstandingLab/lab.py`; its other modes remain unchanged.
-
-## Which completion branch answered
-
-`probe --completion utterances.txt` prints, for each capture, the
-`ThoughtCompletion.Unfinished` case for the raw utterance and for each row's
-`analysisText`, or `nil` where the text reads as finished.
-
-It exists because the enum was declared `String`-raw-valued and `CaseIterable`
-so that "the behaviour has to be explainable", and nothing printed it. The row
-report cannot: it prints `state.gap`, and both cases carry `.incompleteThought`,
-so the field that looks like the answer is the one place the branches are
-collapsed.
-
-The second column is the point. `ThoughtOrganizer.organize` is called on
-`segment.analysisText` and trims it first, so for a row whose organization was
-derived from its own analysis text, that string — not the utterance — is what
-the guard tested. When the two differ, any argument about the utterance was
-never about the string the guard saw, and a row that changed its verdict may
-have changed its input rather than its branch.
-
-Not every row qualifies. The spoken-list splitter builds one row per product
-with a synthesised `analysisText` and the parent's `organization`, so the guard
-never saw that row's text. The mode does not leave that to this paragraph: on
-the rules path only the completion guard sets `.incompleteThought`, so when a
-row's re-evaluated answer disagrees with its own recorded gap the line is marked
-`NOT THIS ROW'S INPUT`.
-
-What it cannot tell you: it re-evaluates a pure function on the same input
-rather than instrumenting the call, so it is the branch for that text, and it
-says nothing about a caller that passes some other text. Its output is
-deliberately not in the `──` record format, because the three scorers split
-reports on that prefix.
-
-`questions/` holds checked-in inputs for this mode, one file per question, each
-one carrying the question and the prediction above the utterances. Adding a file
-there is how a reading gets a preregistered answer instead of an argument;
-`declared-limits.txt` is run by the `language` job whenever a dispatch asks for
-`devset_failures`.
+Operation output includes review/broad/scope flags, polarity, requested old/new
+timing, source quote, and source/local-target/independent-creation word IDs.
+These describe the request; they do not prove a saved-row mutation occurred.

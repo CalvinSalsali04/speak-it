@@ -12,6 +12,1176 @@ import XCTest
 @MainActor
 final class ActionabilityTests: XCTestCase {
 
+    func testForeignResponsibilitiesAndServiceSchedulesDoNotAuthorizeOwnTasks() {
+        let cases = [
+            "The museum offers a quiet hour on Wednesday mornings.",
+            "At our meeting the treasurer took responsibility for sending the receipts.",
+            "Our designer has a deadline on the twelfth for the logo sketches.",
+            "The kitchen fitter must check the wall before installing the cabinets.",
+            "I heard that the librarian has to close early today because of a staffing problem.",
+            "A note in the margin says 'ask for extra copies'; I want to know later what the old editor wrote."
+        ]
+        for taggerDisabled in [false, true] {
+            let previous = SentenceContext.taggerDisabledForEvaluation
+            SentenceContext.taggerDisabledForEvaluation = taggerDisabled
+            defer { SentenceContext.taggerDisabledForEvaluation = previous }
+            for source in cases {
+                XCTAssertFalse(ActionabilityReader.read(source).belongsOnToday, source)
+                let result = ThoughtExtractionEngine.extractWithRules(source,
+                    referenceDate: referenceDate, calendar: calendar)
+                XCTAssertFalse(result.items.contains { $0.organization.itemType.isActionable }, source)
+                XCTAssertFalse(result.items.contains { $0.organization.reminderDate != nil }, source)
+                XCTAssertFalse(result.items.isEmpty, source)
+                XCTAssertTrue(result.operations.isEmpty, source)
+            }
+        }
+    }
+
+    func testOwnAdoptionAndAppointmentsSurviveForeignResponsibilityGuards() {
+        for source in [
+            "I will send the receipts tomorrow.",
+            "Remind me to check the designer's deadline tomorrow at 4 PM.",
+            "My deadline is August twelfth.",
+            "Dentist appointment on Friday at 3 PM.",
+            "Maya said I need to send the receipts tomorrow."
+        ] {
+            XCTAssertTrue(ActionabilityReader.read(source).belongsOnToday, source)
+            let result = ThoughtExtractionEngine.extractWithRules(source,
+                referenceDate: referenceDate, calendar: calendar)
+            XCTAssertTrue(result.items.contains { $0.organization.itemType.isActionable }, source)
+        }
+    }
+
+    func testExplicitCaptureRetentionUsesExternalPurposeWithoutLexicalAssets() throws {
+        let previous = SentenceContext.taggerDisabledForEvaluation
+        SentenceContext.taggerDisabledForEvaluation = true
+        defer { SentenceContext.taggerDisabledForEvaluation = previous }
+        let cases: [(String, ItemType)] = [
+            ("I want to save the phrase 'quiet courts, bright lamps' as a design thought.", .idea),
+            ("I need to retain the phrase ‘narrow paths, wide skies’ as an idea.", .idea),
+            ("I would like to keep the phrase \"blue doors, open rooms\" as a Memory.", .note),
+            ("We want to record the window layout as a design thought.", .idea),
+            ("We need to save the seating pattern as an idea.", .idea),
+            ("We would like to retain this description as reference.", .note),
+            ("Please save 'small courtyards, deep shadows' as a thought.", .idea),
+            ("Save the phrase 'mail the parcel tomorrow' as an idea.", .idea),
+            ("I want to save the phrase 'remind me to call Noor tomorrow at 5 PM' as a Memory.", .note),
+            ("Save that cooking guidance.", .note),
+            ("I want to retain this gardening advice.", .note),
+            ("Please keep those design thoughts.", .idea),
+            ("Save these reference notes.", .note)
+        ]
+        for (source, kind) in cases {
+            XCTAssertEqual(ActionabilityReader.explicitCaptureRetentionKind(source), kind, source)
+            XCTAssertEqual(ActionabilityReader.retainedContentKind(source), kind, source)
+            XCTAssertEqual(ActionabilityReader.read(source), .knowledge, source)
+            XCTAssertEqual(ActionabilityReader.read(ActionabilityReader.actionBody(source)), .knowledge, source)
+            let result = ThoughtExtractionEngine.extractWithRules(source,
+                referenceDate: referenceDate, calendar: calendar)
+            XCTAssertEqual(result.items.count, 1, source)
+            let row = try XCTUnwrap(result.items.first, source)
+            XCTAssertEqual(row.organization.itemType, kind, source)
+            XCTAssertFalse(row.needsReview, source)
+            XCTAssertEqual(row.rawQuote, source, source)
+            XCTAssertEqual(row.sourceQuote, source, source)
+            XCTAssertNil(row.organization.dueDate, source)
+            XCTAssertNil(row.organization.reminderDate, source)
+            XCTAssertEqual(row.organization.reminderDelivery, .none, source)
+            XCTAssertEqual(row.organization.temporalIntent.kind, .none, source)
+            XCTAssertTrue(result.operations.isEmpty, source)
+        }
+    }
+
+    func testCaptureRetentionRequiresCompleteOwnScopeAndExternalLabel() {
+        let rejected = [
+            "Maya wants to save the phrase 'quiet courts' as a thought.",
+            "I wanted to save the phrase 'quiet courts' as a thought.",
+            "I would have liked to save the phrase 'quiet courts' as a thought.",
+            "I do not want to save the phrase 'quiet courts' as a thought.",
+            "I no longer need to save the phrase 'quiet courts' as a thought.",
+            "If the sketch works, I want to save the phrase 'quiet courts' as a thought.",
+            "Maya said, ‘I want to save the phrase quiet courts as a thought.’",
+            "‘I want to save the phrase quiet courts as a thought.’",
+            "I want to save the phrase 'quiet courts as a thought'.",
+            "Save the file 'quiet courts as an idea'.",
+            "I want to save the phrase 'quiet courts as a thought.",
+            "I want to save '' as a thought.",
+            "I want to save 'quiet courts' and 'bright lamps' as a thought.",
+            "I want to save the phrase 'quiet courts' as a thought tomorrow.",
+            "I want to save that cooking guidance at five.",
+            "Save that cooking guidance when I get home.",
+            "I want to save the phrase 'quiet courts' and I will mail the parcel as a note.",
+            "Save the phrase 'quiet courts' and arrange the chairs as a note.",
+            "Save the phrase 'quiet courts', rinse the tray as a note.",
+            "Save the phrase 'quiet courts' as a note, and I will mail the parcel.",
+            "Save the phrase 'quiet courts' as a note with diagrams and arrange the chairs.",
+            "I need to save the phrase 'quiet courts' as a thought and mail the parcel.",
+            "Save that cooking guidance and please rinse the tray.",
+            "I want to save the courier sends guidance as Memory.",
+            "I want to save the idea before I mail the parcel as a note.",
+            "I will save the window layout as an idea.",
+            "Remind me to save the phrase 'quiet courts' as a thought at five."
+        ]
+        for source in rejected {
+            XCTAssertNil(ActionabilityReader.explicitCaptureRetentionKind(source), source)
+            XCTAssertNil(ActionabilityReader.retainedContentKind(source), source)
+        }
+        XCTAssertNil(ActionabilityReader.explicitCaptureRetentionKind(
+            "I want to save '" + String(repeating: "a", count: 8_192) + "' as a thought."))
+        // A label entirely inside a quotation cannot classify an outside file
+        // task. The quoted words have no authority over its destination.
+        XCTAssertTrue(ActionabilityReader.read("Save the file 'quiet courts as an idea'.").belongsOnToday)
+    }
+
+    func testRealWorldSavingRemainsActionableWithoutLexicalAssets() {
+        let previous = SentenceContext.taggerDisabledForEvaluation
+        SentenceContext.taggerDisabledForEvaluation = true
+        defer { SentenceContext.taggerDisabledForEvaluation = previous }
+        for source in ["Save the backup file before closing the laptop.",
+                       "I need to save the report tomorrow.",
+                       "Save money for the train ticket.",
+                       "We need to save the injured bird's life.",
+                       "Remind me to save the report tomorrow at five."] {
+            XCTAssertNil(ActionabilityReader.explicitCaptureRetentionKind(source), source)
+            XCTAssertTrue(ActionabilityReader.read(source).belongsOnToday, source)
+            let result = ThoughtExtractionEngine.extractWithRules(source,
+                referenceDate: referenceDate, calendar: calendar)
+            XCTAssertTrue(result.items.contains { $0.organization.itemType.isActionable }, source)
+        }
+    }
+
+    func testExplicitCaptureRetentionCannotAbsorbAnIndependentTaskOrReminder() throws {
+        let retained = "I want to save the phrase 'quiet courts, bright lamps' as a design thought."
+        for continuation in ["I need to mail the parcel.", "Arrange the chairs.",
+                             "Remind me to rinse the tray tomorrow at 5 PM."] {
+            for source in [retained + " " + continuation,
+                           continuation + " " + retained,
+                           String(retained.dropLast()) + " and " + continuation.lowercased()] {
+                XCTAssertNil(ActionabilityReader.explicitCaptureRetentionKind(source), source)
+                let result = ThoughtExtractionEngine.extractWithRules(source,
+                    referenceDate: referenceDate, calendar: calendar)
+                let memory = try XCTUnwrap(result.items.first {
+                    !$0.organization.itemType.isActionable && $0.rawQuote.contains("quiet courts")
+                }, source)
+                let action = try XCTUnwrap(result.items.first {
+                    $0.organization.itemType.isActionable && !$0.needsReview
+                }, source)
+                XCTAssertFalse(memory.needsReview, source)
+                XCTAssertFalse(action.rawQuote.contains("quiet courts"), source)
+                XCTAssertTrue(memory.sourceUnitIDs.isDisjoint(with: action.sourceUnitIDs), source)
+                XCTAssertTrue(result.operations.isEmpty, source)
+                let claims = result.items.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) }
+                XCTAssertTrue(SourceUnitLedger(source).unownedMeaningfulIDs(claimed: claims).isEmpty, source)
+                if continuation.hasPrefix("Remind") {
+                    XCTAssertNotNil(action.organization.reminderDate, source)
+                    XCTAssertNil(memory.organization.reminderDate, source)
+                }
+            }
+        }
+    }
+
+    func testWouldLikeRetentionKeepsItsOwnVoiceAndSeparateUnknownVerbReminder() throws {
+        let previous = SentenceContext.taggerDisabledForEvaluation
+        SentenceContext.taggerDisabledForEvaluation = true
+        defer { SentenceContext.taggerDisabledForEvaluation = previous }
+        let retained = "I would like to keep the phrase \"blue doors, open rooms\" as a Memory."
+        let reminder = "Remind me to collate the pamphlets tomorrow at 5 PM."
+        for source in [retained + " " + reminder,
+                       reminder + " " + retained,
+                       String(retained.dropLast()) + " and " + reminder.lowercased()] {
+            XCTAssertNil(ActionabilityReader.explicitCaptureRetentionKind(source), source)
+            let result = ThoughtExtractionEngine.extractWithRules(source,
+                referenceDate: referenceDate, calendar: calendar)
+            XCTAssertEqual(result.items.count, 2, source)
+            let memory = try XCTUnwrap(result.items.first {
+                $0.rawQuote.contains("blue doors, open rooms")
+            }, source)
+            let action = try XCTUnwrap(result.items.first {
+                $0.rawQuote.contains("collate the pamphlets")
+            }, source)
+            XCTAssertEqual(memory.organization.itemType, .note, source)
+            XCTAssertFalse(memory.needsReview, source)
+            XCTAssertTrue(memory.rawQuote.contains("\"blue doors, open rooms\""), source)
+            XCTAssertFalse(memory.rawQuote.contains("collate"), source)
+            XCTAssertNil(memory.organization.dueDate, source)
+            XCTAssertNil(memory.organization.reminderDate, source)
+            XCTAssertTrue(action.organization.itemType.isActionable, source)
+            XCTAssertFalse(action.needsReview, source)
+            XCTAssertFalse(action.rawQuote.contains("blue doors"), source)
+            XCTAssertEqual(action.organization.reminderDate,
+                calendar.date(from: DateComponents(year: 2026, month: 8, day: 4, hour: 17)), source)
+            XCTAssertEqual(action.organization.reminderDelivery, .notification, source)
+            XCTAssertTrue(memory.sourceUnitIDs.isDisjoint(with: action.sourceUnitIDs), source)
+            XCTAssertTrue(SourceUnitLedger(source).unownedMeaningfulIDs(claimed:
+                memory.sourceUnitIDs.union(action.sourceUnitIDs)).isEmpty, source)
+            XCTAssertTrue(result.operations.isEmpty, source)
+        }
+    }
+
+    func testQuotedReminderWithinWouldLikeRetentionDoesNotOpenAnAction() throws {
+        let source = "I would like to keep the phrase \"Remind me to collate the pamphlets tomorrow at 5 PM.\" as a Memory."
+        let result = ThoughtExtractionEngine.extractWithRules(source,
+            referenceDate: referenceDate, calendar: calendar)
+        XCTAssertEqual(result.items.count, 1, source)
+        let memory = try XCTUnwrap(result.items.first, source)
+        XCTAssertEqual(memory.organization.itemType, .note, source)
+        XCTAssertFalse(memory.needsReview, source)
+        XCTAssertEqual(memory.rawQuote, source, source)
+        XCTAssertEqual(memory.sourceQuote, source, source)
+        XCTAssertNil(memory.organization.dueDate, source)
+        XCTAssertNil(memory.organization.reminderDate, source)
+        XCTAssertEqual(memory.organization.reminderDelivery, .none, source)
+        XCTAssertEqual(memory.sourceUnitIDs, Set(SourceUnitLedger(source).words.indices), source)
+        XCTAssertTrue(result.operations.isEmpty, source)
+    }
+
+    func testRepeatedActionPrefixPeelingPreservesCaseUnicodeAndCompleteRelations() {
+        let cases = [
+            ("PLEASE call Zoë about 🧪", "call Zoë about 🧪"),
+            ("Urgent: EMAIL José about café", "EMAIL José about café"),
+            ("Remember to text my sister-in-law’s partner about 🎂", "text my sister-in-law’s partner about 🎂"),
+            ("Please call Jose\u{301} about the résumé", "call Jose\u{301} about the résumé")
+        ]
+        // Repeated reads exercise warm compiled patterns with changing UTF-16
+        // lengths; only the spoken framing may disappear from the action body.
+        for _ in 0..<3 {
+            for (source, expected) in cases {
+                XCTAssertEqual(ActionabilityReader.actionBody(source), expected, source)
+                XCTAssertTrue(ActionabilityReader.read(source).belongsOnToday, source)
+            }
+        }
+    }
+
+    func testClosedClauseBoundariesWithoutLexicalAssets() {
+        let previous = SentenceContext.taggerDisabledForEvaluation
+        SentenceContext.taggerDisabledForEvaluation = true
+        defer { SentenceContext.taggerDisabledForEvaluation = previous }
+        for object in ["hard drive", "portable speaker", "expensive watch", "electric iron"] {
+            let source = "Remind me not to buy an \(object) tomorrow."
+            let rows = ThoughtExtractionEngine.extractWithRules(source).items
+            XCTAssertEqual(rows.count, 1, source)
+            XCTAssertTrue(rows[0].analysisText.contains("not to buy"), source)
+            XCTAssertFalse(rows[0].needsReview, source)
+        }
+        let conditional = ThoughtExtractionEngine.extractWithRules(
+            "Buy milk, and if Sarah replies, call Mike."
+        ).items
+        XCTAssertEqual(conditional.count, 2)
+        XCTAssertTrue(conditional.contains { $0.organization.itemType == .shopping && !$0.needsReview })
+        XCTAssertTrue(conditional.contains { $0.analysisText.contains("if Sarah replies") && $0.needsReview })
+    }
+
+    func testNegatedCapturedOperationStatusDoesNotDeclareAnotherObligation() {
+        for source in ["I have not withdrawn that job.", "I haven't deleted that task.",
+                       "I have not cancelled this reminder.",
+                       "I know the last few sentences doubled back on the first ones, but I have not withdrawn that job."] {
+            XCTAssertEqual(ActionabilityReader.read(source), .knowledge, source)
+        }
+        for source in ["I have not submitted the form", "I still haven't prepared the report",
+                       "I have not returned the watering can", "I haven't cancelled the appointment",
+                       "I still need to cancel that task", "Buy bread, but I have not withdrawn that job"] {
+            XCTAssertTrue(ActionabilityReader.read(source).belongsOnToday, source)
+        }
+    }
+
+    func testOrdinalNominalCommitmentExposesOnlyActualAction() {
+        for (source, body) in [
+            ("The last definite thing is to text Laila about borrowing the folding table.", "text Laila about borrowing the folding table."),
+            ("The next definite thing is to email Jo the draft.", "email Jo the draft."),
+            ("The first actual action is to call the caretaker.", "call the caretaker.")
+        ] {
+            XCTAssertEqual(ActionabilityReader.actionBody(source).lowercased(), body.lowercased())
+            XCTAssertTrue(ActionabilityReader.read(source).belongsOnToday)
+        }
+        for source in ["Pat said the last definite thing is to email Jo the draft.",
+                       "The last possible thing would be to email Jo the draft.",
+                       "The first actual action was to call the caretaker."] {
+            XCTAssertEqual(ActionabilityReader.read(source), .knowledge, source)
+        }
+    }
+
+    func testArtifactCreationHistoryDoesNotCreateEventsOrHideUnfinishedActions() {
+        for history in ["I scanned a receipt today", "We printed the agenda yesterday",
+                        "I wrote a draft this morning", "I took a picture last night",
+                        "We prepared the report today"] {
+            XCTAssertEqual(ActionabilityReader.read(history), .knowledge, history)
+        }
+        for obligation in ["Scan the receipt today", "I need to print the agenda tomorrow",
+                           "Remind me to write the draft tonight", "I forgot to scan the receipt",
+                           "I never printed the agenda", "I still have not prepared the report"] {
+            XCTAssertTrue(ActionabilityReader.read(obligation).belongsOnToday, obligation)
+        }
+    }
+
+    func testNominalFactReadingDoesNotOwnMessageConditionOrLaterCommand() {
+        for source in [
+            "Call Maya if she is free", "Message Jo that dinner is at seven",
+            "Tell Sarah the meeting is off", "Tell Mom dinner is off",
+            "Tell Chen the interview is off", "Text Jordan that brunch is off",
+            "invoice 1042 is thirty days overdue chase it",
+            "Print quality is poor check it", "Return policy is unclear confirm that"
+        ] {
+            XCTAssertTrue(ActionabilityReader.read(source).belongsOnToday, source)
+        }
+        XCTAssertEqual(ActionabilityReader.read("Print quality was poor."), .knowledge)
+        XCTAssertEqual(ActionabilityReader.read("Call button is broken."), .knowledge)
+        XCTAssertEqual(ActionabilityReader.read("Print quality was poor because we forgot to check it."), .knowledge)
+    }
+
+    func testCompoundNominalPredicatesAndPluralCompletedHistoryKeepTheirScope() {
+        for source in ["Print quality was poor.", "Call button is broken.", "Return policy was unclear.",
+                       "We returned the projector.", "We already emailed Pat."] {
+            XCTAssertEqual(ActionabilityReader.read(source), .knowledge, source)
+        }
+        for source in ["Print the report.", "Call Amy.", "Return the projector.",
+                       "Remind me that print quality was poor."] {
+            XCTAssertTrue(ActionabilityReader.read(source).belongsOnToday, source)
+        }
+        XCTAssertNotEqual(ActionabilityReader.read("We have not returned the projector."), .knowledge)
+        let mixed = ThoughtExtractionEngine.extractWithRules("We returned the projector. I will print the form.").items
+        XCTAssertEqual(mixed.count, 2)
+        XCTAssertTrue(mixed.contains { $0.organization.itemType == .note && $0.sourceQuote.contains("returned") })
+        XCTAssertTrue(mixed.contains { $0.organization.itemType.isActionable && $0.sourceQuote.contains("print") })
+    }
+
+    func testDeclaredTaskEntryAndCalendarYearExposeActualActionHead() {
+        for (source, body) in [
+            ("Add my task to send Pat the address.", "send Pat the address."),
+            ("Put a task to print the report.", "print the report."),
+            ("Save the to-do to call Amy.", "call Amy."),
+            ("On October 06, 2026, return the projector to Noor.", "return the projector to Noor."),
+            ("On May 12, 2027, print the form.", "print the form."),
+            ("December 3 2026 send Lee the recipe.", "send Lee the recipe.")
+        ] {
+            XCTAssertEqual(ActionabilityReader.actionBody(source).lowercased(), body.lowercased(), source)
+            XCTAssertTrue(ActionabilityReader.read(source).belongsOnToday, source)
+        }
+        for source in ["On October 06, 2026, print quality was poor.", "On May 12, 2025, we returned the projector."] {
+            let body = ActionabilityReader.actionBody(source)
+            XCTAssertEqual(ActionabilityReader.read(source), .knowledge,
+                "body=\(body) predicateRead=\(ActionabilityReader.read(body))")
+        }
+        XCTAssertTrue(ActionabilityReader.actionBody("Add my task to the finished list.").lowercased().hasPrefix("add"))
+    }
+
+    func testDeclaredTaskBodyAndBareCommandDifferential() {
+        for (source, body) in [
+            ("The final task is this return the borrowed trolley to Gabe", "return the borrowed trolley to Gabe"),
+            ("My task is to print the form", "print the form"),
+            ("The next action is that call Noor", "call Noor")
+        ] {
+            let expected = ThoughtExtractionEngine.extractWithRules(body).items
+            XCTAssertTrue(expected.first?.organization.itemType.isActionable == true)
+            let actual = ThoughtExtractionEngine.extractWithRules(source).items
+            XCTAssertEqual(actual.filter { $0.organization.itemType.isActionable }.count, expected.count,
+                "bodyRead=\(ActionabilityReader.read(body)) sourceRead=\(ActionabilityReader.read(source)) source=\(source)")
+        }
+        XCTAssertEqual(ActionabilityReader.read("Pat said the final task is this return the trolley"), .knowledge)
+        XCTAssertFalse(ActionabilityReader.read("The final task is this").belongsOnToday)
+        XCTAssertEqual(ActionabilityReader.read("My task is complete"), .knowledge)
+    }
+
+    func testNominalRecordingFrameWithoutColonRequiresFiniteFactBody() {
+        for source in ["A fact I want to keep the cabinet is locked", "One note we need to retain the spare labels are in the drawer", "The detail I would like to remember near the end of this recording our router has two ports"] {
+            XCTAssertNotNil(ActionabilityReader.declaredFactRecordingBody(source), source)
+            XCTAssertEqual(ActionabilityReader.read(source), .knowledge, source)
+        }
+        XCTAssertNil(ActionabilityReader.declaredFactRecordingBody("A fact I want to keep beside the printer"))
+        XCTAssertNil(ActionabilityReader.declaredFactRecordingBody("The note I want to keep in the drawer"))
+        XCTAssertNil(ActionabilityReader.declaredFactRecordingBody("Pat said a fact I want to keep the cabinet is locked"))
+    }
+
+    func testExplicitFactObjectAndDestinationFrameKeepsKnowledge() {
+        for source in [
+            "Keep only this fact as a note, not a task: The cabinet is locked.",
+            "Save that information as a memory: The access code is 3421.",
+            "Retain the detail as a note, not a reminder: Pat prefers green tea."
+        ] {
+            XCTAssertNotNil(ActionabilityReader.declaredFactRecordingBody(source))
+            XCTAssertEqual(ActionabilityReader.read(source), .knowledge, source)
+        }
+        XCTAssertTrue(ActionabilityReader.read("Keep the note beside the printer.").belongsOnToday)
+        XCTAssertNil(ActionabilityReader.declaredFactRecordingBody("Keep the file as a reference."))
+        XCTAssertTrue(ActionabilityReader.read("Keep this fact as a note: I need to call Amy.").belongsOnToday)
+    }
+
+    func testPlantCareVerbDoesNotBecomeShoppingForItsProductNamedObject() {
+        XCTAssertEqual(ThoughtOrganizer.organize("Water the parsley").itemType, .task)
+        XCTAssertEqual(ThoughtOrganizer.organize("Buy parsley").itemType, .shopping)
+        XCTAssertEqual(ThoughtOrganizer.organize("Parsley, milk and bread").itemType, .shopping)
+    }
+
+    func testAlsoNeedProductListIsShoppingButInfinitiveIsAnAction() {
+        XCTAssertEqual(ThoughtOrganizer.organize("I also need oat milk and eggs").itemType,
+                       .shopping)
+        XCTAssertEqual(ThoughtOrganizer.organize("I need oat milk and eggs").itemType,
+                       .shopping)
+        XCTAssertEqual(ThoughtOrganizer.organize("I also need to call the dentist").itemType,
+                       .task)
+    }
+
+    func testFirstPersonTaskStatementKeepsItsOwnActionOwner() {
+        XCTAssertTrue(ActionabilityReader.read(
+            "My own task is to email the instructor a photo of the damaged sign"
+        ).belongsOnToday)
+        for source in [
+            "Their task is to email the instructor",
+            "My task was to email the instructor",
+            "The instructor said my task is to email the coordinator"
+        ] {
+            XCTAssertFalse(ActionabilityReader.read(source).belongsOnToday, source)
+        }
+    }
+
+    func testPresentOwnedPluralNominalFramesExposeActionBodiesWithNumberAgreement() {
+        for (source, expected) in [
+            ("My actual job is to count the boxes.", "count the boxes."),
+            ("Our actual responsibilities are to weigh the flour and wash the bowl.", "weigh the flour and wash the bowl."),
+            ("My actual jobs are to count the boxes and label the shelves.", "count the boxes and label the shelves."),
+            ("Our two current tasks tomorrow are to wash the bowl and clean the shelf.", "wash the bowl and clean the shelf."),
+            ("Our own remaining responsibilities before lunch are to file the receipt and call Zoë.", "file the receipt and call Zoë."),
+            ("My only outstanding commitments on Friday are to email José and print the form.", "email José and print the form.")
+        ] {
+            XCTAssertEqual(ActionabilityReader.taskEntryBody(source), expected, source)
+            XCTAssertEqual(ActionabilityReader.actionBody(source), expected, source)
+            XCTAssertTrue(ActionabilityReader.read(source).belongsOnToday, source)
+        }
+        for source in [
+            "My actual jobs is to count the boxes.",
+            "My actual job are to count the boxes.",
+            "Our remaining responsibilities are count the boxes.",
+            "My possible jobs are to count the boxes.",
+            "Our tasks after Dana calls are to count the boxes.",
+            "Our tasks that Dana mentioned are to count the boxes."
+        ] {
+            XCTAssertNil(ActionabilityReader.taskEntryBody(source), source)
+        }
+    }
+
+    func testOwnedPluralActionsRemainTodayAcrossMemoryAndQuotationBoundaries() throws {
+        let previous = SentenceContext.taggerDisabledForEvaluation
+        defer { SentenceContext.taggerDisabledForEvaluation = previous }
+        let declaration = "My actual jobs are to count the crates and label the shelves."
+        for disabled in [true, false] {
+            SentenceContext.taggerDisabledForEvaluation = disabled
+            for source in [
+                declaration,
+                "The spare tape is in the drawer. " + declaration,
+                "The spare tape is in the drawer. " + declaration.lowercased(),
+                "The spare tape is in the drawer " + declaration,
+                "Dana said, ‘Use the old cartons.’ " + declaration,
+                "Dana said, ‘Use the old cartons,’ as an example. " + declaration,
+            ] {
+                let result = ThoughtExtractionEngine.extractWithRules(source,
+                    referenceDate: referenceDate, calendar: calendar)
+                XCTAssertTrue(result.operations.isEmpty, source)
+                let actions = result.items.filter { $0.organization.itemType.isActionable && !$0.needsReview }
+                XCTAssertEqual(actions.count, 2, source)
+                XCTAssertTrue(actions.contains { $0.analysisText.localizedCaseInsensitiveContains("count the crates") }, source)
+                XCTAssertTrue(actions.contains { $0.analysisText.localizedCaseInsensitiveContains("label the shelves") }, source)
+                XCTAssertFalse(result.items.contains { !$0.organization.itemType.isActionable
+                    && $0.analysisText.localizedCaseInsensitiveContains("count the crates") }, source)
+                XCTAssertTrue(actions.allSatisfy { $0.organization.reminderDate == nil
+                    && $0.organization.dueDate == nil }, source)
+                if source != declaration {
+                    XCTAssertTrue(result.items.contains { $0.organization.itemType == .note
+                        && !$0.analysisText.localizedCaseInsensitiveContains("count the crates") }, source)
+                }
+                let ledger = SourceUnitLedger(source)
+                let claimed = result.items.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) }
+                XCTAssertTrue(ledger.unownedMeaningfulIDs(claimed: claimed).isEmpty, source)
+                if actions.count == 2 {
+                    XCTAssertTrue(actions[0].sourceUnitIDs.isDisjoint(with: actions[1].sourceUnitIDs), source)
+                }
+                XCTAssertTrue(result.items.allSatisfy { !$0.sourceUnitIDs.isEmpty
+                    && $0.sourceUnitIDs.isSubset(of: Set(ledger.words.indices)) }, source)
+            }
+        }
+    }
+
+    func testPluralTaskCoordinationPreservesObjectsConditionsAndFullLiteral() {
+        for source in [
+            "My jobs are to pack the maps and the compass and clean the table.",
+            "Our actual tasks are to count the crates and to label the shelves.",
+            "Our remaining tasks tomorrow are to count the crates and label the shelves."
+        ] {
+            let result = ThoughtExtractionEngine.extractWithRules(source,
+                referenceDate: referenceDate, calendar: calendar)
+            XCTAssertTrue(result.operations.isEmpty, source)
+            XCTAssertFalse(result.items.isEmpty, source)
+            XCTAssertTrue(result.items.allSatisfy { $0.organization.itemType.isActionable && !$0.needsReview }, source)
+            let meaning = result.items.map(\.analysisText).joined(separator: " ").lowercased()
+            if source.contains("maps") {
+                XCTAssertTrue(meaning.contains("maps") && meaning.contains("compass")
+                    && meaning.contains("clean the table"), source)
+                XCTAssertFalse(result.items.contains { $0.analysisText.lowercased() == "the compass" }, source)
+            } else {
+                XCTAssertTrue(meaning.contains("count the crates") && meaning.contains("label the shelves"), source)
+            }
+            XCTAssertTrue(SourceUnitLedger(source).unownedMeaningfulIDs(claimed:
+                result.items.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) }).isEmpty, source)
+        }
+        // A fronted condition governs both predicates; neither becomes an
+        // unconditional task just because an owned plural frame was found.
+        let conditional = "If the room opens, my actual jobs are to count the crates and label the shelves."
+        let result = ThoughtExtractionEngine.extractWithRules(conditional,
+            referenceDate: referenceDate, calendar: calendar)
+        XCTAssertTrue(result.operations.isEmpty)
+        XCTAssertFalse(result.items.contains { $0.organization.itemType.isActionable && !$0.needsReview
+            && !$0.analysisText.localizedCaseInsensitiveContains("if the room opens") })
+        XCTAssertEqual(result.items.count, 2)
+        XCTAssertTrue(result.items.allSatisfy { $0.analysisText.localizedCaseInsensitiveContains("if the room opens")
+            && $0.needsReview && $0.organization.reminderDate == nil })
+        let escaped = conditional.dropLast() + ", but I will clean the table regardless."
+        let separate = ThoughtExtractionEngine.extractWithRules(String(escaped),
+            referenceDate: referenceDate, calendar: calendar)
+        XCTAssertTrue(separate.operations.isEmpty)
+        let independent = separate.items.filter { $0.organization.itemType.isActionable && !$0.needsReview }
+        XCTAssertEqual(independent.count, 1)
+        XCTAssertTrue(independent.first?.analysisText.localizedCaseInsensitiveContains("clean the table") == true)
+        XCTAssertFalse(independent.first?.analysisText.localizedCaseInsensitiveContains("if the room opens") == true)
+        XCTAssertEqual(separate.items.filter { $0.analysisText.localizedCaseInsensitiveContains("if the room opens")
+            && $0.needsReview }.count, 2)
+        let ledger = SourceUnitLedger(String(escaped))
+        XCTAssertTrue(ledger.unownedMeaningfulIDs(claimed:
+            separate.items.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) }).isEmpty)
+    }
+
+    func testPluralOwnedNominalFramesDoNotAdoptPastForeignQuotedDeniedOrHypotheticalActs() {
+        for source in [
+            "Their actual jobs are to count the crates and label the shelves.",
+            "Her actual job is to count the crates and label the shelves.",
+            "Noor's remaining responsibilities are to weigh the flour and wash the bowl.",
+            "My actual jobs were to count the crates and label the shelves.",
+            "My actual jobs would be to count the crates and label the shelves.",
+            "Our remaining tasks could be to count the crates and label the shelves.",
+            "If my actual jobs are to count the crates and label the shelves, the plan will be easy.",
+            "Our actual responsibilities are not to count the crates or label the shelves.",
+            "Dana said that my actual jobs are to count the crates and label the shelves.",
+            "Dana asked whether my actual jobs are to count the crates and label the shelves.",
+            "Dana said, ‘Use the old cartons.’ If my actual jobs are to count the crates and label the shelves, the plan will be easy.",
+            "Dana wrote, ‘My actual jobs are to count the crates and label the shelves.’",
+            "Dana wrote, ‘My actual jobs are to count the crates and label the shelves.",
+            "I have not agreed that my actual jobs are to count the crates and label the shelves.",
+            "We haven't promised that our remaining tasks are to count the crates and label the shelves.",
+        ] {
+            let result = ThoughtExtractionEngine.extractWithRules(source,
+                referenceDate: referenceDate, calendar: calendar)
+            XCTAssertTrue(result.operations.isEmpty, source)
+            XCTAssertFalse(result.items.contains { $0.organization.itemType.isActionable && !$0.needsReview }, source)
+        }
+        let independent = "Their actual jobs are to count the crates and label the shelves. But I will clean the table."
+        let result = ThoughtExtractionEngine.extractWithRules(independent,
+            referenceDate: referenceDate, calendar: calendar)
+        let actions = result.items.filter { $0.organization.itemType.isActionable && !$0.needsReview }
+        XCTAssertEqual(actions.count, 1)
+        XCTAssertTrue(actions.first?.analysisText.localizedCaseInsensitiveContains("clean the table") == true)
+        XCTAssertFalse(actions.contains { $0.analysisText.localizedCaseInsensitiveContains("label the shelves") })
+        for source in [
+            "Her job is to count the crates; please wash the bowl.",
+            "Their actual jobs are to count the crates and label the shelves, but I will clean the table.",
+            "My actual jobs were to count the crates and label the shelves; please wash the bowl.",
+            "Her job was to count the crates and label the shelves; I will clean the table.",
+            "My jobs would be to count the crates and label the shelves; please wash the bowl.",
+            "I have not agreed that my actual jobs are to count the crates and label the shelves; please wash the bowl."
+        ] {
+            let result = ThoughtExtractionEngine.extractWithRules(source,
+                referenceDate: referenceDate, calendar: calendar)
+            let actions = result.items.filter { $0.organization.itemType.isActionable && !$0.needsReview }
+            XCTAssertTrue(result.operations.isEmpty, source)
+            XCTAssertEqual(actions.count, 1, source)
+            XCTAssertTrue(actions.first.map { $0.analysisText.localizedCaseInsensitiveContains("wash the bowl")
+                || $0.analysisText.localizedCaseInsensitiveContains("clean the table") } == true, source)
+            XCTAssertFalse(actions.contains { $0.analysisText.localizedCaseInsensitiveContains("count the crates")
+                || $0.analysisText.localizedCaseInsensitiveContains("label the shelves") }, source)
+            let ledger = SourceUnitLedger(source)
+            XCTAssertTrue(ledger.unownedMeaningfulIDs(claimed:
+                result.items.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) }).isEmpty, source)
+        }
+        for source in [
+            "Their actual jobs are to count the crates and label the shelves; remind me tomorrow to clean the table.",
+            "My actual jobs were to count the crates and label the shelves; please remind me tomorrow to clean the table."
+        ] {
+            let result = ThoughtExtractionEngine.extractWithRules(source,
+                referenceDate: referenceDate, calendar: calendar)
+            let actions = result.items.filter { $0.organization.itemType.isActionable && !$0.needsReview }
+            XCTAssertTrue(result.operations.isEmpty, source)
+            XCTAssertEqual(actions.count, 1, source)
+            XCTAssertTrue(actions.first?.analysisText.localizedCaseInsensitiveContains("clean the table") == true, source)
+            XCTAssertNotNil(actions.first?.organization.reminderDate, source)
+            XCTAssertFalse(actions.contains { $0.analysisText.localizedCaseInsensitiveContains("count the crates")
+                || $0.analysisText.localizedCaseInsensitiveContains("label the shelves") }, source)
+            let ledger = SourceUnitLedger(source)
+            XCTAssertTrue(ledger.unownedMeaningfulIDs(claimed:
+                result.items.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) }).isEmpty, source)
+        }
+    }
+
+    func testPluralStatusNeverUsesSingularCompletionCertificateAndPreservesTailAncestry() throws {
+        for prefix in [
+            "My actual jobs are to print the label and file the form, but I already printed it.",
+            "Our remaining tasks are to wash the bowl and clean the shelf, but we no longer need to wash it.",
+            "My actual jobs are to print the label, but I have not already printed it.",
+            "My actual jobs are to print the label, but I would already have printed it.",
+            "My actual jobs are to print the label, but Dana said ‘I already printed it’.",
+            "My actual jobs are to print the label, but I already printed the invoice.",
+        ] {
+            for tail in ["", " I need to file the label at 230 tomorrow.",
+                         " Change my saved dentist reminder so I call Noor instead of Maya."] {
+                let source = prefix + tail
+                let result = ThoughtExtractionEngine.extractWithRules(source,
+                    referenceDate: referenceDate, calendar: calendar)
+                let held = try XCTUnwrap(result.items.first { $0.rawQuote == prefix && $0.needsReview }, source)
+                XCTAssertFalse(result.items.contains { $0.rawQuote == prefix
+                    && $0.organization.itemType == .note && !$0.needsReview }, source)
+                let ledger = SourceUnitLedger(source)
+                let boundary = source.index(source.startIndex, offsetBy: prefix.count)
+                XCTAssertEqual(held.sourceUnitIDs, ledger.ids(in: source.startIndex..<boundary), source)
+                let itemIDs = result.items.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) }
+                let operationIDs = result.operations.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) }
+                XCTAssertTrue(ledger.unownedMeaningfulIDs(claimed: itemIDs.union(operationIDs)).isEmpty, source)
+                if tail.contains("Change") {
+                    let revision = try XCTUnwrap(result.operations.first, source)
+                    XCTAssertEqual(revision.operation, .revise, source)
+                    XCTAssertEqual(revision.captureSource, source)
+                    XCTAssertEqual(revision.independentCreationUnitIDs, itemIDs, source)
+                    XCTAssertTrue(revision.sourceUnitIDs.isDisjoint(with: itemIDs), source)
+                } else {
+                    XCTAssertTrue(result.operations.isEmpty, source)
+                    if !tail.isEmpty {
+                        let action = try XCTUnwrap(result.items.first { $0.organization.itemType.isActionable
+                            && !$0.needsReview }, source)
+                        XCTAssertTrue(action.rawQuote.contains("230"), source)
+                        XCTAssertTrue(action.sourceUnitIDs.isDisjoint(with: held.sourceUnitIDs), source)
+                    }
+                }
+            }
+        }
+    }
+
+    func testPresentOwnedNominalTaskModifiersShareActionBodyAndPreserveCompleteSource() {
+        for (source, body) in [
+            ("My one job after lunch is to print the return label.", "print the return label."),
+            ("Our only responsibility before the meeting is to email Zoë the revised plan.", "email Zoë the revised plan."),
+            ("My remaining task tomorrow is to return the projector to Noor.", "return the projector to Noor."),
+            ("Our own next commitment on Friday is to call the office about the permit.", "call the office about the permit."),
+            ("My only outstanding job for this afternoon is to file the receipt.", "file the receipt.")
+        ] {
+            XCTAssertEqual(ActionabilityReader.taskEntryBody(source), body, source)
+            XCTAssertTrue(ActionabilityReader.read(source).belongsOnToday, source)
+            let result = ThoughtExtractionEngine.extractWithRules(source)
+            XCTAssertTrue(result.operations.isEmpty, source)
+            XCTAssertEqual(result.items.count, 1, source)
+            XCTAssertTrue(result.items.first?.organization.itemType.isActionable == true, source)
+            XCTAssertEqual(result.items.first?.rawQuote, source, source)
+            XCTAssertEqual(result.items.first?.sourceQuote, source, source)
+        }
+        let scheduled = ThoughtOrganizer.organize("My remaining task tomorrow is to return the projector.",
+            referenceDate: referenceDate, calendar: calendar)
+        XCTAssertEqual(scheduled.dueDate.map { calendar.startOfDay(for: $0) },
+            calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: referenceDate)))
+    }
+
+    func testNominalTaskModifiersDoNotLicenseAnotherOwnerPastHypotheticalOrDeniedAction() {
+        for source in [
+            "Their one job after lunch is to print the label.",
+            "My one job after lunch was to print the label.",
+            "My only task tomorrow would be to return the projector.",
+            "If my only task is to print the form, the afternoon will be easy.",
+            "My remaining responsibility before lunch is not to call the office.",
+            "Dana said my one job after lunch is to print the label.",
+            #"Dana wrote, "My one job after lunch is to print the label.""#,
+            "My one job after lunch is to print the label, but I already printed it.",
+            "My remaining job is to return the projector, but I no longer need to return it."
+        ] {
+            XCTAssertFalse(ActionabilityReader.read(source).belongsOnToday, source)
+            let result = ThoughtExtractionEngine.extractWithRules(source)
+            XCTAssertFalse(result.items.contains { $0.organization.itemType.isActionable && !$0.needsReview }, source)
+        }
+        for source in ["My possible task after lunch is to print the form.",
+                       "My job after Dana calls is to print the form.",
+                       "My job that Dana mentioned is to print the form."] {
+            XCTAssertNil(ActionabilityReader.taskEntryBody(source), source)
+        }
+    }
+
+    func testFiniteReportedAgreementRetainsContentAndOwnActionAdoptionStaysActionable() {
+        for source in [
+            "The team agreed that the report should be shorter.",
+            "The committee agrees that the room should stay quiet.",
+            "Dana agreed that the gate should remain closed.",
+            "We agreed that the report should use larger type."
+        ] {
+            XCTAssertEqual(ActionabilityReader.read(source), .knowledge, source)
+            let result = ThoughtExtractionEngine.extractWithRules(source)
+            XCTAssertTrue(result.operations.isEmpty, source)
+            XCTAssertFalse(result.items.contains { $0.organization.itemType.isActionable && !$0.needsReview }, source)
+            XCTAssertTrue(result.items.contains { $0.sourceQuote == source }, source)
+        }
+        for source in ["I agreed to call the office tomorrow.",
+                       "We agreed to print the revised report.",
+                       "The team agreed that I should call the office.",
+                       "Dana asked me to print the report."] {
+            XCTAssertTrue(ActionabilityReader.read(source).belongsOnToday, source)
+        }
+    }
+
+    func testNominalTaskStatusBindsCurrentObjectWithoutSavedEffects() {
+        let originalTaggerSetting = SentenceContext.taggerDisabledForEvaluation
+        defer { SentenceContext.taggerDisabledForEvaluation = originalTaggerSetting }
+        for disabled in [true, false] {
+            SentenceContext.taggerDisabledForEvaluation = disabled
+            for source in [
+                "My one job after lunch is to print the label, but I already printed it.",
+                "Our only task tomorrow is to file the label, but we already filed the label.",
+                "My remaining responsibility is to wash the bowl, but I already washed it.",
+                "My remaining job is to return the projector, but I no longer need to return it.",
+                "Our only task is to clean the shelf, but we no longer have to clean the shelf.",
+            ] {
+                for permitsOperations in [true, false] {
+                    let result = ThoughtExtractionEngine.extractWithRules(source, permitsOperations: permitsOperations)
+                    XCTAssertTrue(result.operations.isEmpty, source)
+                    XCTAssertTrue(result.items.contains { $0.rawQuote == source && $0.analysisText == source }, source)
+                    XCTAssertTrue(result.items.allSatisfy {
+                        $0.organization.itemType == .note && !$0.needsReview
+                            && $0.organization.dueDate == nil && $0.organization.reminderDate == nil
+                            && $0.organization.reminderDelivery == .none
+                    }, source)
+                    XCTAssertEqual(result.items.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) },
+                                   Set(SourceUnitLedger(source).words.indices), source)
+                }
+            }
+        }
+    }
+
+    func testCurrentNominalStatusPreservesIndependentLaterActionsAndNamedSavedChanges() {
+        for source in [
+            "My one job is to print the label, but I already printed it. I need to mail the parcel.",
+            "My one job is to print the label, but I already printed it, and I need to call Noor.",
+            "Our remaining task is to wash the bowl, but we no longer need to wash it. Please file the receipt.",
+        ] {
+            let result = ThoughtExtractionEngine.extractWithRules(source)
+            XCTAssertTrue(result.operations.isEmpty, source)
+            XCTAssertTrue(result.items.contains { $0.organization.itemType == .note && $0.rawQuote.contains("but") }, source)
+            XCTAssertTrue(result.items.contains { $0.organization.itemType.isActionable && !$0.needsReview }, source)
+            XCTAssertFalse(result.items.contains { $0.organization.itemType.isActionable && $0.analysisText.contains("print the label") }, source)
+            let ledger = SourceUnitLedger(source)
+            let claimed = result.items.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) }
+            XCTAssertTrue(ledger.unownedMeaningfulIDs(claimed: claimed).isEmpty, source)
+            for memory in result.items where memory.organization.itemType == .note {
+                XCTAssertFalse(memory.sourceUnitIDs.isEmpty, source)
+                for action in result.items where action.organization.itemType.isActionable {
+                    XCTAssertTrue(memory.sourceUnitIDs.isDisjoint(with: action.sourceUnitIDs), source)
+                }
+            }
+        }
+        let source = "My one job is to print the label, but I already printed it. Cancel my saved dentist reminder."
+        let result = ThoughtExtractionEngine.extractWithRules(source)
+        XCTAssertTrue(result.items.contains { $0.organization.itemType == .note && $0.rawQuote.contains("printed it") })
+        XCTAssertTrue(result.operations.contains { $0.target?.localizedCaseInsensitiveContains("dentist") == true })
+        XCTAssertFalse(result.operations.contains { $0.sourceQuote.contains("printed it") })
+        XCTAssertEqual(result.operations.first?.captureSource, source)
+        XCTAssertEqual(result.operations.first?.independentCreationUnitIDs,
+                       result.items.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) })
+    }
+
+    func testNominalStatusOwnershipSurvivesTailRepairRepeatedWordsAndSavedRevision() throws {
+        let prefix = "My one job is to print the label, but I already printed it."
+        for tail in ["I need to file the label at 230 tomorrow.",
+                     "Change my saved dentist reminder so I call Noor instead of Maya."] {
+            let source = prefix + " " + tail
+            let result = ThoughtExtractionEngine.extractWithRules(source)
+            let ledger = SourceUnitLedger(source)
+            let boundary = source.index(source.startIndex, offsetBy: prefix.count)
+            let memory = try XCTUnwrap(result.items.first { $0.rawQuote == prefix }, source)
+            XCTAssertEqual(memory.sourceUnitIDs, ledger.ids(in: source.startIndex..<boundary), source)
+            let itemIDs = result.items.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) }
+            let operationIDs = result.operations.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) }
+            XCTAssertTrue(ledger.unownedMeaningfulIDs(claimed: itemIDs.union(operationIDs)).isEmpty, source)
+            XCTAssertTrue(itemIDs.union(operationIDs).isSubset(of: Set(ledger.words.indices)), source)
+            XCTAssertTrue(memory.sourceUnitIDs.isDisjoint(with: operationIDs), source)
+            if tail.hasPrefix("Change") {
+                let request = try XCTUnwrap(result.operations.first, source)
+                XCTAssertEqual(request.operation, .revise, source)
+                XCTAssertEqual(request.savedFieldRevision?.newValue, "Noor", source)
+                XCTAssertEqual(request.captureSource, source)
+                XCTAssertEqual(request.independentCreationUnitIDs, itemIDs, source)
+                XCTAssertTrue(request.independentCreationUnitIDs.isDisjoint(with: request.sourceUnitIDs), source)
+            } else {
+                let action = try XCTUnwrap(result.items.first { $0.organization.itemType.isActionable }, source)
+                XCTAssertFalse(action.needsReview, source)
+                XCTAssertTrue(action.rawQuote.contains("230"), source)
+                XCTAssertTrue(action.sourceUnitIDs.isDisjoint(with: memory.sourceUnitIDs), source)
+            }
+        }
+    }
+
+    func testNominalStatusCannotCloseDifferentObjectOwnerOrConditionalAction() {
+        for source in [
+            "My one job is to print the label, but I already printed the invoice.",
+            "My one job is to print the label, but Maya already printed the invoice.",
+            "My one job is to print the label, but I have not already printed it.",
+            "My one job is to print the label, but I would already have printed it.",
+            "My one job is to print the label, but I already printed it if the printer worked.",
+            "My one job is to print the label, but I no longer need to file it.",
+            "My one job is to print the label, but I no longer need to print it unless Maya asks.",
+            "My one job is to print the label and the invoice, but I already printed it.",
+            "My one job is to print the label, but Maya said ‘I already printed it’.",
+        ] {
+            let result = ThoughtExtractionEngine.extractWithRules(source)
+            XCTAssertFalse(result.items.contains {
+                $0.rawQuote == source && $0.organization.itemType == .note && !$0.needsReview
+            }, source)
+            XCTAssertTrue(result.operations.isEmpty, source)
+            XCTAssertTrue(result.items.contains { $0.rawQuote == source && $0.needsReview }, source)
+            XCTAssertTrue(result.items.allSatisfy {
+                $0.organization.dueDate == nil && $0.organization.reminderDate == nil
+            }, source)
+            XCTAssertEqual(result.items.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) },
+                           Set(SourceUnitLedger(source).words.indices), source)
+        }
+    }
+
+    func testUnprovedNominalStatusKeepsIndependentLaterWorkAndSavedRevision() throws {
+        for prefix in [
+            "My one job is to print the label, but I have not already printed it.",
+            "My one job is to print the label, but Maya already printed the invoice.",
+            "My one job is to print the label, but Maya said ‘I already printed it’.",
+        ] {
+            for tail in ["I need to mail the parcel.",
+                         "Change my saved dentist reminder so I call Noor instead of Maya."] {
+                let source = prefix + " " + tail
+                let result = ThoughtExtractionEngine.extractWithRules(source)
+                let ledger = SourceUnitLedger(source)
+                let boundary = source.index(source.startIndex, offsetBy: prefix.count)
+                let held = try XCTUnwrap(result.items.first { $0.rawQuote == prefix && $0.needsReview }, source)
+                XCTAssertEqual(held.sourceUnitIDs, ledger.ids(in: source.startIndex..<boundary), source)
+                let itemIDs = result.items.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) }
+                if tail.hasPrefix("Change") {
+                    let request = try XCTUnwrap(result.operations.first, source)
+                    XCTAssertEqual(request.operation, .revise, source)
+                    XCTAssertEqual(request.captureSource, source)
+                    XCTAssertEqual(request.independentCreationUnitIDs, itemIDs, source)
+                    XCTAssertTrue(request.sourceUnitIDs.isDisjoint(with: itemIDs), source)
+                } else {
+                    XCTAssertTrue(result.operations.isEmpty, source)
+                    let action = try XCTUnwrap(result.items.first { $0.organization.itemType.isActionable && !$0.needsReview }, source)
+                    XCTAssertTrue(action.analysisText.contains("mail the parcel"), source)
+                    XCTAssertTrue(held.sourceUnitIDs.isDisjoint(with: action.sourceUnitIDs), source)
+                }
+                let operationIDs = result.operations.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) }
+                XCTAssertTrue(ledger.unownedMeaningfulIDs(claimed: itemIDs.union(operationIDs)).isEmpty, source)
+            }
+        }
+    }
+
+    func testKeepNoteAboutEventRecordsKnowledgeWithoutDemotingPhysicalErrand() {
+        XCTAssertEqual(ActionabilityReader.read(
+            "Keep a note about what happened in the workshop"
+        ), .knowledge)
+        XCTAssertEqual(ThoughtOrganizer.organize(
+            "Keep a note about what happened in the workshop"
+        ).itemType, .note)
+        XCTAssertTrue(ActionabilityReader.read(
+            "Keep a note on your desk"
+        ).belongsOnToday)
+    }
+
+    func testUnresolvedSelectionIsNotAnOverdueTask() {
+        for text in [
+            "I have not chosen between the ferry and the tram",
+            "We still haven't decided whether to mail or submit online",
+            "I haven't selected a camera yet",
+            "I have not picked which option to use",
+        ] {
+            XCTAssertEqual(ActionabilityReader.read(text), .knowledge, text)
+        }
+        for text in [
+            "I have not paid the invoice",
+            "I haven't booked the train",
+            "I haven't picked up the parcel",
+            "I need to decide between the ferry and the tram",
+        ] {
+            XCTAssertTrue(ActionabilityReader.read(text).belongsOnToday, text)
+        }
+        XCTAssertFalse(ActionabilityReader.read("Mara has not chosen a route").belongsOnToday)
+    }
+
+    func testFirstPersonScheduledActivitySurvivesSharedVerbVocabulary() {
+        for source in [
+            "A week on Friday we leave for Spain",
+            "We leave for the station Tuesday",
+            "I pack the folder on Thursday",
+        ] {
+            let organized = ThoughtOrganizer.organize(
+                source, referenceDate: referenceDate, calendar: calendar
+            )
+            XCTAssertTrue(organized.itemType.isActionable, source)
+            XCTAssertNotNil(organized.dueDate, source)
+        }
+        for source in [
+            "We left for Spain last Friday",
+            "Maya said we leave for Spain Friday",
+            "The leave policy is in the folder",
+            "Maya is on leave this week",
+        ] {
+            XCTAssertFalse(ActionabilityReader.read(source).belongsOnToday, source)
+        }
+    }
+
+    func testVisibleTaskConditionIsNotAnUnsupportedReminderTrigger() {
+        for text in [
+            "Set aside the spare key for Elena when she visits",
+            "Call Dave when I get paid",
+            "Text Mom after we land",
+            "Set aside the key once Elena visits",
+        ] {
+            let items = ThoughtExtractionEngine.extractWithRules(text).items
+            XCTAssertEqual(items.count, 1, text)
+            guard let item = items.first else { continue }
+            XCTAssertTrue(item.organization.itemType.isActionable, text)
+            XCTAssertFalse(item.organization.needsClarification, text)
+            XCTAssertNil(item.organization.temporalIntent.unsupportedTrigger, text)
+            XCTAssertTrue((item.suggestedTitle ?? item.sourceQuote).lowercased().contains(
+                text.contains("after") ? "after" : (text.contains("once") ? "once" : "when")
+            ), "The condition must remain visible on the action row: \(text)")
+            XCTAssertNil(item.organization.reminderDate, text)
+        }
+
+        for text in [
+            "When I get paid, call Dave",
+            "After I land, text Mom",
+            "Remind me to call Dave when I get paid",
+        ] {
+            let items = ThoughtExtractionEngine.extractWithRules(text).items
+            XCTAssertEqual(items.count, 1, text)
+            XCTAssertTrue(items[0].organization.needsClarification, text)
+            XCTAssertEqual(items[0].organization.temporalIntent.unsupportedTrigger, .condition, text)
+            XCTAssertNil(items[0].organization.reminderDate, text)
+        }
+
+        let fact = ThoughtExtractionEngine.extractWithRules(
+            "The spare key is in the drawer when Elena visits"
+        ).items
+        XCTAssertEqual(fact.count, 1)
+        XCTAssertEqual(fact[0].organization.itemType, .note)
+        XCTAssertFalse(fact[0].organization.needsClarification)
+    }
+
+    func testOrdinalObjectIsNotADateButAnOrdinalDateStillIs() {
+        XCTAssertFalse(
+            ActionabilityReader.read("The director wants the second line slower and a pause before bridge")
+                .belongsOnToday
+        )
+        XCTAssertFalse(
+            ThoughtExtractionEngine.extractWithRules("The director wants the second line slower").items[0]
+                .organization.itemType.isActionable
+        )
+        XCTAssertTrue(ActionabilityReader.read("The meeting is on the second at noon").belongsOnToday)
+        XCTAssertTrue(ActionabilityReader.read("On the first don’t forget the rent").belongsOnToday)
+        XCTAssertEqual(
+            ThoughtOrganizer.organize(
+                "On the 1st renew the car insurance",
+                referenceDate: referenceDate, calendar: calendar
+            ).dueDate,
+            calendar.date(from: DateComponents(year: 2026, month: 9, day: 1))
+        )
+    }
+
+    func testAnaphoricRecordingRequestOwnsThePrecedingFact() {
+        let items = ThoughtExtractionEngine.extractWithRules(
+            "The director wants the second line slower. Remember that staging note. "
+                + "Return the rehearsal key tomorrow."
+        ).items
+        XCTAssertEqual(items.count, 2)
+        XCTAssertEqual(items[0].organization.itemType, .note)
+        XCTAssertTrue(items[0].sourceQuote.contains("Remember that staging note"))
+        XCTAssertTrue(items[1].organization.itemType.isActionable)
+
+        let separate = ThoughtExtractionEngine.extractWithRules(
+            "The director wants the second line slower. Remember to return the key tomorrow."
+        ).items
+        XCTAssertEqual(separate.count, 2)
+        XCTAssertTrue(separate[1].organization.itemType.isActionable)
+    }
+
+    func testExplicitFactRecordingFrameDoesNotBecomePhysicalKeepAction() {
+        let memory = ThoughtExtractionEngine.extractWithRules(
+            "At the start of this recording I want to keep a detail: the cinema had green seats"
+        ).items
+        XCTAssertEqual(memory.count, 1)
+        XCTAssertEqual(memory[0].organization.itemType, .note)
+        let physical = ThoughtExtractionEngine.extractWithRules("I want to keep a file in the drawer").items
+        XCTAssertEqual(physical.count, 1)
+        XCTAssertTrue(physical[0].organization.itemType.isActionable)
+    }
+
+    func testFirstPersonPromiseRemainsAnActionAndOtherOwnersStayKnowledge() {
+        XCTAssertTrue(ActionabilityReader.read("I promised to update the contact sheet by Friday").belongsOnToday)
+        XCTAssertTrue(ActionabilityReader.read("Separately, I promised to update the contact sheet by Friday").belongsOnToday)
+        XCTAssertTrue(ActionabilityReader.read("We agreed to call the office").belongsOnToday)
+        XCTAssertFalse(ActionabilityReader.read("Mira promised to update the contact sheet").belongsOnToday)
+        XCTAssertFalse(ActionabilityReader.read("I promised to call the office, and I already called").belongsOnToday)
+    }
+
+    func testLearningAPropositionIsKnowledgeUnlessItContainsOwnCommitment() {
+        XCTAssertEqual(ActionabilityReader.read(
+            "At the garden meeting I learned that the north bed keeps moisture longer"
+        ), .knowledge)
+        XCTAssertEqual(ActionabilityReader.read(
+            "I learned that I need to call the office tomorrow"
+        ), .actionable)
+        XCTAssertEqual(ActionabilityReader.read(
+            "I found the blue tin, which I want to remember"
+        ), .knowledge)
+        XCTAssertTrue(ActionabilityReader.read("I need to find the blue tin").belongsOnToday)
+    }
+
+    func testConditionalObligationDoesNotTakeOwnershipFromFactualMatrix() {
+        for text in [
+            "The spare key is in the drawer, which helps if I have to leave early",
+            "The paper statement is in the drawer if I have to find it again",
+            "The clinic opens at nine if I need to go",
+        ] {
+            XCTAssertEqual(ActionabilityReader.read(text), .knowledge, text)
+            XCTAssertEqual(
+                ThoughtExtractionEngine.extractWithRules(text).items.first?.organization.itemType,
+                .note, text
+            )
+        }
+        for text in [
+            "Call Maya if she is free",
+            "I need to call Maya if she is free",
+            "I promised to call Maya if she is free",
+            "I learned that I need to call Maya",
+        ] {
+            XCTAssertTrue(ActionabilityReader.read(text).belongsOnToday, text)
+        }
+        XCTAssertTrue(ActionabilityReader.read(
+            "The key is in the drawer if I need it, and I need to call Maya"
+        ).belongsOnToday)
+    }
+
+    func testPropositionalKeepIsMemoryAndPhysicalKeepRemainsAnAction() {
+        let fact = ThoughtExtractionEngine.extractWithRules(
+            "What I actually want to keep is that Rosa prefers advance notice"
+        ).items
+        XCTAssertEqual(fact.count, 1)
+        XCTAssertEqual(fact[0].organization.itemType, .note)
+        let action = ThoughtExtractionEngine.extractWithRules("Keep the file in the drawer").items
+        XCTAssertEqual(action.count, 1)
+        XCTAssertTrue(action[0].organization.itemType.isActionable)
+        let recording = ThoughtExtractionEngine.extractWithRules(
+            "Keep in mind that Rosa prefers advance notice"
+        ).items
+        XCTAssertEqual(recording.count, 1)
+        XCTAssertEqual(recording[0].organization.itemType, .note)
+        for adverb in ["actually", "really", "also"] {
+            let source = "What I \(adverb) want to keep is that Rosa prefers advance notice"
+            let reading = ActionabilityReader.read(source)
+            XCTAssertEqual(reading, .knowledge, adverb)
+            let rows = ThoughtExtractionEngine.extractWithRules(source).items
+            XCTAssertEqual(rows.count, 1, adverb)
+            XCTAssertEqual(
+                ThoughtTitleFormatter.polished(
+                    rows.first?.suggestedTitle ?? rows.first?.sourceQuote ?? "",
+                    itemType: .note
+                ),
+                "Rosa prefers advance notice", adverb
+            )
+        }
+        XCTAssertEqual(
+            ActionabilityReader.read("I also want to keep a file in the drawer"),
+            .actionable
+        )
+    }
+
+    func testDescribedQuotedImperativeStaysKnowledgeWhileExplicitReminderActs() {
+        XCTAssertEqual(
+            ActionabilityReader.read("If I say 'pick up' while describing that routine, it is not a shopping task"),
+            .knowledge
+        )
+        XCTAssertEqual(
+            ActionabilityReader.read("If I say 'call Mom', remind me to call her"),
+            .actionable
+        )
+    }
+
+    func testEmphaticNeedListIsShoppingWithoutSwallowingAnInfinitive() {
+        let groceries = ThoughtExtractionEngine.extractWithRules("We do need eggs and rice").items
+        XCTAssertFalse(groceries.isEmpty)
+        XCTAssertTrue(groceries.allSatisfy { $0.organization.itemType.isActionable })
+        let conversation = ThoughtExtractionEngine.extractWithRules("We do need to talk to Jo").items
+        XCTAssertEqual(conversation.count, 1)
+        XCTAssertNotEqual(conversation[0].organization.itemType, .shopping)
+    }
+
+    func testThinkingFrameSeparatesAnIdeaFromACommittedAction() {
+        let idea = ThoughtExtractionEngine.extractWithRules(
+            "I was thinking of calling Mom", referenceDate: referenceDate,
+            calendar: calendar
+        )
+        XCTAssertEqual(idea.items.count, 1)
+        XCTAssertEqual(idea.items[0].organization.itemType, .idea)
+        XCTAssertFalse(idea.items[0].organization.itemType.isActionable)
+        XCTAssertFalse(idea.items[0].needsReview)
+        XCTAssertEqual(idea.items[0].rawQuote, "I was thinking of calling Mom")
+
+        let committed = ThoughtExtractionEngine.extractWithRules(
+            "I should call Mom", referenceDate: referenceDate, calendar: calendar
+        )
+        XCTAssertEqual(committed.items.count, 1)
+        XCTAssertTrue(committed.items[0].organization.itemType.isActionable)
+
+        let imperative = ThoughtExtractionEngine.extractWithRules(
+            "Like, I was thinking, buy milk", referenceDate: referenceDate,
+            calendar: calendar
+        )
+        XCTAssertEqual(imperative.items.count, 1)
+        XCTAssertEqual(imperative.items[0].organization.itemType, .shopping)
+    }
+
+    func testSequencingOpenerKeepsACommittedActionOnToday() {
+        XCTAssertTrue(ActionabilityReader.read("First, email the landlord").belongsOnToday)
+        XCTAssertEqual(ActionabilityReader.actionBody("First, email the landlord"), "email the landlord")
+        XCTAssertFalse(ActionabilityReader.read("The first aid kit is in the cupboard").belongsOnToday)
+        XCTAssertEqual(ActionabilityReader.read("Separately, remember that the key is in the drawer"), .knowledge)
+        XCTAssertTrue(ActionabilityReader.read("Separately, remember to take the key").belongsOnToday)
+    }
+
+    func testShortPerformableImperativesDoNotDependOnDeviceTagging() {
+        for source in ["Swap the batteries", "Ring my insurance agent", "Create a checklist",
+                       "Sharpen garden shears", "Unclog the sink", "Reheat the soup"] {
+            XCTAssertTrue(ActionabilityReader.read(source).belongsOnToday, source)
+        }
+        for source in ["The swap was costly", "The ring is gold",
+                       "The soup was reheated yesterday"] {
+            XCTAssertFalse(ActionabilityReader.read(source).belongsOnToday, source)
+        }
+    }
+
+    func testRequiredResultStatesCreateSeparateJobsWithoutInventingObjects() {
+        let jobs = ThoughtExtractionEngine.extractWithRules(
+            "The house needs the windows cleaned and the gutters cleared"
+        ).items
+        XCTAssertEqual(jobs.count, 2)
+        XCTAssertTrue(jobs.allSatisfy { $0.organization.itemType.isActionable })
+        XCTAssertTrue(jobs[0].sourceQuote.contains("windows cleaned"))
+        XCTAssertTrue(jobs[1].sourceQuote.contains("gutters cleared"))
+        XCTAssertEqual(ThoughtExtractionEngine.extractWithRules(
+            "The museum needs the blue and white posters"
+        ).items.count, 1)
+    }
+
+    func testExplainedObligationBelongingToAnotherPersonStaysKnowledge() {
+        XCTAssertEqual(
+            ActionabilityReader.read(
+                "She explained that the early numbers were estimates and that the family should keep the printed instructions"
+            ),
+            .knowledge
+        )
+    }
+
     private var calendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "America/Toronto")!
@@ -23,6 +1193,27 @@ final class ActionabilityTests: XCTestCase {
     }
 
     // MARK: Invariant 1 — time never promotes history
+
+    func testPossessiveEventDayDoesNotScheduleAnAction() {
+        let context = ThoughtOrganizer.organize(
+            "Text Leo the address for Saturday's dinner",
+            referenceDate: referenceDate, calendar: calendar
+        )
+        XCTAssertEqual(context.itemType, .personFollowUp)
+        XCTAssertNil(context.dueDate)
+        let direct = ThoughtOrganizer.organize(
+            "Text Leo Saturday",
+            referenceDate: referenceDate, calendar: calendar
+        )
+        XCTAssertEqual(direct.itemType, .personFollowUp)
+        XCTAssertNotNil(direct.dueDate)
+        let object = ThoughtOrganizer.organize(
+            "Buy Monday's newspaper",
+            referenceDate: referenceDate, calendar: calendar
+        )
+        XCTAssertEqual(object.itemType, .shopping)
+        XCTAssertNil(object.dueDate)
+    }
 
     func testDayNamedAsPlaceholderTopicDoesNotCreateACommitment() throws {
         for text in ["the whole Thursday thing", "that Friday stuff", "this Monday thing"] {
@@ -93,12 +1284,19 @@ final class ActionabilityTests: XCTestCase {
             "I had better luck last time and I need to call the bank tomorrow",
             referenceDate: referenceDate, calendar: calendar
         ).items
-        XCTAssertEqual(items.count, 2)
+        XCTAssertEqual(items.count, 2, String(describing: items.map(\.analysisText)))
         XCTAssertEqual(items.first?.organization.itemType, .note)
         let action = try XCTUnwrap(items.last)
         XCTAssertTrue(action.organization.itemType.isActionable)
         XCTAssertEqual(action.organization.dueDate,
                        calendar.date(from: DateComponents(year: 2026, month: 8, day: 4)))
+
+        let sharedFact = ThoughtExtractionEngine.extractWithRules(
+            "I had better luck last time and better service at the hotel",
+            referenceDate: referenceDate, calendar: calendar
+        ).items
+        XCTAssertEqual(sharedFact.count, 1)
+        XCTAssertEqual(sharedFact.first?.organization.itemType, .note)
     }
 
     /// A temporal expression is evidence about actionability, never a source of
@@ -260,7 +1458,7 @@ final class ActionabilityTests: XCTestCase {
         for text in ["Descale kettle", "descale kettle", "Unpack boxes", "Give Mom's recipe to Catherine", "Check it's working"] {
             XCTAssertEqual(ActionabilityReader.read(text), .actionable, text)
         }
-        for text in ["Devon Smith", "Regina King", "Preston Hall", "Rebecca Miles", "hope he's okay"] {
+        for text in ["Devon Smith", "Regina King", "Preston Hall", "Rebecca Miles", "hope he's okay", "Unhappy clients"] {
             XCTAssertNotEqual(ActionabilityReader.read(text), .actionable, text)
         }
     }
@@ -342,6 +1540,12 @@ final class ActionabilityTests: XCTestCase {
         XCTAssertEqual(ActionabilityReader.actionBody("tomorrow morning email the landlord"), "email the landlord")
         XCTAssertEqual(ActionabilityReader.actionBody("after that book the dentist"), "book the dentist")
         XCTAssertEqual(ActionabilityReader.actionBody("tomorrow at 9 call sarah"), "call sarah")
+        XCTAssertEqual(ActionabilityReader.actionBody("at the store buy milk"), "buy milk")
+        XCTAssertEqual(ActionabilityReader.actionBody("on the way home from work pick up milk"), "pick up milk")
+        XCTAssertEqual(ActionabilityReader.actionBody("after class submit my assignment"), "submit my assignment")
+        XCTAssertEqual(ActionabilityReader.actionBody("this weekend clean the garage"), "clean the garage")
+        XCTAssertEqual(ActionabilityReader.actionBody("at the store the milk is cheaper"),
+                       "at the store the milk is cheaper")
     }
 
     /// The clause splitter reads the same structure: a verbless head that
@@ -478,6 +1682,9 @@ final class ActionabilityTests: XCTestCase {
         XCTAssertEqual(ActionabilityReader.actionBody("after I get paid book the trip"), "book the trip")
         XCTAssertEqual(ActionabilityReader.actionBody("as soon as I land text mom"), "text mom")
         XCTAssertEqual(ActionabilityReader.actionBody("before I forget call dave"), "call dave")
+        XCTAssertEqual(ActionabilityReader.actionBody("while I'm out there grab stamps"), "grab stamps")
+        XCTAssertEqual(ActionabilityReader.actionBody("while I'm out there I feel better"),
+                       "while I'm out there I feel better")
         XCTAssertEqual(
             ActionabilityReader.actionBody("when I was young I loved the beach"),
             "when I was young I loved the beach"
@@ -520,6 +1727,235 @@ final class ActionabilityTests: XCTestCase {
                        ["book the dentist", "tomorrow call mom"])
         XCTAssertEqual(RuleBasedThoughtExtractor.splitClauses("I called the plumber and he never showed"),
                        ["I called the plumber and he never showed"])
+    }
+
+    func testCompleteCommandAfterFrontedTimeCanEndBeforeAnotherCommand() {
+        XCTAssertEqual(
+            ClauseJuxtaposition.pieces(in: "tomorrow buy cheese after class submit my assignment before midnight ask Alex about Sunday"),
+            ["tomorrow buy cheese after class", "submit my assignment before midnight", "ask Alex about Sunday"]
+        )
+        XCTAssertEqual(
+            ClauseJuxtaposition.pieces(in: "after lunch call Mom buy bread"),
+            ["after lunch call Mom", "buy bread"]
+        )
+        XCTAssertEqual(ClauseJuxtaposition.pieces(in: "after lunch call Mom"),
+                       ["after lunch call Mom"])
+        XCTAssertEqual(ClauseJuxtaposition.pieces(in: "tomorrow morning email the landlord"),
+                       ["tomorrow morning email the landlord"])
+    }
+
+    func testCoordinatedPrepositionalObjectsOwnFollowingAside() {
+        XCTAssertEqual(
+            RuleBasedThoughtExtractor.splitClauses("Split the cabin rental with Tom and Alice it's $1200 total so $400 each"),
+            ["Split the cabin rental with Tom and Alice it's $1200 total so $400 each"]
+        )
+        XCTAssertEqual(
+            RuleBasedThoughtExtractor.splitClauses("Plan dinner with Ben and Maya it's their anniversary"),
+            ["Plan dinner with Ben and Maya it's their anniversary"]
+        )
+        XCTAssertEqual(
+            RuleBasedThoughtExtractor.splitClauses("Split the cabin rental with Tom and call Alice later"),
+            ["Split the cabin rental with Tom", "call Alice later"]
+        )
+        XCTAssertEqual(
+            RuleBasedThoughtExtractor.splitClauses("Split the cabin rental with Tom and Alice then send the receipt"),
+            ["Split the cabin rental with Tom and Alice", "send the receipt"]
+        )
+        XCTAssertEqual(
+            RuleBasedThoughtExtractor.splitClauses("Split rent with Tom and Alice she already paid"),
+            ["Split rent with Tom and Alice", "she already paid"]
+        )
+        XCTAssertEqual(
+            RuleBasedThoughtExtractor.splitClauses("Split rent with Tom and Alice I need to pay Friday"),
+            ["Split rent with Tom and Alice", "I need to pay Friday"]
+        )
+        XCTAssertEqual(
+            RuleBasedThoughtExtractor.splitClauses("Maya said split rent with Tom and Alice she already paid"),
+            ["Maya said split rent with Tom and Alice she already paid"]
+        )
+        XCTAssertEqual(
+            RuleBasedThoughtExtractor.splitClauses("Text Maya that I split rent with Tom and Alice I need to pay Friday"),
+            ["Text Maya that I split rent with Tom and Alice I need to pay Friday"]
+        )
+        XCTAssertEqual(
+            RuleBasedThoughtExtractor.splitClauses("Split rent with Tom and Alice I guess"),
+            ["Split rent with Tom and Alice I guess"]
+        )
+    }
+
+    func testAnaphoricMemoryContinuationKeepsOneRetrievalIdentity() {
+        let linked = RuleBasedThoughtExtractor.process(
+            "Remember the lighthouse has a red door. It faces the harbor."
+        ).items
+        XCTAssertEqual(linked.count, 1)
+        XCTAssertEqual(linked.first?.organization.itemType, .note)
+        XCTAssertTrue(linked.first?.sourceQuote.contains("It faces the harbor") == true)
+        XCTAssertTrue(linked.first?.rawQuote.contains("red door") == true)
+
+        let unrelatedPerson = RuleBasedThoughtExtractor.process(
+            "Remember the spare key is under the mat. She prefers tea."
+        ).items
+        XCTAssertEqual(unrelatedPerson.count, 2)
+        let personContinuation = RuleBasedThoughtExtractor.process(
+            "Remember Mum's recipe uses fennel. She adds it last."
+        ).items
+        XCTAssertEqual(personContinuation.count, 1)
+
+        let fragment = RuleBasedThoughtExtractor.process(
+            "Remember Dad likes almond cake. Almond cake, not chocolate."
+        ).items
+        XCTAssertEqual(fragment.count, 1)
+        XCTAssertTrue(fragment.first?.sourceQuote.contains("not chocolate") == true)
+
+        let newRecording = RuleBasedThoughtExtractor.process(
+            "Remember the lighthouse has a red door. Remember the ferry leaves at seven."
+        ).items
+        XCTAssertEqual(newRecording.count, 2)
+        let newAction = RuleBasedThoughtExtractor.process(
+            "Remember the lighthouse has a red door. Call Maya tomorrow."
+        ).items
+        XCTAssertEqual(newAction.count, 2)
+        XCTAssertEqual(newAction.map { $0.organization.itemType.isActionable }, [false, true])
+
+        let contrast = RuleBasedThoughtExtractor.process(
+            "Buy almond cake, not chocolate."
+        ).items
+        XCTAssertEqual(contrast.count, 1)
+        XCTAssertEqual(contrast.first?.organization.itemType, .shopping)
+        XCTAssertFalse(contrast.contains { $0.suggestedTitle?.lowercased().contains("buy not") == true })
+        let bareList = RuleBasedThoughtExtractor.process("Milk, eggs, bread.").items
+        XCTAssertEqual(bareList.count, 3)
+        XCTAssertTrue(bareList.allSatisfy { $0.organization.itemType == .shopping })
+
+        let excluded = RuleBasedThoughtExtractor.process("Milk, eggs, not sugar.").items
+        XCTAssertEqual(excluded.filter { $0.organization.itemType == .shopping }.count, 2)
+        XCTAssertTrue(excluded.contains {
+            $0.needsReview && $0.sourceQuote.lowercased().contains("not sugar")
+        })
+        XCTAssertFalse(excluded.contains {
+            $0.suggestedTitle?.lowercased().contains("buy not") == true
+        })
+        let branded = RuleBasedThoughtExtractor.process("No Name milk, eggs.").items
+        XCTAssertEqual(branded.count, 2)
+        XCTAssertTrue(branded.allSatisfy { $0.organization.itemType == .shopping })
+        let negative = RuleBasedThoughtExtractor.process("No sugar, eggs.").items
+        XCTAssertFalse(negative.contains {
+            $0.suggestedTitle?.lowercased().contains("buy no sugar") == true
+        })
+    }
+
+    func testPossibleActionsDoNotBecomeCommittedTodayRows() {
+        for source in [
+            "I might call Mom tomorrow",
+            "I could walk by the river later",
+            "We may visit the gallery on Saturday",
+            "We could add the bread to the list",
+        ] {
+            let item = RuleBasedThoughtExtractor.process(source).items.first
+            XCTAssertEqual(item?.organization.itemType, .note, source)
+            XCTAssertFalse(item?.organization.itemType.isActionable == true, source)
+        }
+        XCTAssertEqual(ThoughtOrganizer.organize("I will call Mom tomorrow").itemType,
+                       .personFollowUp)
+        XCTAssertEqual(ThoughtOrganizer.organize("I should call Mom tomorrow").itemType,
+                       .personFollowUp)
+        XCTAssertEqual(ThoughtOrganizer.organize("I could use eggs and milk").itemType,
+                       .shopping)
+        let laterCommitment = RuleBasedThoughtExtractor.process(
+            "I could call Mom, but I will call her tomorrow"
+        ).items
+        XCTAssertEqual(laterCommitment.count, 2)
+        XCTAssertFalse(laterCommitment[0].organization.itemType.isActionable)
+        XCTAssertTrue(laterCommitment[1].organization.itemType.isActionable)
+    }
+
+    func testFrontedNowKeepsTimingWithoutTurningAFactIntoAnAction() {
+        let action = RuleBasedThoughtExtractor.process("Now book the dentist").items
+        XCTAssertEqual(action.count, 1)
+        XCTAssertTrue(action[0].organization.itemType.isActionable)
+        XCTAssertEqual(action[0].organization.priority, .urgent)
+        XCTAssertFalse(action[0].needsReview)
+        XCTAssertTrue(action[0].rawQuote.lowercased().contains("now"))
+
+        let fact = RuleBasedThoughtExtractor.process(
+            "Now is a bad time to book the dentist"
+        ).items
+        XCTAssertEqual(fact.count, 1)
+        XCTAssertFalse(fact[0].organization.itemType.isActionable)
+        XCTAssertEqual(fact[0].organization.priority, .normal)
+    }
+
+    func testNewSubjectOwnsFactAfterActionWithoutBorrowingItsVerb() {
+        XCTAssertEqual(RuleBasedThoughtExtractor.splitClauses("Buy milk and Sarah hates sushi"),
+                       ["Buy milk", "Sarah hates sushi"])
+        XCTAssertEqual(ThoughtOrganizer.organize("Sarah hates sushi").itemType, .note)
+        let items = ThoughtExtractionEngine.extractWithRules("Buy milk and Sarah hates sushi").items
+        XCTAssertEqual(items.count, 2, String(describing: items.map(\.analysisText)))
+        XCTAssertEqual(items.last?.sourceQuote, "Sarah hates sushi")
+        XCTAssertEqual(items.last?.analysisText, "Sarah hates sushi")
+        XCTAssertEqual(items.last?.organization.itemType, .note)
+        XCTAssertEqual(RuleBasedThoughtExtractor.splitClauses("Remember Alex likes golf and hates mornings"),
+                       ["Remember Alex likes golf and hates mornings"])
+        XCTAssertEqual(RuleBasedThoughtExtractor.splitClauses("Remember Alex likes golf and Catherine hates sushi"),
+                       ["Remember Alex likes golf", "Catherine hates sushi"])
+    }
+
+    func testPunctuatedFrontedContextDoesNotHideAnImperative() {
+        for source in [
+            "Before the talk, test that the microphone pairs with my phone",
+            "Before the talk test that the microphone pairs with my phone",
+            "After the meeting, check the spare cable"
+        ] {
+            let items = ThoughtExtractionEngine.extractWithRules(source).items
+            XCTAssertEqual(items.count, 1, source)
+            XCTAssertTrue(items[0].organization.itemType.isActionable, source)
+            XCTAssertTrue(items[0].needsReview, source)
+            XCTAssertEqual(items[0].organization.state, .unsupported(.unsupportedCondition), source)
+            XCTAssertNil(items[0].organization.reminderDate, source)
+            XCTAssertNil(items[0].organization.dueDate, source)
+            XCTAssertEqual(items[0].rawQuote, source, source)
+        }
+        for source in [
+            "Before the talk, the microphone pairs with my phone",
+            "At the venue, the spare cable is in the bag",
+            "Test that the microphone pairs with my phone"
+        ] {
+            let items = ThoughtExtractionEngine.extractWithRules(source).items
+            XCTAssertEqual(items.count, 1, source)
+            XCTAssertEqual(items[0].organization.itemType.isActionable,
+                           source.hasPrefix("Test"), source)
+        }
+        // A dated test can itself be a Today event. It must still remain one
+        // proposition, without inventing a second imperative named "test".
+        let event = ThoughtExtractionEngine.extractWithRules(
+            "The fire alarm test is Thursday"
+        ).items
+        XCTAssertEqual(event.count, 1)
+        XCTAssertEqual(event[0].rawQuote, "The fire alarm test is Thursday")
+        XCTAssertNil(event[0].organization.reminderDate)
+        let history = ThoughtExtractionEngine.extractWithRules(
+            "The microphone test was yesterday"
+        ).items
+        XCTAssertEqual(history.count, 1)
+        XCTAssertFalse(history[0].organization.itemType.isActionable)
+
+        for source in [
+            "On the wall call button is broken.",
+            "At the office print quality is poor."
+        ] {
+            let items = ThoughtExtractionEngine.extractWithRules(source).items
+            XCTAssertEqual(items.count, 1, source)
+            XCTAssertFalse(items[0].organization.itemType.isActionable, source)
+            XCTAssertEqual(items[0].rawQuote, source, source)
+        }
+        for source in [
+            "On the wall call Mom.",
+            "At the office print the report."
+        ] {
+            let items = ThoughtExtractionEngine.extractWithRules(source).items
+            XCTAssertEqual(items.count, 1, source)
+            XCTAssertTrue(items[0].organization.itemType.isActionable, source)
+        }
     }
 
     // MARK: Conditional intent safety
@@ -629,7 +2065,9 @@ final class ActionabilityTests: XCTestCase {
         XCTAssertEqual(correctedItems.count, 1)
         let corrected = try XCTUnwrap(correctedItems.first)
         XCTAssertTrue(corrected.analysisText.lowercased().contains("if sarah replies"))
-        XCTAssertTrue(corrected.analysisText.lowercased().contains("text him"))
+        XCTAssertTrue(corrected.analysisText.lowercased().contains("text mike"))
+        XCTAssertEqual(corrected.organization.personName, "Mike")
+        XCTAssertEqual(corrected.rawQuote, "If Sarah replies, call Mike, actually text him.")
         XCTAssertFalse(corrected.analysisText.lowercased().contains("call mike"))
         XCTAssertEqual(corrected.organization.state, .unsupported(.unsupportedCondition))
 
@@ -758,14 +2196,20 @@ extension ActionabilityTests {
     }
 
     func testSequencingRepairDoesNotDiscardEarlierTasks() {
-        for text in [
-            "Buy soap and then, actually, call Mira.",
-            "Go to the library and get paper, wait, then go to the office and buy envelopes.",
-            "Call Mira, wait, before that email Alex.",
-        ] {
+        let fixtures: [(String, Int, [String])] = [
+            ("Buy soap and then, actually, call Mira.", 2, ["soap", "Mira"]),
+            ("Go to the library and get paper, wait, then go to the office and buy envelopes.",
+             4, ["library", "paper", "office", "envelopes"]),
+            ("Call Mira, wait, before that email Alex.", 2, ["Mira", "Alex"]),
+        ]
+        for (text, count, actions) in fixtures {
             let result = ThoughtExtractionEngine.extractWithRules(text, referenceDate: referenceDate, calendar: calendar)
-            XCTAssertEqual(result.items.count, 2, text)
+            XCTAssertEqual(result.items.count, count, text)
             XCTAssertTrue(result.items.allSatisfy { $0.organization.itemType.isActionable }, text)
+            for action in actions {
+                XCTAssertTrue(result.items.contains { $0.analysisText.localizedCaseInsensitiveContains(action) },
+                              "Missing \(action): \(text)")
+            }
         }
     }
 

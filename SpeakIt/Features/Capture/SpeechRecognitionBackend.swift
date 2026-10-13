@@ -9,6 +9,7 @@ import Speech
 protocol SpeechRecognitionBackend: AnyObject {
     var engine: SpeechRecognitionEngine { get }
     var usesTrainedVoiceActivityDetection: Bool { get }
+    var hadAudioForwardingFailure: Bool { get }
 
     /// Begins recognition. `onTranscript` receives the full transcript so far.
     /// The Boolean becomes `true` only after `endAudio()` closes the app-owned
@@ -35,6 +36,8 @@ protocol SpeechRecognitionBackend: AnyObject {
 enum SpeechRecognitionBackendError: Error {
     case recognizerUnavailable
     case analyzerNotReady
+    case unexpectedFinalization
+    case audioForwardingFailed
 }
 
 enum SpeechRecognitionEngine: String, Codable, Sendable {
@@ -48,10 +51,13 @@ enum SpeechRecognitionEngine: String, Codable, Sendable {
 final class LegacyRecognizerBackend: SpeechRecognitionBackend {
     let engine = SpeechRecognitionEngine.legacyRecognizer
     let usesTrainedVoiceActivityDetection = false
+    let hadAudioForwardingFailure = false
 
     private let recognizer: SFSpeechRecognizer
     private let requestBox = LegacyRequestBox()
     private var recognitionTask: SFSpeechRecognitionTask?
+    private var inputWasClosed = false
+    private var reportedUnexpectedFinalization = false
 
     init?(locale: Locale = .current) {
         guard let recognizer = SFSpeechRecognizer(locale: locale),
@@ -81,14 +87,26 @@ final class LegacyRecognizerBackend: SpeechRecognitionBackend {
         // app may call live recognition "on-device", and the protected
         // recording behind `CaptureAudioRecovery` must never take this path.
         request.requiresOnDeviceRecognition = false
+        inputWasClosed = false
+        reportedUnexpectedFinalization = false
         requestBox.install(request)
 
-        recognitionTask = recognizer.recognitionTask(with: request) { result, error in
-            Task { @MainActor in
+        recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
                 if let result {
-                    onTranscript(result.bestTranscription.formattedString, result.isFinal)
+                    let text = result.bestTranscription.formattedString
+                    if result.isFinal && !self.inputWasClosed {
+                        onTranscript(text, false)
+                        if !self.reportedUnexpectedFinalization {
+                            self.reportedUnexpectedFinalization = true
+                            onError(SpeechRecognitionBackendError.unexpectedFinalization)
+                        }
+                    } else {
+                        onTranscript(text, result.isFinal)
+                    }
                 }
-                if let error {
+                if let error, !self.reportedUnexpectedFinalization {
                     onError(error)
                 }
             }
@@ -100,6 +118,7 @@ final class LegacyRecognizerBackend: SpeechRecognitionBackend {
     }
 
     func endAudio() {
+        inputWasClosed = true
         requestBox.endAudio()
     }
 
@@ -217,12 +236,14 @@ enum AnalyzerRecognitionSupport {
 final class AnalyzerRecognitionBackend: SpeechRecognitionBackend {
     let engine = SpeechRecognitionEngine.speechAnalyzer
     let usesTrainedVoiceActivityDetection = true
+    var hadAudioForwardingFailure: Bool { forwarder.failed }
 
     private let inputFormat: AVAudioFormat
     private let forwarder = AnalyzerAudioForwarder()
     private var analyzer: SpeechAnalyzer?
     private var resultsTask: Task<Void, Never>?
     private var detectorResultsTask: Task<Void, Never>?
+    private var inputWasClosed = false
 
     init(inputFormat: AVAudioFormat) {
         self.inputFormat = inputFormat
@@ -244,7 +265,11 @@ final class AnalyzerRecognitionBackend: SpeechRecognitionBackend {
         // the SpeechAnalyzer module documented to consume contextual strings.
         // Start from the progressive preset for responsive live text, then ask
         // it to retain the N-best/acoustic evidence needed by accurate results.
-        var preset = DictationTranscriber.Preset.progressiveShortDictation
+        // The explicit long-capture mode may be selected after recording has
+        // already started. Keep one live preset that supports lengthy input
+        // for both modes; the app-level endpoint policy still saves short
+        // captures promptly.
+        var preset = DictationTranscriber.Preset.progressiveLongDictation
         preset.reportingOptions.insert(.alternativeTranscriptions)
         preset.attributeOptions.formUnion([.audioTimeRange, .transcriptionConfidence])
         let module = DictationTranscriber(locale: locale, preset: preset)
@@ -261,11 +286,18 @@ final class AnalyzerRecognitionBackend: SpeechRecognitionBackend {
             throw SpeechRecognitionBackendError.analyzerNotReady
         }
 
-        let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream()
+        let (stream, continuation) = AsyncStream<AnalyzerInput>.makeStream(
+            bufferingPolicy: .bufferingOldest(128)
+        )
         try forwarder.prepare(
             inputFormat: inputFormat,
             analyzerFormat: analyzerFormat,
-            continuation: continuation
+            continuation: continuation,
+            onFailure: {
+                Task { @MainActor in
+                    onError(SpeechRecognitionBackendError.audioForwardingFailed)
+                }
+            }
         )
 
         let context = AnalysisContext()
@@ -296,8 +328,12 @@ final class AnalyzerRecognitionBackend: SpeechRecognitionBackend {
                     guard self != nil, !Task.isCancelled else { return }
                     onTranscript(assembly.transcript, false)
                 }
-                guard self != nil, !Task.isCancelled else { return }
-                onTranscript(assembly.transcript, true)
+                guard let self, !Task.isCancelled else { return }
+                if self.inputWasClosed {
+                    onTranscript(assembly.transcript, true)
+                } else {
+                    onError(SpeechRecognitionBackendError.unexpectedFinalization)
+                }
             } catch {
                 guard self != nil, !Task.isCancelled else { return }
                 onError(error)
@@ -325,6 +361,7 @@ final class AnalyzerRecognitionBackend: SpeechRecognitionBackend {
     }
 
     func endAudio() {
+        inputWasClosed = true
         forwarder.finishInput()
         let analyzer = analyzer
         Task {
@@ -354,11 +391,20 @@ private final class AnalyzerAudioForwarder: @unchecked Sendable {
     private var continuation: AsyncStream<AnalyzerInput>.Continuation?
     private var converter: AVAudioConverter?
     private var analyzerFormat: AVAudioFormat?
+    private var onFailure: (@Sendable () -> Void)?
+    private var hasReportedFailure = false
+
+    var failed: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return hasReportedFailure
+    }
 
     func prepare(
         inputFormat: AVAudioFormat,
         analyzerFormat: AVAudioFormat,
-        continuation: AsyncStream<AnalyzerInput>.Continuation
+        continuation: AsyncStream<AnalyzerInput>.Continuation,
+        onFailure: @escaping @Sendable () -> Void
     ) throws {
         var converter: AVAudioConverter?
         if inputFormat != analyzerFormat {
@@ -371,6 +417,8 @@ private final class AnalyzerAudioForwarder: @unchecked Sendable {
         self.continuation = continuation
         self.converter = converter
         self.analyzerFormat = analyzerFormat
+        self.onFailure = onFailure
+        hasReportedFailure = false
         lock.unlock()
     }
 
@@ -383,7 +431,7 @@ private final class AnalyzerAudioForwarder: @unchecked Sendable {
         guard let continuation else { return }
 
         guard let converter, let analyzerFormat else {
-            continuation.yield(AnalyzerInput(buffer: buffer))
+            checkYield(continuation.yield(AnalyzerInput(buffer: buffer)))
             return
         }
 
@@ -392,7 +440,10 @@ private final class AnalyzerAudioForwarder: @unchecked Sendable {
         guard let converted = AVAudioPCMBuffer(
             pcmFormat: analyzerFormat,
             frameCapacity: capacity
-        ) else { return }
+        ) else {
+            reportFailure()
+            return
+        }
 
         var gaveInput = false
         var conversionError: NSError?
@@ -405,8 +456,27 @@ private final class AnalyzerAudioForwarder: @unchecked Sendable {
             inputStatus.pointee = .haveData
             return buffer
         }
-        guard status != .error, converted.frameLength > 0 else { return }
-        continuation.yield(AnalyzerInput(buffer: converted))
+        guard status != .error, converted.frameLength > 0 else {
+            reportFailure()
+            return
+        }
+        checkYield(continuation.yield(AnalyzerInput(buffer: converted)))
+    }
+
+    private func checkYield(_ result: AsyncStream<AnalyzerInput>.Continuation.YieldResult) {
+        if case .dropped = result { reportFailure() }
+    }
+
+    private func reportFailure() {
+        lock.lock()
+        guard !hasReportedFailure else {
+            lock.unlock()
+            return
+        }
+        hasReportedFailure = true
+        let onFailure = onFailure
+        lock.unlock()
+        onFailure?()
     }
 
     func finishInput() {

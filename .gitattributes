@@ -23,3 +23,6 @@ Tools/CorpusRunner/adversarial/adversarial.tsv -diff
 Tools/CorpusRunner/consequence/consequence.tsv -diff
 Tools/CorpusRunner/everyday/everyday.tsv -diff
 Tools/CorpusRunner/heldout/heldout.tsv -diff
+
+# The full on-device example bank exceeds GitHub's regular file-size limit.
+SpeakIt/RuntimeReferences/runtime-library.sqlite filter=lfs diff=lfs merge=lfs -text

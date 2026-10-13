@@ -77,6 +77,113 @@ final class DurabilityTests: XCTestCase {
         container = nil
     }
 
+    func testPersistentStoresAtZeroHundredThousandAndTenThousandKeepTargetsAndRelaunchState() throws {
+        // Store-size stability, not speech capacity or a UI performance pass.
+        let clock = Date(timeIntervalSince1970: 1_790_000_000)
+        for count in [0, 100, 1_000, 10_000] {
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("SpeakIt-store-size-\(UUID().uuidString).store")
+            defer { try? FileManager.default.removeItem(at: url) }
+            func openStore() throws -> ModelContainer {
+                let configuration = ModelConfiguration(schema: PersistenceController.schema, url: url)
+                return try ModelContainer(for: PersistenceController.schema,
+                    migrationPlan: SpeakItMigrationPlan.self, configurations: [configuration])
+            }
+            var seededIDs: Set<UUID> = []
+            var finalState: Data!
+            var newID = UUID()
+            do {
+                let store = try openStore()
+                let context = store.mainContext
+                for index in 0..<count {
+                    let text = "Store fixture \(index)"
+                    let session = CaptureSession(originalTranscription: text, createdAt: clock)
+                    let row = CapturedItem(originalTextSegment: text, displayTitle: text,
+                        itemType: index.isMultiple(of: 2) ? .note : .task,
+                        createdAt: clock, temporalIntent: TemporalIntent.none, captureSession: session)
+                    context.insert(session); context.insert(row); seededIDs.insert(row.id)
+                }
+                try context.save()
+                let before = try LongCaptureQualificationTests.snapshot(context)
+                let saved = SwiftDataThoughtRepository(modelContext: context,
+                                                       requestsReminderAuthorization: false,
+                                                       permitsOnDeviceIntelligence: false)
+                let new = try saved.createCapture(text: "Buy milk", source: .inAppText,
+                                                 createdAt: clock, schedulesReminder: false)
+                newID = new.id
+                XCTAssertEqual(new.itemType, .shopping)
+                XCTAssertEqual(new.captureSession?.originalTranscription, "Buy milk")
+                let after = try LongCaptureQualificationTests.snapshot(context)
+                XCTAssertEqual(after.count, count + 1)
+                let unchanged = after.filter { seededIDs.contains(UUID(uuidString: $0["id"] as! String)!) }
+                XCTAssertEqual(try JSONSerialization.data(withJSONObject: unchanged, options: [.sortedKeys]),
+                               try JSONSerialization.data(withJSONObject: before, options: [.sortedKeys]),
+                               "New capture changed a saved sibling in the \(count)-item store")
+                try saved.setCompleted(new, completed: true)
+                try saved.setCompleted(new, completed: true)
+                XCTAssertTrue(new.isCompleted)
+                XCTAssertEqual(try context.fetchCount(FetchDescriptor<CapturedItem>()), count + 1)
+                finalState = try JSONSerialization.data(
+                    withJSONObject: LongCaptureQualificationTests.snapshot(context), options: [.sortedKeys]
+                )
+            }
+            do {
+                let store = try openStore()
+                let context = store.mainContext
+                let saved = SwiftDataThoughtRepository(modelContext: context,
+                                                       requestsReminderAuthorization: false,
+                                                       permitsOnDeviceIntelligence: false)
+                saved.recoverUnorganizedCaptures()
+                saved.recoverInterruptedCaptureDraft()
+                saved.recoverUnorganizedCaptures()
+                let rows = try context.fetch(FetchDescriptor<CapturedItem>())
+                XCTAssertEqual(rows.count, count + 1)
+                XCTAssertEqual(Set(rows.map(\.id)), seededIDs.union([newID]))
+                XCTAssertTrue(rows.first { $0.id == newID }?.isCompleted == true)
+                XCTAssertTrue(rows.allSatisfy { $0.captureSession?.originalTranscription == $0.originalTextSegment })
+                let reopened = try JSONSerialization.data(
+                    withJSONObject: LongCaptureQualificationTests.snapshot(context), options: [.sortedKeys]
+                )
+                XCTAssertEqual(reopened, finalState,
+                               "Full saved state changed after relaunch at \(count) items")
+            }
+        }
+    }
+
+    func testLegacyUntimedBackfillAddsOnlyNoneMetadataAndThenStaysStable() throws {
+        for index in 0..<1_000 {
+            let text = "Legacy store fixture \(index)"
+            let session = CaptureSession(originalTranscription: text)
+            let row = CapturedItem(originalTextSegment: text, displayTitle: text,
+                itemType: index.isMultiple(of: 2) ? .note : .task, captureSession: session)
+            container.mainContext.insert(session); container.mainContext.insert(row)
+        }
+        try container.mainContext.save()
+        let before = try LongCaptureQualificationTests.snapshot(container.mainContext)
+        let beganAt = DispatchTime.now().uptimeNanoseconds
+        repository.recoverUnorganizedCaptures()
+        let elapsed = Double(DispatchTime.now().uptimeNanoseconds - beganAt) / 1_000_000_000
+        let metric = XCTAttachment(string: "1,000 legacy untimed rows; backfill seconds=\(elapsed)")
+        metric.name = "Legacy untimed backfill duration"
+        metric.lifetime = .keepAlways
+        add(metric)
+        let after = try LongCaptureQualificationTests.snapshot(container.mainContext)
+        let byID = Dictionary(uniqueKeysWithValues: after.map { ($0["id"] as! String, $0) })
+        for old in before {
+            var expected = old
+            expected["temporalKind"] = TemporalKind.none.rawValue
+            expected["temporalIntent"] = try JSONSerialization.jsonObject(
+                with: JSONEncoder().encode(TemporalIntent.none)
+            )
+            let actual = try XCTUnwrap(byID[old["id"] as! String])
+            XCTAssertEqual(try JSONSerialization.data(withJSONObject: actual, options: [.sortedKeys]),
+                           try JSONSerialization.data(withJSONObject: expected, options: [.sortedKeys]))
+        }
+        repository.recoverUnorganizedCaptures()
+        XCTAssertEqual(try JSONSerialization.data(withJSONObject: LongCaptureQualificationTests.snapshot(container.mainContext), options: [.sortedKeys]),
+                       try JSONSerialization.data(withJSONObject: after, options: [.sortedKeys]))
+    }
+
     // MARK: - Kill and relaunch
 
     private func makeRepository() -> SwiftDataThoughtRepository {
@@ -84,7 +191,8 @@ final class DurabilityTests: XCTestCase {
             modelContext: container.mainContext,
             placeReminderDelivery: { _, _, _, _ in .scheduled },
             placeReminderCancellation: { _ in },
-            requestsReminderAuthorization: false
+            requestsReminderAuthorization: false,
+            permitsOnDeviceIntelligence: false
         )
     }
 
@@ -262,7 +370,7 @@ final class DurabilityTests: XCTestCase {
 
     // MARK: - 2. Operation interruption
 
-    func testCancellingTheSameReminderTwiceRemovesItOnceAndInventsNothing() async throws {
+    func testCancellingTheSameReminderTwiceRemovesItOnceAndKeepsUnmatchedRequestReviewable() async throws {
         _ = try await capture("Remind me about the dentist on Friday")
         _ = try await capture("Buy milk")
         let before = try allItems().count
@@ -275,7 +383,11 @@ final class DurabilityTests: XCTestCase {
         )
 
         XCTAssertEqual(afterFirst, before - 1)
-        XCTAssertEqual(try allItems().count, afterFirst, "The second cancellation must change nothing")
+        XCTAssertEqual(try allItems().filter { !$0.needsClarification }.count, afterFirst,
+                       "The second cancellation must not remove or create an actionable item")
+        let review = try XCTUnwrap(second.items.first)
+        XCTAssertTrue(review.needsClarification)
+        XCTAssertEqual(review.captureSession?.originalTranscription, "Cancel the dentist reminder")
         guard case .notFound = try XCTUnwrap(second.operationOutcome) else {
             return XCTFail("A second cancellation has nothing to act on")
         }
@@ -922,7 +1034,8 @@ final class UpgradeDurabilityTests: XCTestCase {
             modelContext: container.mainContext,
             placeReminderDelivery: { _, _, _, _ in .scheduled },
             placeReminderCancellation: { _ in },
-            requestsReminderAuthorization: false
+            requestsReminderAuthorization: false,
+            permitsOnDeviceIntelligence: false
         )
         repository.recoverUnorganizedCaptures()
         repository.recoverInterruptedCaptureDraft()
@@ -1070,7 +1183,8 @@ final class StorageFailureDurabilityTests: XCTestCase {
             modelContext: container.mainContext,
             placeReminderDelivery: { _, _, _, _ in .scheduled },
             placeReminderCancellation: { _ in },
-            requestsReminderAuthorization: false
+            requestsReminderAuthorization: false,
+            permitsOnDeviceIntelligence: false
         )
     }
 

@@ -1,0 +1,80 @@
+{
+  "cohort": "First 2000 synthetic-v1 indices, frame-2/noise-3; 66 cases plus 7 boundary guards",
+  "probe_sha256": "62cc4e05b10080718ea5865325a5bcd782556ed34dc7e8ec6b6b17638acecee0",
+  "cases_sha256": "affccd0efd8373fd5d6bdb0abd8a984cd9226f3f644f0285cd20c99a530917a6",
+  "memory_and_task_before": 0,
+  "memory_and_task_after": 66,
+  "cohort_size": 66,
+  "full_semantic_consistency_after": 0,
+  "remaining_issue": "Lowercase two-word memory subjects lose person metadata. Row restoration is not full semantic correctness.",
+  "corpus": {
+    "cases": 1381,
+    "failures": 0
+  },
+  "focused_swift_tests": "passed",
+  "representative": {
+    "before": {
+      "items": [
+        {
+          "analysis": "remember alex singh likes socks. go to elm shop to buy socks.",
+          "delivery": "none",
+          "due": null,
+          "location": "nil",
+          "needsReview": false,
+          "person": null,
+          "quote": "remember alex singh likes socks. go to elm shop to buy socks.",
+          "rawQuote": "remember alex singh likes socks. go to elm shop to buy socks.",
+          "recurrence": "nil",
+          "reminder": null,
+          "route": "Memory",
+          "state": "resolved",
+          "title": "Alex singh likes socks. go to elm shop to buy socks",
+          "type": "note",
+          "wasRepaired": false
+        }
+      ],
+      "operations": [],
+      "text": "remember alex singh likes socks. go to elm shop to buy socks."
+    },
+    "after": {
+      "items": [
+        {
+          "analysis": "remember alex singh likes socks",
+          "delivery": "none",
+          "due": null,
+          "location": "nil",
+          "needsReview": false,
+          "person": null,
+          "quote": "remember alex singh likes socks",
+          "rawQuote": "remember alex singh likes socks",
+          "recurrence": "nil",
+          "reminder": null,
+          "route": "Memory",
+          "state": "resolved",
+          "title": "Alex singh likes socks",
+          "type": "note",
+          "wasRepaired": false
+        },
+        {
+          "analysis": "go to elm shop to buy socks",
+          "delivery": "none",
+          "due": null,
+          "location": "nil",
+          "needsReview": false,
+          "person": null,
+          "quote": "go to elm shop to buy socks",
+          "rawQuote": "go to elm shop to buy socks",
+          "recurrence": "nil",
+          "reminder": null,
+          "route": "Today",
+          "state": "resolved",
+          "title": "Go to elm shop to buy socks",
+          "type": "task",
+          "wasRepaired": false
+        }
+      ],
+      "operations": [],
+      "text": "remember alex singh likes socks. go to elm shop to buy socks."
+    }
+  }
+}

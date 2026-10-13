@@ -168,6 +168,10 @@ struct CaptureView: View {
     @Environment(\.thoughtRepository) private var repository
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityVoiceOverEnabled) private var accessibilityVoiceOverEnabled
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+#if DEBUG
+    @Environment(\.colorScheme) private var measurementColorScheme
+#endif
     @EnvironmentObject private var subscriptionStore: SubscriptionStore
 
     let onSaved: () -> Void
@@ -183,6 +187,9 @@ struct CaptureView: View {
 
     @StateObject private var transcriber = SpeechTranscriber()
     @State private var mode: CaptureMode
+    // A fresh in-app capture stays open through thinking pauses. Automatic
+    // pause saving is available only when the person selects it explicitly.
+    @State private var isLongVoiceCapture = SpeechTranscriber.inAppDefaultEndpointMode == .longCapture
     @State private var typedText = ""
     @State private var errorMessage: String?
     @State private var captureNotice: String?
@@ -208,6 +215,36 @@ struct CaptureView: View {
     @State private var isRecoveringAudio = false
     @State private var showsFreeLimit = false
     @FocusState private var isTextFocused: Bool
+
+    // Pass through the exact existing frame values. Only synthetic UI QA
+    // enables these content-free measurements; there is no analytics sink.
+    private func measuredShellDimension(_ raw: CGFloat,axis: String,geometry: GeometryProxy) -> CGFloat {
+        let applied = max(0,raw)
+#if DEBUG
+        if measuresCaptureGeometry {
+            func scalar(_ value: CGFloat) -> String {
+                if value.isNaN { return "nan" }
+                if !value.isFinite { return value.sign == .minus ? "negative-infinity" : "positive-infinity" }
+                return String(describing:value)
+            }
+            let phase = showsSavedConfirmation ? "saved" : mode == .text ? "text" : "voice"
+            let insets = geometry.safeAreaInsets
+            NSLog("[SpeakItCaptureGeometry] phase=%@ focus=%@ type=%@ scheme=%@ axis=%@ raw=%@ applied=%@ finite=%@ nonnegative=%@ safeTop=%@ safeBottom=%@",
+                phase,String(isTextFocused),String(describing:dynamicTypeSize),String(describing:measurementColorScheme),axis,
+                scalar(raw),scalar(applied),String(applied.isFinite),String(applied >= 0),scalar(insets.top),scalar(insets.bottom))
+        }
+#endif
+        return applied
+    }
+#if DEBUG
+    private var measuresCaptureGeometry: Bool {
+        ProcessInfo.processInfo.arguments.contains("--ui-testing")
+            && ProcessInfo.processInfo.arguments.contains("--measure-capture-geometry")
+    }
+    private func captureGeometryMarker(_ phase: String) {
+        if measuresCaptureGeometry { NSLog("[SpeakItCaptureGeometry] marker=%@",phase) }
+    }
+#endif
 
     private var trimmedTypedText: String {
         typedText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -274,8 +311,8 @@ struct CaptureView: View {
             // the oversized editor's ideal size. That gives the overlay a real
             // top edge even while the keyboard shortens the available height.
             .frame(
-                width: max(0, geometry.size.width),
-                height: max(0, geometry.size.height),
+                width: measuredShellDimension(geometry.size.width,axis:"width",geometry:geometry),
+                height: measuredShellDimension(geometry.size.height,axis:"height",geometry:geometry),
                 alignment: .top
             )
             .overlay(alignment: .top) {
@@ -286,13 +323,6 @@ struct CaptureView: View {
         .interactiveDismissDisabled(
             transcriber.isListening || isSaving || isRecoveringAudio || activeDraftID != nil
         )
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") { isTextFocused = false }
-                    .fontWeight(.semibold)
-            }
-        }
         .repositoryErrorAlert($errorMessage)
         .sheet(isPresented: $showsCaptureReview) {
             if let savedResult {
@@ -337,10 +367,15 @@ struct CaptureView: View {
                 // animation that can race Core Audio/model startup.
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 if accessibilityVoiceOverEnabled {
-                    UIAccessibility.post(notification: .announcement, argument: "Listening")
+                    UIAccessibility.post(
+                        notification: .announcement,
+                        argument: isLongVoiceCapture
+                            ? "Long capture listening. Tap the pulse to finish."
+                            : "Listening"
+                    )
                 }
                 performance?.markMicrophoneReady()
-                armNoSpeechTimeout()
+                if !isLongVoiceCapture { armNoSpeechTimeout() }
                 Task { await CaptureActivityManager.beginListening() }
             case .finalizing:
                 performance?.markEndOfSpeechDetected(
@@ -356,8 +391,12 @@ struct CaptureView: View {
             case .failed:
                 noSpeechTimeoutTask?.cancel()
                 Task { await CaptureActivityManager.cancelListening() }
-                if hasRecoverableActiveAudio {
+                if transcriber.hasAudioIntegrityFailure {
+                    preserveUnverifiedLongRecording()
+                } else if hasRecoverableActiveAudio {
                     recoverActiveAudio()
+                } else if transcriber.requiresWholeRecordingVerification {
+                    preserveUnverifiedLongRecording()
                 } else {
                     continueByTyping(
                         notice: "Voice had trouble starting. Your thought can still be saved by typing."
@@ -490,6 +529,7 @@ struct CaptureView: View {
                     .foregroundStyle(Color.speakMuted)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 290)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .accessibilityElement(children: .combine)
 
@@ -545,23 +585,103 @@ struct CaptureView: View {
                 .tint(Color.speakInk)
             }
 
-            Button {
-                switchToTyping()
-            } label: {
-                Label("Type instead", systemImage: "keyboard")
-                    .font(.subheadline.weight(.medium))
-                    .padding(.horizontal, 18)
-                    .padding(.vertical, 11)
-                    .background(Color.speakInk.opacity(0.08), in: Capsule())
+            captureActionLayout {
+                longCaptureButton
+
+                Button {
+                    switchToTyping()
+                } label: {
+                    captureActionLabel(
+                        dynamicTypeSize.isAccessibilitySize ? "Type" : "Type instead",
+                        systemImage: "keyboard"
+                    )
+                        .background(Color.speakInk.opacity(0.08), in: Capsule())
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.speakIt)
+                .foregroundStyle(Color.speakInk)
+                .disabled(transcriber.state == .finalizing || isSaving || isRecoveringAudio
+                    || transcriber.requiresOfflineRecovery)
+                .accessibilityLabel("Type instead")
+                .accessibilityHint("Switches from voice capture to a text field")
+                .accessibilityIdentifier("capture.typeInstead")
             }
-            .buttonStyle(.speakIt)
-            .foregroundStyle(Color.speakInk)
-            .disabled(transcriber.state == .finalizing || isSaving || isRecoveringAudio)
-            .accessibilityHint("Switches from voice capture to a text field")
-            .accessibilityIdentifier("capture.typeInstead")
             .padding(.bottom, 34)
         }
         .padding(.horizontal, 20)
+    }
+
+    private var captureActionLayout: AnyLayout {
+        dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(spacing: 12))
+            : AnyLayout(HStackLayout(spacing: 12))
+    }
+
+    private func captureActionLabel(_ title: String, systemImage: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: systemImage)
+            Text(title)
+                .lineLimit(1)
+        }
+        .font(.subheadline.weight(.medium))
+        .frame(
+            maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil,
+            minHeight: 44,
+            alignment: .leading
+        )
+        .padding(.horizontal, 12)
+        .padding(.vertical, dynamicTypeSize.isAccessibilitySize ? 8 : 0)
+    }
+
+    private var longCaptureButton: some View {
+        Button {
+            let nextMode: SpeechTranscriber.EndpointMode = isLongVoiceCapture
+                ? .automatic : .longCapture
+            if nextMode == .longCapture && activeDraft == nil {
+                ensureDraft(source: .inAppVoice)
+            }
+            if nextMode == .longCapture {
+                guard let draft = activeDraft,
+                      (try? CaptureDraftStore.prepareAudioURL(for: draft)) != nil else {
+                    voiceNotice = "Long capture needs protected recording storage. Try again or type your thought."
+                    return
+                }
+                guard CaptureDraftStore.requireWholeRecordingVerification(id: draft.id) else {
+                    voiceNotice = "Long capture could not protect its recovery record. Try again or type."
+                    return
+                }
+            }
+            guard transcriber.setEndpointMode(nextMode) else {
+                voiceNotice = "Long capture needs a protected recording before it can start."
+                return
+            }
+            isLongVoiceCapture = nextMode == .longCapture
+            if isLongVoiceCapture {
+                noSpeechTimeoutTask?.cancel()
+            } else if transcriber.isListening,
+                      transcriber.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                armNoSpeechTimeout()
+            }
+        } label: {
+            captureActionLabel(
+                isLongVoiceCapture ? "Continuous" : "Auto finish",
+                systemImage: isLongVoiceCapture ? "checkmark.circle.fill" : "circle"
+            )
+            .foregroundStyle(Color.speakInk)
+            .background(
+                isLongVoiceCapture ? Color.speakInk.opacity(0.10) : Color.speakSurface,
+                in: Capsule()
+            )
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.speakIt)
+        .disabled(transcriber.state == .finalizing || isSaving || isRecoveringAudio
+            || transcriber.requiresOfflineRecovery)
+        .accessibilityLabel(isLongVoiceCapture ? "Continuous capture on" : "Auto finish on")
+        .accessibilityHint(isLongVoiceCapture
+            ? "Tap to use automatic pause saving. Continuous capture listens through pauses until you finish."
+            : "Tap to keep listening through pauses until you finish.")
+        .accessibilityIdentifier("capture.longCapture")
     }
 
     @ViewBuilder
@@ -602,6 +722,8 @@ struct CaptureView: View {
                         }
                         .font(.subheadline.weight(.semibold))
                         .buttonStyle(.speakIt)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                         .accessibilityLabel("Finish typing")
                         .accessibilityIdentifier("capture.finishTyping")
                     }
@@ -774,8 +896,11 @@ struct CaptureView: View {
                 .frame(maxWidth: 330)
             } else if let savedResult, savedResult.needsInterpretationConfirmation {
                 VStack(spacing: 10) {
-                    Button(action: retryUnclearCapture) {
-                        Label("Try saying it again", systemImage: "waveform")
+                    Button {
+                        confirmationDismissTask?.cancel()
+                        showsCaptureReview = true
+                    } label: {
+                        Label("Review and edit saved items", systemImage: "square.and.pencil")
                             .font(.headline)
                             .frame(maxWidth: .infinity, minHeight: 54)
                     }
@@ -785,20 +910,19 @@ struct CaptureView: View {
                         Color.speakInverseSurface,
                         in: RoundedRectangle(cornerRadius: 18, style: .continuous)
                     )
-                    .accessibilityHint("Keeps this attempt safe until the new one is saved")
-                    .accessibilityIdentifier("capture.clarificationRetry")
+                    .accessibilityHint("Edit only the item that needs help while keeping the original words")
+                    .accessibilityIdentifier("capture.clarificationReview")
 
-                    Button {
-                        confirmationDismissTask?.cancel()
-                        showsCaptureReview = true
-                    } label: {
-                        Text("Review what I understood")
+                    Button(action: retryUnclearCapture) {
+                        Text("Try saying the capture again")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(Color.speakInk)
                             .frame(maxWidth: .infinity, minHeight: 46)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.speakIt)
+                    .accessibilityHint("Keeps this attempt safe until the new one is saved")
+                    .accessibilityIdentifier("capture.clarificationRetry")
 
                     Button(action: finishSavedCapture) {
                         Text("Keep it as saved")
@@ -1029,6 +1153,7 @@ struct CaptureView: View {
 
     private var voiceTitle: String {
         if isRecoveringAudio { return "Recovering your words…" }
+        if transcriber.requiresOfflineRecovery { return "Long capture · Recording" }
         return switch transcriber.state {
         case .idle: "Tap to speak"
         case .requestingPermission:
@@ -1036,7 +1161,9 @@ struct CaptureView: View {
                 ? "Preparing accurate recognition…"
                 : "Getting ready…"
         case .listening:
-            transcriber.isWaitingForContinuation ? "Still listening…" : "Listening"
+            isLongVoiceCapture
+                ? "Long capture · Listening"
+                : (transcriber.isWaitingForContinuation ? "Still listening…" : "Listening")
         case .finalizing: "Saving your thought…"
         case .permissionDenied: "Microphone access is off"
         case .unavailable: "Speech recognition is unavailable"
@@ -1047,6 +1174,9 @@ struct CaptureView: View {
     private var voiceSubtitle: String {
         if isRecoveringAudio {
             return "The temporary recording is safe on this iPhone."
+        }
+        if transcriber.requiresOfflineRecovery {
+            return "Live transcription stopped. Recording continues; tap the pulse to finish."
         }
         if let voiceNotice {
             return voiceNotice
@@ -1059,9 +1189,11 @@ struct CaptureView: View {
                 ? "One-time voice setup stays on this iPhone."
                 : "Speak It only listens while you’re capturing."
         case .listening:
-            transcriber.isWaitingForContinuation
+            isLongVoiceCapture
+                ? "Keep speaking through pauses. Tap the pulse to finish and save."
+                : transcriber.isWaitingForContinuation
                 ? "Take your time. Keep speaking, or tap the pulse when you’re finished."
-                : "Just speak. I’ll save after a natural pause."
+                : "Auto finish is on. I’ll save after a natural pause, or tap the pulse now."
         case .finalizing: "The original words are saved first."
         case .permissionDenied: "Allow microphone and speech recognition, or type instead."
         case .unavailable: "You can still capture this thought by typing."
@@ -1075,14 +1207,21 @@ struct CaptureView: View {
 
     private var voiceButtonAccessibilityHint: String {
         transcriber.isListening
-            ? "Finishes immediately; otherwise Speak It waits longer when your words sound unfinished"
+            ? (isLongVoiceCapture
+                ? "Finishes and saves this long capture"
+                : "Finishes immediately; otherwise Speak It waits longer when your words sound unfinished")
             : "Requests permission if needed, then begins listening"
     }
 
     private func handleVoiceButton() {
         if transcriber.isListening {
-            guard !transcriber.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                voiceNotice = "I’m listening — say your thought, then pause."
+            guard SpeechTranscriber.allowsManualFinish(
+                transcript: transcriber.transcript,
+                mode: transcriber.requiresWholeRecordingVerification ? .longCapture : .automatic
+            ) else {
+                voiceNotice = transcriber.requiresWholeRecordingVerification
+                    ? "Long capture is listening. Speak, then tap the pulse to finish."
+                    : "I’m listening — say your thought, then pause."
                 UINotificationFeedbackGenerator().notificationOccurred(.warning)
                 return
             }
@@ -1100,11 +1239,36 @@ struct CaptureView: View {
     private func startVoiceCapture() async {
         guard mode == .voice else { return }
         ensureDraft(source: .inAppVoice)
-        let recoveryURL = activeDraft.flatMap { try? CaptureDraftStore.prepareAudioURL(for: $0) }
+        let recoveryURL: URL?
+        do {
+            recoveryURL = try activeDraft.flatMap { try CaptureDraftStore.prepareAudioURL(for: $0) }
+        } catch {
+            recoveryURL = nil
+        }
+        if isLongVoiceCapture && recoveryURL == nil {
+            if let activeDraftID {
+                CaptureDraftStore.markFailed(
+                    id: activeDraftID,
+                    message: "Protected recording storage was unavailable before long capture started."
+                )
+            }
+            activeDraftID = nil
+            captureNotice = "Long capture could not prepare protected recording storage. Type your thought instead."
+            mode = .text
+            return
+        }
+        if isLongVoiceCapture,
+           let activeDraftID,
+           !CaptureDraftStore.requireWholeRecordingVerification(id: activeDraftID) {
+            captureNotice = "Long capture could not protect its recovery record. Type your thought instead."
+            mode = .text
+            return
+        }
         await transcriber.start(
             recoveryAudioURL: recoveryURL,
             contextualPhrases: tutorialMission?.contextualPhrases ?? [],
-            prefersEnhancedRecognition: tutorialMission != nil
+            prefersEnhancedRecognition: tutorialMission != nil,
+            endpointMode: isLongVoiceCapture ? .longCapture : .automatic
         ) { finalText in
             save(finalText, source: .inAppVoice)
         }
@@ -1116,12 +1280,24 @@ struct CaptureView: View {
     }
 
     private var hasRecoverableActiveAudio: Bool {
-        guard transcriber.hasDetectedAudioInput, let activeDraft else { return false }
+        guard let activeDraft,
+              transcriber.hasDetectedAudioInput || transcriber.requiresOfflineRecovery
+                || !transcriber.transcript.isEmpty
+                || transcriber.requiresWholeRecordingVerification else { return false }
         return CaptureDraftStore.hasRecoveryAudio(for: activeDraft)
     }
 
     private func recoverActiveAudio() {
         guard !isRecoveringAudio, let draft = activeDraft else { return }
+        let useChunkedRecovery = draft.requiresWholeRecordingVerification
+            || transcriber.requiresWholeRecordingVerification
+            || transcriber.requiresOfflineRecovery
+        if useChunkedRecovery && !draft.requiresWholeRecordingVerification {
+            guard CaptureDraftStore.requireWholeRecordingVerification(id: draft.id) else {
+                preserveUnverifiedLongRecording()
+                return
+            }
+        }
         noSpeechTimeoutTask?.cancel()
         isRecoveringAudio = true
         transcriber.resetAfterFailure()
@@ -1129,17 +1305,47 @@ struct CaptureView: View {
 
         Task { @MainActor in
             do {
-                let recoveredText = try await CaptureAudioRecovery.transcribe(draft)
+                let durableDraft = CaptureDraftStore.draft(id: draft.id) ?? draft
+                let recoveredText = try await CaptureAudioRecovery.transcribe(durableDraft)
                 isRecoveringAudio = false
                 save(recoveredText, source: .inAppVoice)
             } catch {
                 isRecoveringAudio = false
                 CaptureDraftStore.markFailed(id: draft.id, error: error)
-                continueByTyping(
-                    notice: "Your recording is safe. Type this thought now, or recover it later from Today."
-                )
+                if useChunkedRecovery {
+                    // Detach this failed recording from any new typed capture.
+                    // Saving the last live partial must never retire audio that
+                    // may contain minutes of words beyond it.
+                    activeDraftID = nil
+                    typedText = ""
+                    captureNotice = "The full long recording could not be verified. It is safe in Capture history; type the complete thought or recover it later."
+                    mode = .text
+                } else {
+                    continueByTyping(
+                        notice: "Your recording is safe. Type this thought now, or recover it later from Today."
+                    )
+                }
             }
         }
+    }
+
+    private func preserveUnverifiedLongRecording() {
+        let hasAudio = activeDraft.map(CaptureDraftStore.hasRecoveryAudio(for:)) == true
+        if let activeDraftID {
+            CaptureDraftStore.markFailed(
+                id: activeDraftID,
+                message: hasAudio
+                    ? "The protected recording did not receive every microphone buffer. Its partial audio remains available for review."
+                    : "The protected recording was unavailable. The captured text remains in Capture history."
+            )
+        }
+        activeDraftID = nil
+        typedText = ""
+        transcriber.resetAfterFailure()
+        captureNotice = hasAudio
+            ? "The long recording could not be verified. Its partial audio is safe in Capture history; type the complete thought if you remember it."
+            : "The long recording could not be verified. Captured text is in Capture history; type the complete thought if you remember it."
+        mode = .text
     }
 
     private func armNoSpeechTimeout() {
@@ -1152,7 +1358,11 @@ struct CaptureView: View {
                 return
             }
 
-            if hasRecoverableActiveAudio {
+            if transcriber.requiresWholeRecordingVerification {
+                transcriber.stopAndFinalize { finalText in
+                    save(finalText, source: .inAppVoice)
+                }
+            } else if hasRecoverableActiveAudio {
                 recoverActiveAudio()
             } else {
                 transcriber.cancel()
@@ -1175,6 +1385,21 @@ struct CaptureView: View {
 
     private func switchToTyping() {
         captureNotice = nil
+        if transcriber.requiresWholeRecordingVerification, let activeDraftID {
+            // A typed continuation is a new capture. Keep the long recording
+            // separate so saving a partial live transcript cannot erase it.
+            transcriber.cancel()
+            CaptureDraftStore.markFailed(
+                id: activeDraftID,
+                message: "The long recording was stopped while switching to typing. Recover it from Capture history."
+            )
+            self.activeDraftID = nil
+            typedText = ""
+            captureNotice = "Your long recording is safe in Capture history. Type the complete thought here, or recover the recording later."
+            mode = .text
+            Task { await CaptureActivityManager.cancelListening() }
+            return
+        }
         let partialTranscript = tutorialAwareVoiceTranscript
         if !partialTranscript.isEmpty {
             typedText = partialTranscript
@@ -1201,6 +1426,9 @@ struct CaptureView: View {
         }
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(220))
+#if DEBUG
+            captureGeometryMarker("will-focus-text")
+#endif
             isTextFocused = true
         }
     }
@@ -1386,6 +1614,9 @@ struct CaptureView: View {
                 } else {
                     UINotificationFeedbackGenerator().notificationOccurred(.success)
                 }
+#if DEBUG
+                captureGeometryMarker("will-show-saved")
+#endif
                 withAnimation(.spring(response: 0.45, dampingFraction: 0.72)) {
                     showsSavedConfirmation = true
                 }
@@ -1466,11 +1697,11 @@ struct CaptureView: View {
 
         switch requirement {
         case .time:
-            return "I understood the thought, but not when. Try again with the time."
+            return "I understood the thought, but not when. Review that item to set the time."
         case .person:
-            return "I understood the follow-up, but not who it’s about."
+            return "I understood the follow-up, but not who it’s about. Review that item to name the person."
         case .type:
-            return "I’m not sure whether this is something to do or something to remember."
+            return "I’m not sure whether this is for Today or Memory. Review that item to choose."
         case .splitDecision:
             return "I’m not sure whether that was one thought or more."
         case .confirmation:
@@ -1480,15 +1711,17 @@ struct CaptureView: View {
         // here as `.type` or `.confirmation` and was answered with a question
         // about the wrong thing.
         case .missingAction:
-            return "I heard the reminder, but not what to do. Try again with the action."
+            return "I heard the reminder, but not what to do. Review that item to add the action."
         case .ambiguousPerson:
-            return "I understood the thought, but not who it’s about."
+            return "I understood the thought, but not who it’s about. Review that item to name the person."
         case .reportedSpeech:
             return "That sounded like someone else’s words. Your original words are safe."
         case .ambiguousActor:
             return "I couldn’t tell whether that was yours to do."
+        case .ambiguousObject:
+            return "I understood the action, but not which item. Review that part to name it."
         case .ambiguousTemporalScope:
-            return "I heard a day but not a decision. Try again with the one you meant."
+            return "I heard a day but not a decision. Review that item to set the day you meant."
         case .incompleteThought:
             return "It sounded like that thought wasn’t finished. Your words are safe — pick it up where you left off."
         case .unsupportedLocationTrigger, .unsupportedConditionTrigger,
@@ -1639,7 +1872,7 @@ struct CaptureView: View {
             save(trimmedTypedText, source: .inAppText)
         } else if transcriber.isListening {
             let partial = transcriber.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !partial.isEmpty {
+            if !partial.isEmpty || transcriber.requiresWholeRecordingVerification {
                 transcriber.stopAndFinalize { finalText in
                     save(finalText, source: .inAppVoice)
                 }
@@ -1649,7 +1882,9 @@ struct CaptureView: View {
             }
         } else {
             let transcript = transcriber.transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !transcript.isEmpty {
+            if transcriber.requiresWholeRecordingVerification && hasRecoverableActiveAudio {
+                recoverActiveAudio()
+            } else if !transcript.isEmpty {
                 save(transcript, source: .inAppVoice)
             } else if hasRecoverableActiveAudio {
                 recoverActiveAudio()

@@ -71,7 +71,20 @@ Tooling for this area lives in `Tools/CorpusRunner`, `Tools/PipelineProbe` and
 | Document | What it is |
 | --- | --- |
 | [TEST_CASES.md](TEST_CASES.md) | Automated repository tests and what each protects |
+| [PRODUCT_READINESS_2026-10-01.md](PRODUCT_READINESS_2026-10-01.md) | Isolated surrounding-product fixes, finite readiness matrix, evidence and one Mac/device handoff; integration remains unqualified |
 | [CAPTURE_STRESS_TEST_PLAN.md](CAPTURE_STRESS_TEST_PLAN.md) | Release gate for every outside-the-app capture route |
+| [LONG_CAPTURE_UNSEEN_2026-09-24.md](Understanding/LONG_CAPTURE_UNSEEN_2026-09-24.md) | Independent 40-capture long-speech gate failure and development status; V1 remains blocked |
+| [LONG_CAPTURE_MECHANISM_RESEARCH_2026-09-25.md](Understanding/LONG_CAPTURE_MECHANISM_RESEARCH_2026-09-25.md) | Targeted speech-repair and provenance research applied to the remaining general mechanisms |
+| [LONG_CAPTURE_RELEASE_CRITERIA.md](Understanding/LONG_CAPTURE_RELEASE_CRITERIA.md) | Locked whole-capture qualification thresholds, operating range, and release blockers |
+| [LONG_CAPTURE_FRESH_QUALIFICATION_2026-09-27.md](Understanding/LONG_CAPTURE_FRESH_QUALIFICATION_2026-09-27.md) | Fresh 240-case shipping-path failure, whole-capture family scores, and zero-tolerance blockers; now development evidence |
+| [LONG_CAPTURE_POSTGATE_DEVELOPMENT_2026-09-27.md](Understanding/LONG_CAPTURE_POSTGATE_DEVELOPMENT_2026-09-27.md) | Exact production-path rescore on the exposed 240 cases after development changes; still blocks V1 |
+| [LONG_CAPTURE_DEVICE_QUALIFICATION_RUNBOOK.md](Understanding/LONG_CAPTURE_DEVICE_QUALIFICATION_RUNBOOK.md) | Preallocated local microphone matrix and stage-by-stage scoring procedure; not yet executed |
+| [EXPOSED_EXAMPLE_PILOT_AUDIT_2026-09-27.md](Understanding/EXPOSED_EXAMPLE_PILOT_AUDIT_2026-09-27.md) | Source-grounded 25-case answer audit and raw shipping-repository development trace |
+| [EXPOSED_EXAMPLE_FULL_EXECUTION_2026-09-28.md](Understanding/EXPOSED_EXAMPLE_FULL_EXECUTION_2026-09-28.md) | All 1,770 exposed synthetic inputs executed in bounded repository batches, with raw traces and limits |
+| [RECORDING_LIFECYCLE_AUDIT_2026-09-27.md](Understanding/RECORDING_LIFECYCLE_AUDIT_2026-09-27.md) | In-app continuous default, audio stop-path audit, and remaining device evidence |
+| [EXAMPLE_PACK_CONTINUATION_HANDOFF_2026-09-27.md](Understanding/EXAMPLE_PACK_CONTINUATION_HANDOFF_2026-09-27.md) | Consolidated implementation status, exact checks, remaining semantic work, and one physical-device qualification session |
+| [LONG_CAPTURE_PROGRAM_REVIEW_2026-09-26.md](Understanding/LONG_CAPTURE_PROGRAM_REVIEW_2026-09-26.md) | Evidence audit, remaining root mechanisms, research findings, and the bounded path to a new independent release gate |
+| [LONG_CAPTURE_EXPOSED_DEV_SCORE_2026-09-26.md](Understanding/LONG_CAPTURE_EXPOSED_DEV_SCORE_2026-09-26.md) | Case-by-case semantic rescore of the exposed 40 captures on an identified rules-probe snapshot; development evidence only |
 | [DURABILITY_FINDINGS.md](DURABILITY_FINDINGS.md) | The durability destruction pass |
 | [LOCATION_DEVICE_QA.md](LOCATION_DEVICE_QA.md) | Physical-iPhone QA for location reminders |
 | [BUILD_12_HUMAN_QA.md](BUILD_12_HUMAN_QA.md) | **Historical.** Build 12 human bug hunt |

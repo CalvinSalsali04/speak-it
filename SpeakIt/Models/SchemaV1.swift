@@ -671,6 +671,170 @@ enum SpeakItSchemaV4: VersionedSchema {
     }
 }
 
+/// Version 5 adds one optional capture-operation record. Existing captures
+/// have no operation receipt to reconstruct, so the field stays nil.
+/// Frozen at introduction; do not edit after a later schema version exists.
+enum SpeakItSchemaV5: VersionedSchema {
+    static let versionIdentifier = Schema.Version(5, 0, 0)
+
+    static var models: [any PersistentModel.Type] {
+        [CaptureSession.self, CapturedItem.self, UserPreferences.self]
+    }
+
+    @Model
+    final class CaptureSession {
+        @Attribute(.unique) var id: UUID
+        var originalTranscription: String
+        var createdAt: Date
+        var captureSourceRawValue: String
+        var processingStatusRawValue: String
+        var processingError: String?
+        var operationStateData: Data?
+
+        @Relationship(deleteRule: .cascade, inverse: \CapturedItem.captureSession)
+        var items: [CapturedItem]
+
+        init(
+            id: UUID = UUID(),
+            originalTranscription: String,
+            createdAt: Date = .now,
+            captureSourceRawValue: String = "inAppText",
+            processingStatusRawValue: String = "complete",
+            processingError: String? = nil,
+            operationStateData: Data? = nil,
+            items: [CapturedItem] = []
+        ) {
+            self.id = id
+            self.originalTranscription = originalTranscription
+            self.createdAt = createdAt
+            self.captureSourceRawValue = captureSourceRawValue
+            self.processingStatusRawValue = processingStatusRawValue
+            self.processingError = processingError
+            self.operationStateData = operationStateData
+            self.items = items
+        }
+    }
+
+    @Model
+    final class CapturedItem {
+        @Attribute(.unique) var id: UUID
+        var originalTextSegment: String
+        var displayTitle: String
+        var itemTypeRawValue: String
+        var categoryRawValue: String
+        var createdAt: Date
+        var dueDate: Date?
+        var reminderDate: Date?
+        var priorityRawValue: Int
+        var personName: String?
+        var completedAt: Date?
+        var isArchived: Bool
+        var archivedAt: Date?
+        var processingConfidence: Double
+        var needsClarification: Bool
+        var isReviewed: Bool
+        var lastModifiedAt: Date
+
+        /// The two attributes version 2 added.
+        var temporalIntentData: Data?
+        var temporalKindRawValue: String?
+
+        /// The two attributes version 3 added.
+        var locationIntentData: Data?
+        var reminderTriggerKindRawValue: String?
+
+        /// The two attributes version 4 added.
+        var semanticStateRawValue: String?
+        var semanticGapRawValue: String?
+
+        var captureSession: CaptureSession?
+
+        init(
+            id: UUID = UUID(),
+            originalTextSegment: String,
+            displayTitle: String,
+            itemTypeRawValue: String = "unclear",
+            categoryRawValue: String = "general",
+            createdAt: Date = .now,
+            dueDate: Date? = nil,
+            reminderDate: Date? = nil,
+            priorityRawValue: Int = 1,
+            personName: String? = nil,
+            completedAt: Date? = nil,
+            isArchived: Bool = false,
+            archivedAt: Date? = nil,
+            processingConfidence: Double = 1,
+            needsClarification: Bool = false,
+            isReviewed: Bool = false,
+            lastModifiedAt: Date = .now,
+            temporalIntentData: Data? = nil,
+            temporalKindRawValue: String? = nil,
+            locationIntentData: Data? = nil,
+            reminderTriggerKindRawValue: String? = nil,
+            semanticStateRawValue: String? = nil,
+            semanticGapRawValue: String? = nil,
+            captureSession: CaptureSession? = nil
+        ) {
+            self.id = id
+            self.originalTextSegment = originalTextSegment
+            self.displayTitle = displayTitle
+            self.itemTypeRawValue = itemTypeRawValue
+            self.categoryRawValue = categoryRawValue
+            self.createdAt = createdAt
+            self.dueDate = dueDate
+            self.reminderDate = reminderDate
+            self.priorityRawValue = priorityRawValue
+            self.personName = personName
+            self.completedAt = completedAt
+            self.isArchived = isArchived
+            self.archivedAt = archivedAt
+            self.processingConfidence = processingConfidence
+            self.needsClarification = needsClarification
+            self.isReviewed = isReviewed
+            self.lastModifiedAt = lastModifiedAt
+            self.temporalIntentData = temporalIntentData
+            self.temporalKindRawValue = temporalKindRawValue
+            self.locationIntentData = locationIntentData
+            self.reminderTriggerKindRawValue = reminderTriggerKindRawValue
+            self.semanticStateRawValue = semanticStateRawValue
+            self.semanticGapRawValue = semanticGapRawValue
+            self.captureSession = captureSession
+        }
+    }
+
+    @Model
+    final class UserPreferences {
+        @Attribute(.unique) var id: UUID
+        var morningBriefingEnabled: Bool
+        var morningBriefingTime: Date
+        var notificationPermissionState: String
+        var speechPermissionState: String
+        var microphonePermissionState: String
+        var shortcutSetupCompleted: Bool
+        var preferredCaptureMethodRawValue: String
+
+        init(
+            id: UUID = UUID(),
+            morningBriefingEnabled: Bool = false,
+            morningBriefingTime: Date = .now,
+            notificationPermissionState: String = "notDetermined",
+            speechPermissionState: String = "notDetermined",
+            microphonePermissionState: String = "notDetermined",
+            shortcutSetupCompleted: Bool = false,
+            preferredCaptureMethodRawValue: String = "inAppText"
+        ) {
+            self.id = id
+            self.morningBriefingEnabled = morningBriefingEnabled
+            self.morningBriefingTime = morningBriefingTime
+            self.notificationPermissionState = notificationPermissionState
+            self.speechPermissionState = speechPermissionState
+            self.microphonePermissionState = microphonePermissionState
+            self.shortcutSetupCompleted = shortcutSetupCompleted
+            self.preferredCaptureMethodRawValue = preferredCaptureMethodRawValue
+        }
+    }
+}
+
 /// The shape the running app opens, which is always the live model classes.
 ///
 /// Every numbered version above is history: a fixed record of what some
@@ -687,18 +851,15 @@ enum SpeakItSchemaV4: VersionedSchema {
 /// "what the app runs on" from "what the store might be arriving as" is what
 /// stops the newest version from being redefined by the next edit.
 ///
-/// It carries version 4.0.0 because that is the version stores are stamped with
-/// and the live shape is exactly frozen version 4 — `SchemaFreezeTests` fails if
-/// that ever stops being true without a new version being added. When version 5
-/// arrives it takes over this role: add `SpeakItSchemaV5` with its own frozen
-/// copies, point this alias at a live twin of it, and leave version 4 where it
-/// is.
-typealias SpeakItSchemaCurrent = SpeakItSchemaV4Live
+/// It carries version 5.0.0 because the live shape matches frozen version 5.
+/// `SchemaFreezeTests` fails if that relationship changes without a new
+/// numbered snapshot and migration stage. Version 4 remains frozen above.
+typealias SpeakItSchemaCurrent = SpeakItSchemaV5Live
 
 /// The live-model schema `SpeakItSchemaCurrent` names. Declared separately only
 /// so the alias above can move to the next version in one line.
-enum SpeakItSchemaV4Live: VersionedSchema {
-    static let versionIdentifier = Schema.Version(4, 0, 0)
+enum SpeakItSchemaV5Live: VersionedSchema {
+    static let versionIdentifier = Schema.Version(5, 0, 0)
 
     /// Live global classes, on purpose. See `SpeakItSchemaCurrent`.
     static var models: [any PersistentModel.Type] {

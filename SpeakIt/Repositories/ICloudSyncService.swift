@@ -47,6 +47,9 @@ struct ICloudSessionSnapshot: Codable, Equatable, Sendable {
     let processingStatus: ProcessingStatus
     let processingError: String?
     let lastModifiedAt: Date?
+    /// Optional for older snapshots. Absence means the sender has no opinion;
+    /// it must never clear a local performed operation receipt.
+    var operationStateData: Data? = nil
 }
 
 enum ICloudDeletedEntity: String, Codable, Hashable, Sendable {

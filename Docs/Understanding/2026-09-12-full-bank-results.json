@@ -1,0 +1,37 @@
+{
+  "summary": {
+    "status": "complete",
+    "bank_count": 2000000,
+    "evaluated": 2000000,
+    "semantic_consistent": 1866834,
+    "title_consistent": 2000000,
+    "failure_buckets": {
+      "frame-1/noise-1/meaning": 45125,
+      "frame-0/noise-3/meaning": 4711,
+      "frame-1/noise-3/meaning": 4694,
+      "frame-2/noise-3/meaning": 62501,
+      "frame-4/noise-3/meaning": 6636,
+      "frame-5/noise-3/meaning": 2609,
+      "frame-6/noise-3/meaning": 2187,
+      "frame-7/noise-3/meaning": 4703
+    },
+    "probe_sha256": "62cc4e05b10080718ea5865325a5bcd782556ed34dc7e8ec6b6b17638acecee0",
+    "remaining": 0,
+    "cases_per_second_this_run": 22.89
+  },
+  "audit": {
+    "coverage": "All indices 0 through 1,999,999 exactly once, no gaps or overlaps",
+    "database_integrity": "ok",
+    "blocks": 19985,
+    "totals": {
+      "cases": 2000000,
+      "semantic_consistent": 1866834,
+      "title_consistent": 2000000
+    },
+    "probe_sha256": "62cc4e05b10080718ea5865325a5bcd782556ed34dc7e8ec6b6b17638acecee0",
+    "archive_sha256": "c024e91950b79d6668d5ed1db8c2b76c49edce936b95930a1bb1b403d9ee7f0a",
+    "reused_same_version_cases": 1600,
+    "newly_executed_cases": 1998400
+  },
+  "interpretation": "Controlled synthetic consistency evaluation, not independent human accuracy or model training."
+}

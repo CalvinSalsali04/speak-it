@@ -59,9 +59,9 @@ enum IntentConsolidator {
     private static let elaborativeMarker = #"(?:"#
         + #"\bbecause\b|\bsince\b|\bcuz\b|\bcoz\b|\bso\s+that\b|\bthat['’]?s\s+why\b"#
         + #"|\beven\s+though\b|\balthough\b|\banyway\b|\banyways\b"#
-        + #"|\bhonestly\b|\bbasically\b|\bto\s+be\s+honest\b|\bi\s+mean\b"#
+        + #"|\bhonestly\b|\bbasically\b|\bto\s+be\s+honest\b|\bi\s+mean\b(?!\s+to\b)"#
         + #"|\bthe\s+(?:main\s+|whole\s+|real\s+)?(?:thing|point|issue)\s+is\b"#
-        + #"|\bi\s+was\s+thinking\b|\bi\s+was\s+just\s+thinking\b"#
+        + #"|\bi\s+was\s+thinking\b(?!\s+(?:of|about|to)\b)|\bi\s+was\s+just\s+thinking\b(?!\s+(?:of|about|to)\b)"#
         + #"|\bi(?:['’]ve)?(?:\s+have)?\s+been\s+(?:meaning|thinking|putting|trying)\b"#
         + #"|\bi\s+keep\s+(?:forgetting|meaning|telling|thinking)\b"#
         + #"|\bi\s+always\s+forget\b|\bi\s+never\s+(?:got|get)\s+a?round\b"#
@@ -78,7 +78,7 @@ enum IntentConsolidator {
     /// Elsewhere they are possessive determiners attached to a real noun, and
     /// treating "her birthday is December 4" as a dangling pronoun threw away
     /// the one substantive thing in the sentence.
-    private static let anaphoricObject = #"^(?:(?:it|this|that|them|those|these|so|one)\b|(?:him|her|us|his|their)\s*$)"#
+    private static let anaphoricObject = #"^(?:(?:to\s+)?(?:it|this|that|them|those|these|so|one)\b|(?:him|her|us|his|their)\s*$)"#
 
     /// A recorded fact whose body says nothing: "remember that", "note this".
     /// A fact needs far less to stand on than an action does — "her birthday is
@@ -92,9 +92,9 @@ enum IntentConsolidator {
     /// people put them: "honestly the main thing is I just need to call the
     /// contractor" is one sentence containing its own preamble.
     private static let preambleMarker = #"(?:"#
-        + #"\banyway\b|\banyways\b|\bhonestly\b|\bbasically\b|\bto\s+be\s+honest\b|\bi\s+mean\b"#
+        + #"\banyway\b|\banyways\b|\bhonestly\b|\bbasically\b|\bto\s+be\s+honest\b|\bi\s+mean\b(?!\s+to\b)"#
         + #"|\bthe\s+(?:main\s+|whole\s+|real\s+)?(?:thing|point|issue)\s+is\b"#
-        + #"|\bi\s+was\s+(?:just\s+)?thinking\b"#
+        + #"|\bi\s+was\s+(?:just\s+)?thinking\b(?!\s+(?:of|about|to)\b)"#
         + #"|\bi(?:['’]ve)?(?:\s+have)?\s+been\s+(?:meaning|thinking|putting|trying)\b"#
         + #"|\bi\s+keep\s+(?:forgetting|meaning|telling|thinking)\b"#
         + #"|\bi\s+always\s+forget\b"#
@@ -125,6 +125,34 @@ enum IntentConsolidator {
     static func consolidate(_ transcript: String, clauses: [String]) -> Consolidation? {
         guard !clauses.isEmpty else { return nil }
 
+        // A resolved choice supplies the object of a later imperative: "I
+        // chose the sketchbook. Buy it and wrap it." The per-clause substance
+        // test correctly finds "it" dependent, but collapsing the capture to
+        // its one explicit noun silently deletes both committed actions.
+        // Leave those clauses to the pronoun/choice ownership passes.
+        let hasChoice = matches(transcript,
+            #"\b(?:settled\s+on|decided\s+on|chose|chosen|selected|going\s+with|final\s+choice)\b"#)
+        let hasDependentAction = clauses.contains { clause in
+            matches(clause,
+                #"^(?:i\s+(?:(?:need|have|want)\s+to|should|will)\s+)?\#(ActionabilityReader.actionVerb)\s+(?:it|them)\b"#)
+        }
+        if hasChoice && hasDependentAction { return nil }
+        // A finite proposal owns its thinking frame. The same words can be
+        // disposable throat clearing before a later command, but when the
+        // frame scopes the proposal itself, collapsing it erases the speech
+        // act and can turn an idea into an action or an unclear fragment.
+        if ThoughtOrganizer.readsLikeIdeaProposal(normalized(transcript)) {
+            return nil
+        }
+        // A speaker who explicitly frames the capture as a recollection or
+        // idea has opened a Memory scope. Let the clause and ownership passes
+        // inspect every sentence; collapsing to one later imperative-shaped
+        // quotation can invert the stated speech act.
+        if matches(transcript,
+            #"^(?:i(?:['’]m| am)\s+(?:describing|recounting|recording)\b|(?:here(?:['’]s| is)|this is)\s+(?:the|an?)\s+idea\b|i\s+(?:want|need)\s+to\s+remember\s+(?:how|why|what)\b)"#) {
+            return nil
+        }
+
         let substantive = clauses.filter { isSubstantive($0) }
         // Two or more things a person could act on separately is a list, and a
         // list is the splitter's job. This stage never touches it.
@@ -146,6 +174,22 @@ enum IntentConsolidator {
         guard elaborative else { return nil }
 
         guard let head = substantive.first else {
+            // An unpunctuated narrative can contain an early "I keep..."
+            // preamble and a later pivot into a complete obligation. The
+            // clause tagger may see no substantive head in the whole run;
+            // the final pivot still gives deterministic ownership to its
+            // single explicit intention.
+            let point = intention(in: transcript)
+            if point != normalized(transcript),
+               isSubstantive(point),
+               RuleBasedThoughtExtractor.splitClauses(point).count == 1 {
+                let title = stripFraming(point)
+                return Consolidation(
+                    analysisText: normalized(point),
+                    title: title.isEmpty ? normalized(point) : title,
+                    requiresReview: false
+                )
+            }
             // "I keep meaning to call Mom" wears an elaborative frame, but the
             // whole capture *is* the obligation. The substance rules see only
             // the frame — the same words that, mid-paragraph, are commentary —
@@ -196,12 +240,20 @@ enum IntentConsolidator {
 
     /// Drops everything before a pivot such as "anyway" or "the thing is".
     private static func droppingPreamble(_ clause: String) -> String {
-        guard let range = clause.range(
-            of: #"^.*?\#(preambleMarker)[\s,]*(?:that\s+)?"#,
-            options: [.regularExpression, .caseInsensitive]
-        ) else { return clause }
-        let remainder = normalized(String(clause[range.upperBound...]))
-        return isSubstantive(remainder) ? remainder : clause
+        guard let regex = NSRegularExpression.speakItCached(preambleMarker) else {
+            return clause
+        }
+        let matches = regex.matches(in: clause, range: NSRange(clause.startIndex..., in: clause))
+        for match in matches.reversed() {
+            guard let range = Range(match.range, in: clause) else { continue }
+            var remainder = normalized(String(clause[range.upperBound...]))
+            remainder = replace(remainder, #"^(?:that\s+)?"#, "")
+            if isSubstantive(remainder),
+               RuleBasedThoughtExtractor.splitClauses(remainder).count == 1 {
+                return remainder
+            }
+        }
+        return clause
     }
 
     /// Drops trailing comma-clauses that comment rather than add: the
@@ -245,6 +297,7 @@ enum IntentConsolidator {
         if let recorded = ActionabilityReader.recordedFactBody(text) {
             return !recorded.isEmpty && !matches(recorded, emptyFactBody)
         }
+
 
         if let object = actionObject(in: text) {
             return !object.isEmpty && !matches(object, anaphoricObject)
@@ -348,7 +401,7 @@ enum IntentConsolidator {
     // clause. The "while I'm at it" family are asides meaning "also" — the
     // clause they precede is the content: "while I'm thinking about it pay the
     // hydro bill" is about the hydro bill.
-    private static let leadingFiller = #"^(?:okay|ok|so|well|oh|right|um+|uh+|like|and|but|then|anyway|anyways|honestly|basically|actually|really|just|yeah|alright|i\s+mean|you\s+know|to\s+be\s+honest|while\s+i['’]?m\s+(?:thinking\s+about\s+it|at\s+it)|while\s+i\s+remember|while\s+we['’]?re\s+at\s+it)\b[\s,]*"#
+    private static let leadingFiller = #"^(?:okay|ok|so|well|oh|right|um+|uh+|like|and|but|then|anyway|anyways|honestly|basically|actually|really|just|yeah|alright|i\s+mean\b(?!\s+to\b)|you\s+know|to\s+be\s+honest|while\s+i['’]?m\s+(?:thinking\s+about\s+it|at\s+it)|while\s+i\s+remember|while\s+we['’]?re\s+at\s+it)\b[\s,]*"#
 
     private static func normalized(_ text: String) -> String {
         text

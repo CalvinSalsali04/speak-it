@@ -231,6 +231,10 @@ final class SemanticStatePersistenceTests: XCTestCase {
             SemanticGap.allCases.map(\.rawValue).sorted(),
             [
                 "ambiguousActor",
+                // Additive named gap introduced by the preserved source checkpoint.
+                // It is stored in the existing String field; frozen numbered
+                // SwiftData model shapes and all previous spellings stay pinned.
+                "ambiguousObject",
                 "ambiguousPerson",
                 "ambiguousTemporalScope",
                 "incompleteThought",

@@ -10,8 +10,12 @@ import Foundation
 
 
 var arguments = Array(CommandLine.arguments.dropFirst())
+SentenceContext.taggerDisabledForEvaluation = arguments.contains("--tagger-disabled")
+arguments.removeAll { $0 == "--tagger-disabled" }
 let jsonOutput = arguments.contains("--json")
 arguments.removeAll { $0 == "--json" }
+let diagnostics = arguments.contains("--diagnostics")
+arguments.removeAll { $0 == "--diagnostics" }
 var showRepairs = false
 if let index = arguments.firstIndex(of: "--repairs") {
     showRepairs = true
@@ -25,6 +29,21 @@ if let index = arguments.firstIndex(of: "--repairs") {
 var showClausesOnly = false
 if let index = arguments.firstIndex(of: "--clauses") {
     showClausesOnly = true
+    arguments.remove(at: index)
+}
+var showPartitionCoverage = false
+if let index = arguments.firstIndex(of: "--partition-coverage") {
+    showPartitionCoverage = true
+    arguments.remove(at: index)
+}
+var showRepairCoverage = false
+if let index = arguments.firstIndex(of: "--repair-coverage") {
+    showRepairCoverage = true
+    arguments.remove(at: index)
+}
+var showReaders = false
+if let index = arguments.firstIndex(of: "--readers") {
+    showReaders = true
     arguments.remove(at: index)
 }
 
@@ -91,6 +110,10 @@ let utterances = lines
     .map { $0.trimmingCharacters(in: .whitespaces) }
     .filter { !$0.isEmpty && !$0.hasPrefix("#") }
 
+func repairedForRules(_ utterance: String) -> String {
+    SpeechRepairPipeline.run(utterance).corrected
+}
+
 if showClausesOnly {
     // A hand-maintained copy of the repair chain `RuleBasedThoughtExtractor`
     // runs before it segments (`ThoughtExtractor.swift:386-403`). It is a copy,
@@ -104,77 +127,82 @@ if showClausesOnly {
     // `--completion` below does not copy anything: it runs the engine and reads
     // the string off the row. Prefer that shape for anything new.
     for utterance in utterances {
-        let cleaned = DisfluencyFilter.stripped(utterance)
-        let corrected = GroceryHomophoneRepair.repaired(
-            DictationHomophoneRepair.repaired(
-                DictationPunctuationRepair.repaired(
-                    SpokenShorthandRepair.twentyFourHourClock(
-                        SpokenShorthandRepair.repaired(
-                            ClockDigitRepair.repaired(
-                                SelfCorrectionResolver.resolved(
-                                    SplitCompoundRepair.rejoined(cleaned)
-                                )
-                            )
-                        )
-                    )
-                )
-            )
-        )
+        let corrected = repairedForRules(utterance)
         let clauses = RuleBasedThoughtExtractor.splitClauses(corrected)
         print("\(utterance)\t\(clauses.joined(separator: " | "))")
     }
     exit(0)
 }
 
-if showCompletion {
-    // `ThoughtOrganizer.organize` is called on `segment.analysisText`
-    // (`ThoughtExtractor.swift:504`) and its first act is to trim
-    // (`ThoughtOrganizer.swift:794`). So for a row whose organization was
-    // derived from its OWN analysis text, a trimmed `analysisText` is the very
-    // string the scored guard at `ThoughtOrganizer.swift:966` tested, and this
-    // re-evaluates a pure function of that identical input rather than
-    // reconstructing it or inferring it from the outcome.
-    //
-    // That is not every row. The spoken-list splitter at
-    // `ThoughtExtractor.swift:684-699` builds one row per product with
-    // `analysisText` synthesised from the entry and `organization:
-    // item.organization` INHERITED from the parent, so the guard never saw that
-    // string. Rather than leave the exception to this comment -- a comment is
-    // what failed last time -- the loop below reports it: on the rules path
-    // `.incompleteThought` is set only by that guard
-    // (`ThoughtOrganizer.swift:979`), so a row whose re-evaluated answer
-    // disagrees with its own recorded gap did not get its organization from
-    // this text, and the line says so.
-    //
-    // Deliberately NOT the `── "..."` record header: `devsets/score.py`,
-    // `everyday/score.py` and `heldout/score.py` split reports on that prefix,
-    // and a mode whose output could be read as records is exactly the hazard
-    // `printRows` warns about in `rowreport.swift`.
+if showPartitionCoverage {
     for utterance in utterances {
-        let trimmed = utterance.trimmingCharacters(in: .whitespacesAndNewlines)
-        let raw = ThoughtCompletion.unfinished(in: trimmed)
-        print("COMPLETION  \(utterance)")
-        print("   utterance:  \(raw?.rawValue ?? "nil")")
-        let result = ThoughtExtractionEngine.extractWithRules(
-            utterance,
-            referenceDate: referenceDate,
-            calendar: calendar
-        )
-        if result.items.isEmpty {
-            print("   items:      NONE  <- capture produced nothing")
+        let corrected = repairedForRules(utterance)
+        let partition = CaptureOperationDetector.partitionWithOwnership(corrected)
+        let ledger = SourceUnitLedger(corrected)
+        let unowned = partition.unownedMeaningfulIDs(in: corrected).map { ledger.words[$0].text }
+        let record: [String: Any] = [
+            "text": utterance,
+            "corrected": corrected,
+            "operationCount": partition.operations.count,
+            "unownedWords": unowned,
+        ]
+        if let data = try? JSONSerialization.data(withJSONObject: record, options: [.sortedKeys]),
+           let line = String(data: data, encoding: .utf8) {
+            print(line)
         }
-        for (index, item) in result.items.enumerated() {
-            let analysis = item.analysisText.trimmingCharacters(in: .whitespacesAndNewlines)
-            let scored = ThoughtCompletion.unfinished(in: analysis)
-            // The whole point of printing the analysis text beside the case:
-            // when it differs from the utterance, a behavioural argument about
-            // the utterance was never about the string the guard saw.
-            let drift = analysis == trimmed ? "" : "   <- differs from the utterance"
-            print("   item \(index + 1):     \(scored?.rawValue ?? "nil")   analysis=\"\(analysis)\"\(drift)")
-            if (scored != nil) != (item.organization.state.gap == .incompleteThought) {
-                print("      NOT THIS ROW'S INPUT: the recorded gap disagrees, so this")
-                print("      row's organization came from some other text -- see :684")
-            }
+    }
+    exit(0)
+}
+
+if showRepairCoverage {
+    for utterance in utterances {
+        let repair = SpeechRepairPipeline.run(utterance, trackOrigins: true)
+        let missing = repair.rawWords.indices
+            .filter { !repair.survivingRawWordIDs.contains($0) }
+            .map { ["id": String($0), "word": repair.rawWords[$0].text] }
+        let stages = repair.stages.map { stage -> [String: Any] in
+            let removed = stage.removedRawWordIDs.sorted()
+            return ["kind": stage.kind.rawValue,
+             "removedWords": removed.map { repair.rawWords[$0].text },
+             "removedRawWordIDs": removed]
+        }
+        let record: [String: Any] = [
+            "text": utterance,
+            "corrected": repair.corrected,
+            "rawWordsWithoutOrigin": missing,
+            "stages": stages,
+        ]
+        if let data = try? JSONSerialization.data(withJSONObject: record, options: [.sortedKeys]),
+           let line = String(data: data, encoding: .utf8) {
+            print(line)
+        }
+    }
+    exit(0)
+}
+
+if diagnostics {
+    for utterance in utterances {
+        let repair = SpeechRepairPipeline.run(utterance, trackOrigins: true)
+        let organized = ThoughtOrganizer.organize(repair.corrected, referenceDate: referenceDate, calendar: calendar)
+        print("INPUT: \(utterance)\nREPAIR: \(repair.corrected)\nORGANIZER: \(organized)")
+        _ = RuleBasedThoughtExtractor.process(utterance, referenceDate: referenceDate, calendar: calendar, traceObserver: { trace in
+            print("TRACE: \(trace)")
+        })
+    }
+    exit(0)
+}
+
+if showReaders {
+    for utterance in utterances {
+        let repair = SpeechRepairPipeline.run(utterance, trackOrigins: true)
+        let organized = ThoughtOrganizer.organize(repair.corrected,
+                                                 referenceDate: referenceDate,
+                                                 calendar: calendar)
+        print("\(utterance) | repaired=\(repair.corrected) | clauses=\(RuleBasedThoughtExtractor.splitClauses(utterance)) | actionability=\(ActionabilityReader.read(repair.corrected)) | type=\(organized.itemType) | review=\(organized.needsClarification)")
+        let local = CaptureOperationDetector.resolvingInCaptureCancellations(utterance)
+        print("local cancellation remainder=\(local.remainder) operations=\(local.operations)")
+        for clause in RuleBasedThoughtExtractor.splitClauses(utterance) {
+            print("clause reading=\(ClauseScope.read(clause)) action=\(ActionabilityReader.actionBody(clause))")
         }
     }
     exit(0)
@@ -316,7 +344,20 @@ for utterance in utterances {
             ]
         }
         let operations: [[String: Any]] = result.operations.map {
-            ["operation": $0.operation.rawValue, "target": $0.target as Any? ?? NSNull(), "scoped": $0.isScoped]
+            [
+                "operation": $0.operation.rawValue,
+                "target": $0.target as Any? ?? NSNull(),
+                "scoped": $0.isScoped,
+                "needsReview": $0.needsReview,
+                "isBroad": $0.isBroad,
+                "polarity": $0.polarity.rawValue,
+                "newTimingText": $0.newTimingText as Any? ?? NSNull(),
+                "expectedOldTimingText": $0.expectedOldTimingText as Any? ?? NSNull(),
+                "sourceQuote": $0.sourceQuote,
+                "sourceUnitIDs": $0.sourceUnitIDs.sorted(),
+                "localTargetUnitIDs": $0.localTargetUnitIDs.sorted(),
+                "independentCreationUnitIDs": $0.independentCreationUnitIDs.sorted()
+            ]
         }
         let data = try JSONSerialization.data(withJSONObject: [
             "text": utterance, "items": items, "operations": operations
@@ -325,7 +366,7 @@ for utterance in utterances {
         continue
     }
 
-    printCaptureHeader(utterance: utterance)
+    print("── \"\(utterance)\"")
 
     if showRepairs {
         // The repair chain, stage by stage, exactly as ThoughtExtractor runs it.

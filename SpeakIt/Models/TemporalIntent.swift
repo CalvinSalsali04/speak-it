@@ -14,6 +14,8 @@ enum TemporalKind: String, Codable, CaseIterable, Sendable {
     case none
     /// A day with no time of day: "go grocery shopping tomorrow".
     case dateOnly
+    /// A named calendar span with no chosen day: "book the car next week".
+    case calendarWindow
     /// A specific moment: "tomorrow at 3 PM".
     case exactDateTime
     /// Elapsed real time from the capture: "in one hour".
@@ -28,7 +30,7 @@ enum TemporalKind: String, Codable, CaseIterable, Sendable {
         switch self {
         case .exactDateTime, .relativeDuration, .calendarRecurrence, .durationRecurrence:
             true
-        case .none, .dateOnly:
+        case .none, .dateOnly, .calendarWindow:
             false
         }
     }
@@ -110,6 +112,8 @@ struct TemporalIntent: Codable, Equatable, Sendable {
     var kind: TemporalKind
     /// The day the person supplied, when they supplied one.
     var day: CalendarDay?
+    /// Inclusive last day of a stated calendar window. `day` is its first day.
+    var windowEndDay: CalendarDay?
     /// The time of day the person supplied, when they supplied one.
     var time: WallClockTime?
     var timeZoneIdentifier: String?
@@ -135,6 +139,7 @@ struct TemporalIntent: Codable, Equatable, Sendable {
     init(
         kind: TemporalKind,
         day: CalendarDay? = nil,
+        windowEndDay: CalendarDay? = nil,
         time: WallClockTime? = nil,
         timeZoneIdentifier: String? = nil,
         timeZoneBehavior: TimeZoneBehavior = .deviceLocal,
@@ -146,6 +151,7 @@ struct TemporalIntent: Codable, Equatable, Sendable {
     ) {
         self.kind = kind
         self.day = day
+        self.windowEndDay = windowEndDay
         self.time = time
         self.timeZoneIdentifier = timeZoneIdentifier
         self.timeZoneBehavior = timeZoneBehavior
@@ -162,6 +168,7 @@ struct TemporalIntent: Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         kind = try container.decodeIfPresent(TemporalKind.self, forKey: .kind) ?? .none
         day = try container.decodeIfPresent(CalendarDay.self, forKey: .day)
+        windowEndDay = try container.decodeIfPresent(CalendarDay.self, forKey: .windowEndDay)
         time = try container.decodeIfPresent(WallClockTime.self, forKey: .time)
         timeZoneIdentifier = try container.decodeIfPresent(String.self, forKey: .timeZoneIdentifier)
         timeZoneBehavior = try container.decodeIfPresent(
@@ -267,7 +274,7 @@ enum TemporalResolver {
         let calendar = intent.calendar(default: fallbackCalendar)
 
         switch intent.kind {
-        case .none:
+        case .none, .calendarWindow:
             return Resolution(dueDate: nil, reminderDate: nil)
 
         case .relativeDuration, .durationRecurrence:
@@ -351,7 +358,7 @@ enum TemporalResolver {
                 calendar: calendar
             )
 
-        case .none, .dateOnly, .exactDateTime, .relativeDuration:
+        case .none, .dateOnly, .calendarWindow, .exactDateTime, .relativeDuration:
             return nil
         }
     }

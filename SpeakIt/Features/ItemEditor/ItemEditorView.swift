@@ -2,6 +2,7 @@ import EventKit
 import EventKitUI
 import MessageUI
 import SwiftUI
+import SwiftData
 import UserNotifications
 
 struct ItemEditorView: View {
@@ -35,7 +36,18 @@ struct ItemEditorView: View {
     /// nothing to classify here, only a request to confirm or decline. See
     /// Docs/FINAL_RELEASE_AUDIT.md F-1.
     private let pendingOperation: PendingOperationStore.StoredPendingOperation?
+    private let captureChoiceState: CaptureOperationState?
     @State private var showsPendingOperationConfirmation = false
+    @Query private var captureChoiceRows: [CapturedItem]
+    // Query keeps insertion/deletion observable; reading the repository's full
+    // snapshots here also observes in-place changes while this sheet is open.
+    private var captureChoiceReading: Result<[CapturedItem], Error> {
+        let liveIDs = Set(captureChoiceRows.map(\.id))
+        return Result {
+            try (repository?.pendingCaptureOperationChoices(for: item) ?? [])
+                .filter { liveIDs.contains($0.id) }
+        }
+    }
 
     @State private var title: String
     @State private var itemType: ItemType
@@ -52,6 +64,8 @@ struct ItemEditorView: View {
     @State private var recurrenceAfterCompletion: Bool
     @FocusState private var personIsFocused: Bool
     @State private var personName: String
+    @State private var confirmedRequiredValue = false
+    @State private var choseTimeInstead = false
     @State private var needsClarification: Bool
     @State private var errorMessage: String?
     @State private var showsDeleteConfirmation = false
@@ -99,7 +113,7 @@ struct ItemEditorView: View {
         let needsClarification: Bool
         let locationIntent: LocationIntent?
     }
-    private let openingValues: OpeningValues
+    @State private var openingValues: OpeningValues
 
     /// True once anything on the form differs from how it opened.
     ///
@@ -132,6 +146,12 @@ struct ItemEditorView: View {
         self.item = item
         self.tutorialStep = tutorialStep
         self.pendingOperation = PendingOperationStore.record(for: item.id)
+        let operationState = CaptureOperationState.read(from: item.captureSession?.operationStateData)
+        self.captureChoiceState = operationState?.phase == .pendingChoice
+            && operationState?.reviewItemID == item.id
+            ? operationState : nil
+        let choiceIDs = self.captureChoiceState?.candidateIDs ?? []
+        _captureChoiceRows = Query(filter: #Predicate<CapturedItem> { choiceIDs.contains($0.id) })
         self.requirement = item.clarificationRequirement
         self.hadLocationIntent = item.locationIntent != nil
         _editedLocationIntent = State(initialValue: item.locationIntent)
@@ -139,11 +159,13 @@ struct ItemEditorView: View {
         _itemType = State(initialValue: item.itemType)
         _category = State(initialValue: item.category)
         _priority = State(initialValue: item.priority)
+        let initialDueDate = item.dueDate ?? .now
+        let initialReminderDate = item.reminderDate ?? initialDueDate
         _hasDueDate = State(initialValue: item.dueDate != nil)
-        _dueDate = State(initialValue: item.dueDate ?? .now)
+        _dueDate = State(initialValue: initialDueDate)
         _dueDateHasTime = State(initialValue: !item.isDateOnly)
         _hasReminder = State(initialValue: item.reminderDate != nil)
-        _reminderDate = State(initialValue: item.reminderDate ?? item.dueDate ?? .now)
+        _reminderDate = State(initialValue: initialReminderDate)
         let recurrence = RecurrenceStore.rule(for: item.id)
         _repeats = State(initialValue: recurrence != nil)
         _recurrenceFrequency = State(initialValue: recurrence?.frequency ?? .weekly)
@@ -151,16 +173,16 @@ struct ItemEditorView: View {
         _recurrenceAfterCompletion = State(initialValue: recurrence?.anchor == .completionDate)
         _personName = State(initialValue: item.personName ?? "")
         _needsClarification = State(initialValue: item.needsClarification)
-        openingValues = OpeningValues(
+        _openingValues = State(initialValue: OpeningValues(
             title: item.displayTitle,
             itemType: item.itemType,
             category: item.category,
             priority: item.priority,
             hasDueDate: item.dueDate != nil,
-            dueDate: item.dueDate ?? .now,
+            dueDate: initialDueDate,
             dueDateHasTime: !item.isDateOnly,
             hasReminder: item.reminderDate != nil,
-            reminderDate: item.reminderDate ?? item.dueDate ?? .now,
+            reminderDate: initialReminderDate,
             repeats: recurrence != nil,
             recurrenceFrequency: recurrence?.frequency ?? .weekly,
             recurrenceInterval: recurrence?.interval ?? 1,
@@ -168,14 +190,110 @@ struct ItemEditorView: View {
             personName: item.personName ?? "",
             needsClarification: item.needsClarification,
             locationIntent: item.locationIntent
-        )
+        ))
     }
 
     var body: some View {
-        if let pendingOperation {
+        if let captureChoiceState {
+            captureOperationChoiceView(captureChoiceState)
+        } else if let pendingOperation {
             pendingOperationConfirmationView(pendingOperation)
         } else {
             editorForm
+        }
+    }
+
+    private func captureOperationChoiceView(
+        _ state: CaptureOperationState
+    ) -> some View {
+        let reading = captureChoiceReading
+        let captureChoiceCandidates = (try? reading.get()) ?? []
+        return NavigationStack {
+            List {
+                Section {
+                    Text(state.pendingSavedRevision == nil ? "Which saved reminder did you mean?"
+                        : state.candidateIDs.isEmpty ? "The saved item wasn't found" : "Which saved item should change?")
+                        .font(.headline)
+                    Text(state.targetWords ?? state.sourceQuote)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                if let intent = state.pendingSavedRevision {
+                    Section("Requested change") {
+                        Text(intent.removesAlert == true ? "Remove the alert; keep the saved task and deadline" : intent.replacementAction ?? "Move to \(intent.timingText ?? "the requested day")")
+                            .accessibilityIdentifier("savedChoice.requestedDelta")
+                        if state.candidateIDs.isEmpty {
+                            Text("“\(intent.targetWords)” is unchanged. Keep this request until you can identify the saved item.")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                if case .failure(let error) = reading {
+                    Section {
+                        Text("Saved items couldn't be read. Your change request is kept.")
+                        Text(error.localizedDescription).foregroundStyle(.secondary)
+                    }
+                } else if !state.candidateIDs.isEmpty, captureChoiceCandidates.isEmpty {
+                    Section {
+                        Text("The saved items changed since this capture. The requested edit is still here; the saved items are unchanged.")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Section(state.pendingSavedRevision == nil ? "Saved reminders" : "Saved items") {
+                    ForEach(captureChoiceCandidates, id: \.id) { candidate in
+                        Button {
+                            perform(dismissAfterward: true) {
+                                try repository?.choosePendingCaptureOperation(
+                                    item, targetID: candidate.id
+                                )
+                            }
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(candidate.displayTitle).font(.body.weight(.medium))
+                                Text(ItemPresentation.savedTargetDetail(for: candidate))
+                                    .font(.caption).foregroundStyle(.secondary)
+                                if candidate.originalTextSegment != candidate.displayTitle {
+                                    Text(candidate.originalTextSegment).font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .contentShape(Rectangle())
+                        }
+                        .accessibilityLabel("\(state.pendingSavedRevision == nil ? "Cancel" : "Update") \(candidate.displayTitle). \(ItemPresentation.savedTargetDetail(for: candidate))")
+                        .accessibilityIdentifier("savedChoice.target.\(candidate.id.uuidString)")
+#if DEBUG
+                        .contextMenu {
+                            if ProcessInfo.processInfo.arguments.contains("--ui-testing"),
+                               ProcessInfo.processInfo.arguments.contains("--enable-live-saved-revision-qa"),
+                               UUID(uuidString:ProcessInfo.processInfo.environment["SPEAKIT_UI_QA_STORE_ID"] ?? "") != nil,
+                               candidate.id == UUID(uuidString:"A1000000-0000-4000-8000-000000000003") {
+                                Button("Simulate saved item edit") {
+                                    perform(dismissAfterward:false) {
+                                        try (repository as? SwiftDataThoughtRepository)?.mutateSavedRevisionChoiceQA()
+                                    }
+                                }.accessibilityIdentifier("qa.savedChoice.edit")
+                            }
+                        }
+#endif
+                    }
+                }
+                Section {
+                    Button(state.pendingSavedRevision == nil ? "Keep both reminders" : "Leave saved items unchanged") {
+                        perform(dismissAfterward: true) {
+                            try repository?.dismissPendingOperation(item)
+                        }
+                    }
+                    .frame(minHeight: 44)
+                }
+            }
+            .navigationTitle(state.pendingSavedRevision == nil ? "Choose reminder" : "Choose saved item")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
+            }
+            .repositoryErrorAlert($errorMessage)
         }
     }
 
@@ -231,13 +349,69 @@ struct ItemEditorView: View {
                                 Text(
                                     isRequirementResolved
                                         ? "Saving takes this out of Needs review."
-                                        : requirement.editorPrompt
+                                        : (BareHourQuestion(item: item) == nil
+                                            ? requirement.editorPrompt
+                                            : "Choose morning or evening below")
                                 )
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                             }
                         }
                         .accessibilityElement(children: .combine)
+                        if !isRequirementResolved, let confirmation = requiredValueConfirmation {
+                            Button(confirmation) { confirmedRequiredValue = true }
+                                .frame(minHeight: 44)
+                                .accessibilityIdentifier("editor.confirmRequiredValue")
+                        }
+                        if requirement == .splitDecision {
+                            Button("Keep as one thought") {
+                                perform(dismissAfterward: true) {
+                                    guard let repository else {
+                                        throw RepositoryError.saveFailed("Local storage is unavailable.")
+                                    }
+                                    try repository.keepAsOneThought(item)
+                                }
+                            }
+                            .frame(minHeight: 44)
+                            .disabled(hasUnsavedChanges)
+                            .accessibilityHint("Confirms only that these words belong together. Other review requirements stay saved.")
+                            .accessibilityIdentifier("editor.keepAsOneThought")
+                            if hasUnsavedChanges {
+                                Text("Save your edits before confirming this is one thought.")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        if !isRequirementResolved, requirement.editorField == .locationTrigger
+                            || requirement.editorField == .combinedTimeAndPlace {
+                            Button("Use a time instead") {
+                                editedLocationIntent = nil; choseTimeInstead = true
+                                hasDueDate = false; hasReminder = false
+                                confirmedRequiredValue = false
+                            }
+                            .frame(minHeight: 44)
+                            .accessibilityIdentifier("editor.useTimeInstead")
+                        }
+                    }
+                }
+
+                if let question = BareHourQuestion(item: item) {
+                    Section {
+                        Text("Was that \(question.hour) in the morning or evening?")
+                            .font(.subheadline.weight(.semibold))
+                        HStack(spacing: 12) {
+                            Button("\(question.hour) AM") {
+                                answerBareHour(.morning, question: question)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            Button("\(question.hour) PM") {
+                                answerBareHour(.evening, question: question)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(.speakIt)
+                    } footer: {
+                        Text("Only this item's reminder time changes. Your original words stay saved.")
                     }
                 }
 
@@ -295,7 +469,7 @@ struct ItemEditorView: View {
                 }
                 if requirement?.editorField == .time { timingSection }
 
-                Section("Thought") {
+                Section(requirement?.editorField == .ambiguousObject ? "Which item?" : "Thought") {
                     TextField("Title", text: $title, axis: .vertical)
                         .textInputAutocapitalization(.sentences)
                         .autocorrectionDisabled(false)
@@ -314,7 +488,9 @@ struct ItemEditorView: View {
                         .accessibilityHint(
                             showsTutorialGuidance
                                 ? "Highlighted practice field. Change any words, then tap Save"
-                                : ""
+                                : (requirement?.editorField == .ambiguousObject
+                                    ? "Name the item this action refers to. Its saved date stays the same."
+                                    : "")
                         )
                         .accessibilityIdentifier(
                             showsTutorialGuidance ? "tutorial.editor.title" : "editor.title"
@@ -666,7 +842,7 @@ struct ItemEditorView: View {
         switch pending.operation {
         case .cancel: return "Cancel \(subject)?"
         case .complete: return "Mark \(subject) complete?"
-        case .reschedule, .create, .retract: return "Confirm this?"
+        case .reschedule, .revise, .create, .retract: return "Confirm this?"
         }
     }
 
@@ -676,7 +852,7 @@ struct ItemEditorView: View {
         switch pending.operation {
         case .cancel: return "Cancel everything"
         case .complete: return "Mark everything complete"
-        case .reschedule, .create, .retract: return "Confirm"
+        case .reschedule, .revise, .create, .retract: return "Confirm"
         }
     }
 
@@ -767,6 +943,12 @@ struct ItemEditorView: View {
                                 ? [.date, .hourAndMinute]
                                 : [.date]
                         )
+
+                        if isDueDateOverdue {
+                            Label("Overdue", systemImage: "clock.badge.exclamationmark")
+                                .font(.footnote.weight(.medium))
+                                .foregroundStyle(Color.speakWarning)
+                        }
                     }
 
                     Toggle(isOn: $hasReminder) {
@@ -774,6 +956,7 @@ struct ItemEditorView: View {
                     }
                     .tint(Color.speakToggleTint)
                     .accessibilityHint("Schedules an alert for this thought")
+                    .accessibilityIdentifier("editor.remindAtTime")
 
                     if hasReminder {
                         DatePicker(
@@ -1040,35 +1223,46 @@ struct ItemEditorView: View {
 
     /// Whether the gap this editor was opened for has been filled in, judged
     /// against the live edits rather than the saved item.
-    private var isRequirementSatisfied: Bool {
-        // A recorded gap is answered by the field the editor marked for it, so
-        // both read from `editorField` rather than repeating the mapping.
+    private var requiredValueConfirmation: String? {
         switch requirement?.editorField {
-        case .time: hasReminder
-        case .person: !personName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        case .type: itemType != .unclear
-        // Captured before place reminders existed, so the way out is still
-        // giving it a time instead.
-        case .unsupportedLocationTrigger, .unsupportedConditionTrigger: hasReminder || hasDueDate
-        // A place reminder is unblocked by granting permission or configuring
-        // Home — neither of which happens on this form — so nothing here clears
-        // it. Adding a time is still a legitimate way out.
-        case .locationTrigger: hasReminder || hasDueDate
-        // The request named a place *and* a time and only one can be enforced,
-        // so the way out is committing to one of them. Setting a time here is
-        // that commitment: it schedules the clock half, and the place half stays
-        // unmonitored rather than firing alongside it.
-        case .combinedTimeAndPlace: hasReminder
-        // Both are resolved elsewhere — on the split screen, or by the person
-        // turning off "Needs clarification" — so neither clears from this form.
-        // `.pendingOperation` never reaches this form at all: `body` renders
-        // `pendingOperationConfirmationView` for it instead.
-        case .splitDecision, .confirmation, .pendingOperation, .none: false
-        // Unreachable: `editorField` maps every recorded gap onto one of the
-        // fields above. Spelled out rather than defaulted so a new gap has to
-        // decide what closes it.
+        case .person: return personName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : "Confirm this person"
+        case .type:
+            if (requirement == .missingAction || requirement == .incompleteThought), itemType.isActionable { return nil }
+            return itemType == .unclear ? nil : itemType.isActionable ? "This is my task" : "Keep this in Memory"
+        case .time: return requirement == .ambiguousTemporalScope && hasDueDate ? "Use this day" : hasReminder ? "Use this time" : nil
+        case .confirmation: return "Confirm this is right"
+        default: return nil
+        }
+    }
+    private var isRequirementSatisfied: Bool {
+        switch requirement?.editorField {
+        case .time:
+            if requirement == .ambiguousTemporalScope {
+                return (hasDueDate && (hasDueDate != openingValues.hasDueDate || dueDate != openingValues.dueDate || confirmedRequiredValue))
+                    || (hasReminder && (hasReminder != openingValues.hasReminder || reminderDate != openingValues.reminderDate || confirmedRequiredValue))
+            }
+            return hasReminder && (hasReminder != openingValues.hasReminder || reminderDate != openingValues.reminderDate || confirmedRequiredValue)
+        case .person:
+            return !personName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && (personName != openingValues.personName || confirmedRequiredValue)
+        case .type:
+            if requirement == .missingAction || requirement == .incompleteThought {
+                return !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    && (title != openingValues.title || (itemType == .note && (itemType != openingValues.itemType || confirmedRequiredValue)))
+            }
+            return itemType != .unclear && (itemType != openingValues.itemType || confirmedRequiredValue)
+        case .ambiguousObject:
+            return !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && title.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+                    != openingValues.title.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+        case .unsupportedLocationTrigger, .unsupportedConditionTrigger:
+            return hasReminder || hasDueDate
+        case .locationTrigger, .combinedTimeAndPlace:
+            return editedLocationIntent == nil && choseTimeInstead && (hasReminder || hasDueDate)
+        case .confirmation: return confirmedRequiredValue
+        case .splitDecision, .pendingOperation, .none: return false
         case .missingAction, .ambiguousPerson, .reportedSpeech,
-             .ambiguousActor, .ambiguousTemporalScope, .incompleteThought: false
+             .ambiguousActor, .ambiguousTemporalScope, .incompleteThought: return false
         }
     }
 
@@ -1143,9 +1337,28 @@ struct ItemEditorView: View {
                     needsClarification: needsClarification,
                     recurrenceRule: editedRecurrenceRule,
                     locationIntent: locationIntentEdit,
-                    dueDateHasTime: editedDueDateHasTime
+                    dueDateHasTime: editedDueDateHasTime,
+                    clarifiedGap: isRequirementSatisfied ? item.semanticGapRawValue.flatMap(SemanticGap.init(rawValue:)) : nil
                 )
             )
+        }
+    }
+
+    private func answerBareHour(
+        _ answer: BareHourQuestion.Answer, question: BareHourQuestion
+    ) {
+        perform(dismissAfterward: true) {
+            guard let repository, let date = question.date(for: answer) else {
+                throw RepositoryError.saveFailed("That time is unavailable on the saved day.")
+            }
+            try repository.update(item, with: ItemEdits(
+                title: item.displayTitle, itemType: item.itemType,
+                category: item.category, dueDate: date, reminderDate: date,
+                priority: item.priority, personName: item.personName,
+                needsClarification: false,
+                recurrenceRule: RecurrenceStore.rule(for: item.id),
+                dueDateHasTime: true
+            ))
         }
     }
 
@@ -1165,6 +1378,14 @@ struct ItemEditorView: View {
         // An explicit reminder always contributes a real clock time, even when
         // the task's separate due value is only a day.
         hasReminder || (hasDueDate && dueDateHasTime)
+    }
+
+    private var isDueDateOverdue: Bool {
+        guard hasDueDate, !item.isCompleted else { return false }
+        return TodayActionTiming.group(
+            for: editedDueDate,
+            isDateOnly: !dueDateHasTime
+        ) == .overdue
     }
 
     private var editedRecurrenceRule: RecurrenceRule? {

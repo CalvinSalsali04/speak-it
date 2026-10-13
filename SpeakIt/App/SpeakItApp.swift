@@ -98,6 +98,15 @@ final class SpeakItSceneDelegate: NSObject, UIWindowSceneDelegate {
     /// choice lands before the first frame instead of one frame after it.
     func sceneWillEnterForeground(_ scene: UIScene) {
         SpeakItAppearance.stored.applyToWindows()
+#if DEBUG
+        // Public UIKit scene traits reach presented hosting controllers as
+        // well as the root. This is only enabled for synthetic UI-test launches.
+        if ProcessInfo.processInfo.arguments.contains("--ui-testing"),
+           ProcessInfo.processInfo.arguments.contains("--ui-testing-dynamic-type-axxxl"),
+           let windowScene = scene as? UIWindowScene {
+            windowScene.traitOverrides.preferredContentSizeCategory = .accessibilityExtraExtraExtraLarge
+        }
+#endif
     }
 
     func windowScene(
@@ -171,6 +180,10 @@ struct SpeakItApp: App {
         }
         if arguments.contains("--ui-testing-skip-welcome") {
             UserDefaults.standard.set(true, forKey: "SpeakIt.hasCompletedWelcome")
+        }
+        if arguments.contains("--ui-testing"), arguments.contains("--ui-testing-unreadable-checkpoint") {
+            UserDefaults.standard.set(Data("{interrupted synthetic checkpoint".utf8),
+                                      forKey: "SpeakIt.activeCaptureDraft")
         }
 #endif
         RetiredAccountProfile.clearStoredDetails()
@@ -247,11 +260,11 @@ struct SpeakItApp: App {
                 print("SPEAKIT_NOTIFICATION_SCHEDULED_DELIVERY=\(settings.scheduledDeliverySetting.rawValue)")
                 print("SPEAKIT_NOTIFICATION_PENDING=\(pending.count)")
                 for request in pending {
-                    print("SPEAKIT_NOTIFICATION_REQUEST=\(request.identifier)|\(request.trigger?.description ?? "no-trigger")")
+                    print("SPEAKIT_NOTIFICATION_REQUEST=\(NotificationDiagnostics.summary(for: request))")
                 }
                 print("SPEAKIT_NOTIFICATION_DELIVERED=\(delivered.count)")
                 for notification in delivered {
-                    print("SPEAKIT_NOTIFICATION_DELIVERY=\(notification.request.identifier)|\(notification.date)|\(notification.request.content.body)")
+                    print("SPEAKIT_NOTIFICATION_DELIVERY=\(NotificationDiagnostics.summary(for: notification.request))|\(notification.date)")
                 }
 #endif
             }
@@ -353,5 +366,21 @@ private struct StorageUnavailableView: View {
             .padding(28)
         }
         .preferredColorScheme(.dark)
+    }
+}
+
+/// Diagnostic output describes delivery mechanics without copying authored
+/// notification text or region coordinates into the system console.
+enum NotificationDiagnostics {
+    static func summary(for request: UNNotificationRequest) -> String {
+        let kind: String
+        switch request.trigger {
+        case is UNCalendarNotificationTrigger: kind = "calendar"
+        case is UNTimeIntervalNotificationTrigger: kind = "interval"
+        case is UNLocationNotificationTrigger: kind = "location"
+        case nil: kind = "immediate"
+        default: kind = "other"
+        }
+        return "trigger=\(kind)"
     }
 }

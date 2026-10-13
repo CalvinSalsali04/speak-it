@@ -1,5 +1,80 @@
 # Known Issues
 
+## Build 22 list and voice behavior
+
+“Remind me to complete my scientific computation and real time systems
+assignment” is one task. It still needs a reminder time; no hour is guessed.
+Swipe X Remove completes a list item just like its circle, retaining it in
+Settings → Completed. Keep as one thought answers grouping only.
+Auto finish waits longer for incomplete phrasing, so it is not an immediate
+stop at every brief pause. Real microphone endpointing, interruptions and
+model latency on iPhone 13/16 still require hands-on QA. Focused regressions
+and UI checks do not establish a new global capture-accuracy percentage.
+
+
+## Build 21 full-bank trial — device support and accuracy limits
+
+The bundled development bank occupies about 1.42 GB before distribution
+compression. Search reads the index and a few selected payloads, rather than
+loading the bank into memory. The reviewed 59-record collection is retained
+as a small regression fixture; it is not the app's search limit.
+
+Apple's language model is unavailable on iPhone 13. iPhone 16 additionally
+requires a supported OS/language and an enabled, downloaded Apple Intelligence
+model. Availability does not guarantee every capture uses a generated result:
+failed, cancelled, over-budget or invalid generations fall back safely.
+The 510,000 synthetic proposals are not 510,000 independently reviewed stories,
+and searching more of them does not itself establish improved accuracy.
+Physical microphone, interruption, Back Tap, AirPods, lock-screen and model
+latency checks on both target phones remain hands-on QA.
+
+The October 11 retrieval candidate adds 1,696 representatives covering the
+212 authored example blueprints. Its compact index searches representatives
+and reads the selected payloads from the complete bank; it does not search
+every one of the 510,000 wordings on each capture. Compact and semantic routing
+remain disabled in the bundled configuration pending qualification. Zero
+retrieval errors or a relevant-example match does not prove that final Today
+and Memory organization is correct. The complete-model preflight has retained
+unresolved captures and missed explicit actions; this is still an accuracy
+limitation, even when all original words remain recoverable. Mac model timings
+and results do not establish behavior on the iPhone 16's iOS 26.6 model.
+
+Mixed captures can still require review when the engine cannot prove separate
+owners for their actions, facts, conditions and corrections within its existing
+time budget. A bounded local certificate covers complete factual notes and
+explicit own actions only when every source occurrence has an independent
+owner. Other material uses the normal engine. Retaining all source
+words in a review item protects the capture but does not count as successful
+organization of each action.
+
+The failed-capture replay also exposed long narratives that the rules fallback
+can still combine into an incomplete task. The weekly parser now requires an
+actual temporal quantifier, so an unrelated “every resident” cannot create a
+weekly schedule. That repair removes the invented series; it does not establish
+complete organization of the long narrative, particularly without an available
+generative model.
+
+Month-end and end-bounded recurrence forms that the stored recurrence model
+cannot represent remain for review without an active series. An explicit
+instruction to leave the hour unset is not replaced with a default clock.
+After a local withdrawal such as “cancel that thought, I already bought them,”
+the retained Memory title can still use “them”; the complete original capture
+retains its object context. This is a presentation limitation, not permission
+to complete an older saved task.
+
+The October 12 fixes receive failed-check retries and a final integration/app
+smoke. They do not establish a new global accuracy score or an iPhone latency
+claim; the earlier 330-case baseline and failed runs remain preserved.
+
+The separately installed Build 20 preview owns its own scheduled notifications.
+Build 21 can import its shared library and drafts, but cannot cancel another
+app's notifications through its own notification center. After confirming the
+import, disable notifications for the old preview or remove that app if it has
+pending reminders. Keep the original installation until its captures are
+verified in the normal app. Apple's notification center is scoped to the
+[app or its extension](https://developer.apple.com/documentation/usernotifications/unusernotificationcenter).
+
+
 > **On trusting this document.** Several sessions have been ranking work from
 > it, so how far it has been checked matters. On 2026-09-11 the "Ownership does
 > not read animacy" entry was read against the source and its diagnosis
@@ -406,7 +481,9 @@ two discovery cards, and a lazy stack builds it before it is on screen — so it
 it. That test now scrolls until the row is hittable. It looked like a
 wall-clock dependence at first (passed at 02:35, failed at 03:38); it was not.
 
-*Appearance is applied by hand, not by `preferredColorScheme` (2026-09-10).* SwiftUI keeps the last non-nil value `preferredColorScheme` was given and re-asserts it whenever the traits change, so after the app had been in Light (the first-install default) choosing System left a light window that ignored the iPhone's own switch until relaunch; clearing the window, controller and view overrides did not help because SwiftUI wrote Light back on the next trait change. `SpeakItAppearanceSync` and `SpeakItSceneDelegate.sceneWillEnterForeground` now write `overrideUserInterfaceStyle` onto the window tree themselves and nothing passes a scheme to SwiftUI. XCUITest cannot read the effective scheme, so the check is the gated probe `testSystemAppearanceHandsControlBackToIOS` (set `TEST_RUNNER_SPEAKIT_APPEARANCE_PROBE_DIR`, flip `xcrun simctl ui <udid> appearance` while it holds, and compare `simctl io screenshot` brightness; modes `system`, `control`, `explicit`).
+*The launch screen follows the phone, not the app (2026-09-18).* `UILaunchScreen` is drawn by the system before any app code runs, so it uses the device's appearance. Someone who has chosen Dark in Speak It while the iPhone is in Light still sees a light launch screen for the moment before the first frame. There is no API that lets an app's own choice reach it; a dark launch storyboard would only move the flash to the opposite pairing.
+
+*Appearance is applied by hand, not by `preferredColorScheme` (2026-09-10).* SwiftUI keeps the last non-nil value `preferredColorScheme` was given and re-asserts it whenever the traits change, so after the app had been in Light (the first-install default) choosing System left a light window that ignored the iPhone's own switch until relaunch; clearing the window, controller and view overrides did not help because SwiftUI wrote Light back on the next trait change. `SpeakItAppearanceSync` and `SpeakItSceneDelegate.sceneWillEnterForeground` now write `overrideUserInterfaceStyle` onto the window themselves and nothing passes a scheme to SwiftUI. Since 2026-09-18 the write is made under a snapshot of the outgoing appearance, which is then faded off the top, because the assignment alone reaches SwiftUI, `UINavigationBar` and `UISegmentedControl` on three different clocks (see `Docs/DECISIONS.md`). XCUITest cannot read the effective scheme, so the check is the gated probe `testSystemAppearanceHandsControlBackToIOS` (set `TEST_RUNNER_SPEAKIT_APPEARANCE_PROBE_DIR`, flip `xcrun simctl ui <udid> appearance` while it holds, and compare `simctl io screenshot` brightness; modes `system`, `control`, `explicit`).
 
 *Simulator-level defaults shadow `--ui-testing-reset` (2026-09-09).* A value seeded with `xcrun simctl spawn <udid> defaults write com.calvinwak.SpeakIt …` lands in the simulator-user plist outside the app container, and the reset flag only removes `UserDefaults.standard` keys inside it. The 2026-09-03 dark-mode walk left `SpeakIt.appearance = dark` on the stock iPhone 17 Pro simulator, which made `testFirstInstallAppearanceDefaultsToLight` fail deterministically until the key was deleted with `simctl spawn … defaults delete`. Delete seeded keys after hand QA, or use a dedicated simulator; `Tools/Screenshots/capture.sh` cleans up its own.
 
@@ -864,9 +941,12 @@ was a second spelling of `gotta` in `obligationLead` alone — in no other
 vocabulary, no test, and none of the seven development sets — and it could not
 have worked where it matched, because clause splitting runs first and does not
 hold `ta`, so "I got ta call Dave" was severed into a Memory row titled **"I
-got ta"** and an errand. It has been removed rather than rescued: adding `ta`
-to `clauseInternalLead` would suppress a real boundary ("email the TA send the
-form") to protect a spelling with no observed instance.
+got ta"** and an errand. Build 21 restored that router-only spelling without
+its boundary protection. Build 22 removes the dead router alternative again,
+preserving the documented policy: `gotta` remains supported, and bare `ta`
+never enters `clauseInternalLead`. A trial exact-pair guard was rejected after
+an end-to-end check still failed to route the spelling as an action; it is not
+part of the shipped source.
 
 **The structural problem is not closed.** The lists are still five lists.
 `thirdPersonObligation` is the smallest on purpose and declines `gotta` and
@@ -1043,3 +1123,637 @@ decisions for reported instructions and prohibitions. Its destination score is
 not an independent release verdict. The unseen set remains 72.8% on destination
 and 7/69 acted-on ambiguous captures; the date-topic fix did not improve that
 aggregate.
+
+## September 10 — information requests that still take a date
+
+Fixed on this date: impossible calendar dates rolling into real ones, dotted and
+decimal numbers read as clocks, and contracted or pronoun-subject questions
+being scheduled. See `Docs/DECISIONS.md` for that work. What still ships:
+
+- **"Let me know", "tell me" and "read out" frames take a date from their
+  complement.** "Please let me know the alarm kept for Tuesday's meeting" is
+  filed with a due date of Tuesday, which is when the meeting is, not when to
+  be told. These cannot be closed with a guard, because the same frames carry
+  real deadlines — "let me know tomorrow" is a reminder — so the fix needs the
+  date attached to the request verb or to its complement. Three of the 280
+  public question captures are affected. "Let me know about any alarms set
+  today" additionally splits into two rows, the second titled "Set today".
+- **A bare noun phrase naming a day is still scheduled.** "Time and date of
+  today" has no question shape to detect and lands on Today.
+- **A stated year is discarded.** Speak It's date grammar reads a month and a
+  day and resolves them to the next occurrence, so "February 29, 2022" is filed
+  as the next real February 29, in 2028. No date is invented — the day and month
+  are the speaker's — but the year shown is not the year they said. The corpus
+  comparator checks month, day, hour and minute and never the year, so it cannot
+  catch a wrong-year defect either. Reading stated years is a feature, not a
+  guard, and has not been designed.
+- **Arithmetic read as a clock.** "Tell me the answer for two plus two" resolves
+  *two* to 2 AM. Calculator queries are outside what Speak It captures, and the
+  narrower fix would be an operator vocabulary.
+- **A question buried in a run-on keeps a recurrence.** "I've got dollars for
+  the month how much can I spend every day" reads "every day" as a series,
+  because the interrogative sits in the second half of an unpunctuated run-on
+  and the tests above are anchored to the start of the clause.
+
+Six of the 280 public question captures still take a date, down from eleven.
+
+## September 23 — V1 long-capture release block
+
+The former fresh long-capture gate is now development/regression evidence. Its
+clear 25-intention list reaches 25 separate Today rows after removing the
+extraction-stage cap, and the corpus gate remains clean. This does not clear
+the long-capture release gate. The development ramble now separates its
+explicit actions but holds an implicit plant need in Needs Review. A coherent
+reported Memory and a counted shared purpose now keep their intended grouping.
+Resolved choices now attach to a unique adjacent committed action when the
+speaker explicitly selects an option; unresolved or ambiguous choices retain
+their own rows. The later anaphoric request to save a reported detail stays
+with its adjacent Memory. The rambling plant need remains a visible ambiguity
+in Needs Review and still fails whole-capture correctness.
+Repaired creation words now carry ordered occurrence identities through row
+shaping, including shared context and shopping expansion; any unowned
+meaningful occurrence gets a visible review hold. Optional model refinement
+is restricted to one unresolved row with its full raw quote. This does not yet
+audit raw words removed by speech repair or all words partitioned into
+operations. The zero-silent-loss release invariant therefore remains
+unproven. A new unseen, independently
+authored text gate and real microphone validation of the frozen production
+build are still required.
+See `Docs/Understanding/LONG_CAPTURE_RELEASE_GATE_2026-09-23.md` for the
+family-by-family development evidence and its boundaries.
+
+The latest complete iOS simulator unit run passed 888 tests, failed 15, and
+skipped 1. Focused fixes since that run have reduced several failing families,
+but the complete suite has not yet been rerun. In particular, a repeated
+cancellation currently produces a visible Needs Review row when its target
+is gone; the app has no durable operation receipt that would prove the prior
+cancellation already handled that same intention. This is safer than silently
+dropping an unmatched command but is not the final identity behavior. Other
+remaining failures include person/parcel ambiguity in transport verbs and
+some rendering-invariance cases on iOS. Launch readiness is not established.
+
+The September 24 simulator rerun reached 906 passed, 7 failed, 1 skipped before
+the additive-correction safety fix. Remaining failures were a repeated
+cancellation's visible review receipt, two rendering-invariance tests, two
+people/transport name tests, a transport people-versus-parcel test, and the
+aggregate corpus family test. A newly reproduced "buy milk, actually I also
+need to call Mom" loss is fixed in the rules path, with focused iOS and corpus
+checks passing. Raw-source coverage across every kind of repair and operation
+partition remains unproved; the current candidate is still blocked from release.
+
+The complete three-shard simulator run after the temporal fix passed its first
+and third shards, while the second shard had 294 passed, 6 failed, and 1 skipped.
+The six failures were the aggregate corpus gate, two people/transport corpus
+families, one direct transport-person test, and two rendering-invariance tests.
+The run was before the later reported-speech and pronoun-correction fixes; their
+focused iOS tests passed. The old long-capture development set still has only
+18/40 captures with matching row counts and Today/Memory routes, which is not a
+whole-capture score. V1 remains blocked.
+
+A fresh rules-path probe after the correction-scope change exposed the same
+ownership problem in reported coordination: “Maya said call Ben and then email
+Jo” created a Memory row for the first reported action and an executable Today
+row for the second. The clause splitter now reads report ownership on the full
+sentence before dividing coordinated actions; this development example stays
+one Memory note, while a direct action in a following sentence still creates
+its own Today row. Report ownership across more complex speaker switches still
+needs independent long-capture validation. No new release gate has been run.
+
+Operation partitioning now carries transient occurrence IDs for operation
+words, uniquely withdrawn local targets, and surviving creation clauses. The
+production extractor now fails closed if a meaningful post-repair word has no
+owner: the entire original capture remains visible in Needs Review and no
+operation executes. The IDs still start after speech repair. This closes the
+operation-partition gap, but does not establish zero silent raw-source loss
+through speech repair. V1 remains blocked on that invariant.
+
+The occurrence-aware raw-to-repaired diagnostic finds unaligned source words
+in 134 of the 1,403 existing corpus captures on the current candidate. That
+includes ordinary fillers and licensed corrections, so
+it is not a defect count. The current production path does not yet record an
+explicit disposition for every such raw span. The original transcript remains
+durable, but durability alone does not prove that omitted meaning is presented
+for review. Long-capture release remains blocked until this is proven.
+
+The focused repair tests, corpus gate, and unsigned release build pass on this
+candidate. Two full iOS unit runs on September 24 were interrupted after long
+waits. The second result bundle records 442 passing tests, two failing
+rendering-invariance tests, and one failing person/transport test; its corpus
+test was canceled during interruption. These substantive failures were already
+present in prior full-suite evidence and remain open. A clean full-suite pass
+is required before a freeze.
+
+The origin-span repair closes the known “to morrow” raw-quote omission in a
+multi-intention capture. The latest diagnostic has 124 of 1,403 corpus captures
+with unaligned raw words; fillers and explicit corrections remain in that set.
+No production raw-source disposition audit has yet classified all 124, so this
+is still a long-capture release blocker.
+
+A separate read-only audit of the 150 multi-item corpus captures without
+operations finds eight with raw words absent from all item raw quotes after
+excluding conjunctions. Inspection shows filler or discourse wording in each
+of those eight, including one “while I'm thinking about it” transition. This
+is useful development evidence, not proof for unseen long captures: the audit
+still uses word counts and has no production rule that assigns exact raw
+occurrences to discourse, replacement, operation, or a visible review row.
+
+The local correction boundary now handles a replacement action followed by an
+independent action and preserves the full original correction wording on its
+row. Opposite controls cover a different object and a possessive pronoun.
+This closes that observed identity failure, but the production path still has
+no general receipt for every withdrawn or replaced raw span. The long-capture
+release decision remains blocked pending that invariant and an independent
+unseen validation set.
+
+The iOS rendering-invariance suite now passes for the established corpus after
+the fronted-time and coordinated-companion boundary fixes. This removes two
+known punctuation-dependent critical failures from development evidence. It
+does not clear the long-capture gate: production still needs an exact raw-source
+disposition audit, a clean full unit run, a frozen candidate evaluated on a
+new independent unseen set, and real microphone/device validation. Short
+controls and the existing corpus are regression evidence only.
+
+Independent review found that the first raw audit could falsely certify a
+deleted action if its words remained in a full-source quote, and could leave an
+action active beside a review hold. The revised audit quarantines the entire
+capture on unclassified raw loss and narrows repair licences to typed,
+recomputed transformations. That revision is still under regression testing;
+the earlier passing corpus and release build apply to the previous candidate,
+not this one. The “pick up Alex and Sam” people/product ambiguity remains a
+known iOS corpus failure. The fresh unseen long-capture gate has not run on a
+frozen revised candidate. V1 remains blocked.
+
+The September 25 development rerun of the exposed 40-capture set matches only
+18 captures on the weaker ordered row-count/Today-Memory check. That is not a
+whole-capture score. Natural rambling, shared context, reported speech,
+corrections, alternatives, and end retention still show extra rows or wrong
+ownership. The general mechanism under investigation is assigning a clause's
+owner and temporal role before promoting it to a row and converting its dates.
+The current 1,403-case corpus gate and unsigned release compile pass; the
+full iOS unit suite is being rerun. V1 remains blocked, and no new independent
+unseen gate has been run on a frozen candidate.
+
+The newly locked long-capture operating target is 1–5 minutes and up to 30
+independent intentions, but the live microphone path has not qualified that
+range. `SpeechTranscriber` currently auto-finalizes a transcript whose last
+token looks complete after about 1.9 seconds of silence. A realistic thinking
+pause can therefore end a brain dump before the user is done, even if typed
+semantic tests pass. The app retains recovery audio and source drafts, but
+that does not make one continuous long capture usable. This endpoint tradeoff
+needs device measurement and a short-capture latency control before V1 can
+claim natural long-speech support.
+
+September 27 update: the in-app voice screen now defaults to continuous capture,
+so this timer is reached only after an explicit Auto finish choice. The code
+path change still needs a real-device microphone and backend qualification;
+the 1–5-minute operating target is not yet established. The separate
+background Shortcut capture still has its own automatic endpoint policy.
+
+The September 25 full sharded iOS unit run completed with two failures from
+one bare transport/person-versus-product case (`Pick up Alex and Sam`):
+`SemanticCorpusTests.testTransportedPeople` and its family gate. The other
+shards passed. That run preceded the latest bounded source-owner change;
+focused iOS owner/action tests, the 1,403-case corpus gate, and the unsigned
+release compile pass afterward. A full integrated iOS rerun remains required.
+The exposed 40-capture development set now matches 19/40 on the weak ordered
+row-count/Today-Memory check, up from 18/40; this is not whole-capture
+correctness or independent release evidence. Retrospective shared context,
+cross-intention deadlines, and Memory elaboration after intervening actions
+still create resolved extra rows or wrong ownership. V1 remains blocked.
+
+A bounded return link now retains a uniquely owned later Memory detail across
+an intervening task. This improves the atlas and Porto development examples,
+but neither is fully whole-capture correct: the atlas's background remains a
+separate resolved Memory, and the Porto negative capture directive remains a
+separate row rather than being absorbed into the original Memory. The link
+also uses a display ellipsis for disjoint
+source fragments; `CaptureSession.originalTranscription` is still the exact
+full source. Shared context and temporal group ownership remain unresolved.
+No fresh independent qualification set has been scored on this candidate.
+
+Before the counted-deadline edge, the exposed 40-capture development set was
+19/40 on the **weak** ordered
+row-count and Today/Memory check after the September 26 ownership changes.
+That check omits meaning, dates, correction targets, and safety, so it cannot
+support a release claim. Natural rambling and beginning/middle/end retention
+still have zero weak matches in their four exposed cases each. The next work
+must resolve typed group context and temporal ownership rather than tune
+another phrase in that set.
+
+After the typed counted-deadline edge, that same weak development check is
+20/40: shared context rises from 1/4 to 2/4 because the grant application
+steps now receive their common date without losing the independent PDF fact.
+This is still below the release threshold and still omits full meaning and
+safety scoring. The school-fair event group, allergy explanation, natural
+rambling, and beginning/middle/end ownership remain unresolved.
+
+The September 26 full sharded unit run did not yield a valid suite verdict:
+one shard exposed a repeated-fact merge regression, and another `xcodebuild`
+process crashed while importing simulator diagnostics. The repeated-fact
+failure has since been fixed and its isolated iOS test passes; the complete
+consolidation suite also passes. A clean full run on the final code remains
+required. The previously observed bare pickup people/product corpus ambiguity
+also remains unresolved and cannot be counted as a pass.
+
+A serial full-suite retry on September 26 also failed to produce a verdict:
+after roughly fourteen minutes, Xcode reported a crashed test worker and
+remained blocked while trying to restart it. The process was interrupted;
+its incomplete `.xcresult` could not be read. This is an infrastructure
+failure, not evidence that all iOS tests pass. Focused iOS owner tests, the
+isolated repeated-fact regression, the 1,403-case host corpus, and the
+unsigned release compile did complete on the current code.
+
+The typed group-context changes raise the exposed 40-capture development set
+to 22/40 on the **weak** ordered row-count and Today/Memory check. This is
+not whole-capture correctness and is not independent qualification. The
+school-fair event and allergy explanation now attach their source to distinct
+owners; an opposite reported-speech control stays separate. The counted
+deadline, event, and explanation edges passed focused iOS tests and the
+1,403-case host corpus; the unsigned Release build also compiles on the
+combined correction and context changes. Natural rambling, corrections,
+reported speech, resolved alternatives, and beginning/middle/end retention
+still have substantial whole-capture failures. V1 remains blocked.
+
+The fronted-time completed-action correction works when the report ends at
+"already called". A coordinated follow-up clause can identify another
+person, so the exposed longer plumber capture stays in visible review until
+that report's object can be assigned safely. It is still incorrect as a whole
+capture. Focused iOS correction tests pass after the conservative guard;
+the full iOS
+suite, fresh independent long-capture qualification, and physical-device
+microphone validation remain unverified.
+
+The September 26 combined-candidate three-shard iOS run is also incomplete.
+Shards 0 and 2 ended without assertion lines; the available shard-0 result
+bundle reports 321 passed, zero failed, zero skipped. Shard 1, which includes
+the semantic corpus, had no test-worker process or log output after nearly
+nine minutes and was stopped. An isolated `SemanticCorpusTests` retry on the
+same simulator entered Xcode's test-session cleanup stall and emitted
+`DVTAssertions` warnings when interrupted. These are not passing suite
+results. The bare `Pick up Alex and Sam` iOS ambiguity remains a known
+behavioral failure; full simulator regression evidence is still required.
+
+Quoted-source ownership now prevents a later request to retain scene words
+from attaching to the intervening task. A directly cited quote can serve as
+evidence for one later retained staging note, with quoted imperatives excluded
+from speaker-directive checks. The exposed rehearsal capture has two rows in
+the production-rule probe, and opposite controls pass in focused iOS tests.
+The exposed 40-capture development diagnostic is now 23/40 on the weak ordered
+row-count/Today-Memory check. Reported interview and family-saying captures
+still produce extra Memory rows; no fresh qualification set has been scored.
+V1 remains blocked.
+
+The quote-content attribution and coordinated retention changes bring the
+exposed development diagnostic to 24/40 on the same weak ordered row-count
+and Today/Memory measure. U26 and U27 now have their expected two-row shape;
+U25 still has a separate reported-context Memory. The focused iOS
+consolidation suite passes on these changes. Whole-capture correctness,
+the full iOS suite, fresh independent text qualification, and live microphone
+validation remain open; V1 remains blocked.
+
+Selective ownership of an explicitly disclaimed reported command and the
+propositional “what I also want to keep is that …” routing rule bring the
+exposed development diagnostic to 25/40 on ordered row count and
+Today/Memory destination alone. U25 now has one Memory with its quoted source
+and one Monday email task. Opposite reporter, additive-memory, explicit-quote,
+and physical-keep controls pass focused iOS tests; the 1,403-case corpus gate
+and unsigned release compile pass. This does not establish whole-capture
+correctness. Natural rambling is still 0/4 and beginning/middle/end retention
+is still 0/4 even on the weak diagnostic. Corrections and alternatives also
+remain poor. The full iOS suite, new independent long-capture set, and live
+microphone/device qualification remain open; V1 remains blocked.
+
+The uncertain-completion guard now scopes review to the ambiguous reported
+prefix when a later sentence has an explicit independent intention. In the
+exposed plumber capture, photographing the leak and clearing the cabinet are
+accessible Today rows; the call/visit correction remains a separate Needs
+Review row and creates no completion operation. This is safe incomplete, not a
+whole-capture fix. A dependent pronoun in the later sentence also stays in
+review. The remaining correction-identity and capture-commentary failures
+still block V1.
+
+An early section-frame rule now routes the content of explicit spoken labels
+and self-narration before row creation. The opposite quoted-command control
+remains visible in Needs Review; a direct command after the same label stays
+actionable. This does not solve the larger natural-rambling and
+beginning/middle/end ownership failures: scene-setting narration, rejected
+possibilities, local withdrawal versus saved-item operations, and deictic
+recaps can still produce wrong rows or owners. The September long-capture set
+is development evidence only. A frozen candidate, full iOS suite, independent
+fresh text qualification, and physical microphone validation are still
+required before release.
+
+Indefinite negated actions now remain in the capture instead of becoming
+saved-item cancellations. The exposed park-path ramble no longer yields a
+cancel operation, while a direct “don't call Maya” still does. That ramble
+continues to misroute recording commentary as Today and does not meet the
+whole-capture gate. This is a safety improvement, not release qualification.
+
+The pre-row capture-commentary role now attaches a uniquely referenced recap
+to its source owner or leaves an ambiguous reference in visible Needs Review.
+The exposed park-path capture no longer creates a Today row from “I am
+repeating it,” and its outing denial creates no cancel operation. The exposed
+cinema capture retains the final-step recap on the charger task. A conditional
+about possibly finding the paper statement no longer turns that fact into a
+task. These are scoped regression improvements only: both long families still
+have unrelated incorrect rows, and no fresh whole-capture qualification has
+been run. V1 remains blocked.
+
+The conditional factual-matrix correction now applies across ordinary and
+framed captures through the shared actionability reader. It preserves the
+opposite committed-action controls, but does not yet resolve all compound
+conditional or reported speech ownership in long captures. The existing
+long-capture release blockers and fresh qualification requirements remain.
+
+Trailing task conditions now remain on a usable Today row when no event
+notification was requested; a request to notify on that event and a fronted
+condition whose concise title omits it remain in Needs Review. Bare “this
+week” and “next week” tasks now retain a visible calendar span without a due
+instant or alert. This improves the exposed clear-list development cases but
+does not qualify them as whole-capture correct: event-relative timing, other
+ownership errors, independent unseen text scoring, the full iOS suite, and
+physical microphone validation are still outstanding. V1 remains blocked.
+
+The clause-boundary reader now keeps ordinal modifiers inside an unfinished
+noun phrase and separates coordinated direct actions even when the lexical
+tagger mislabels an action verb. The exposed plumber footer is one source unit,
+and the exposed train preparation is two actions. An explicit obsolete/current
+time-fact replacement keeps the old train time only as source evidence on the
+current ticket Memory, and later correction instructions attach to that
+Memory. The train departure now owns visible source context on the separate
+“leave for the station” action without inventing a leave-time alarm. The
+uncertain completed-call report remains a visible review hold. Both captures
+still require whole-capture evaluation, and independent unseen validation
+remains a release blocker.
+
+The iOS simulator did not provide personal-name tags for ordinary bare pickup
+objects. An offline Census first-name corroboration now covers common names
+inside transport frames and keeps a shared pickup as one Today task. It is not
+comprehensive for unfamiliar names or name/product homonyms. Opposite product
+and short-trip controls pass in the focused simulator test; the full iOS suite
+and fresh long-capture qualification remain required. V1 remains blocked.
+
+A reported or third-party choice no longer suppresses its own Memory row
+merely because a later user action repeats the selected noun. An explicitly
+resolved first-person choice now binds its proposal and selection to one
+uniquely matched action before row creation, and an action spoken inside an
+owned decision clause is retained as an action. Its complete raw source quote
+remains visible. Explicit nonselection now stays out of Today, and options
+paired by “between” stay in one deliberation span. Alternative commentary
+that explicitly names a rejected or considered option now attaches to one
+lexically identified selected action; without a unique owner it remains in
+Needs Review. A dated trip goal now scopes clock-only actions explicitly at
+its destination when the context is contiguous, while unrelated actions keep
+their own dates. Other recap and output commentary still require general role
+and identity work; the exposed
+long-capture alternatives family is not whole-capture correct. V1 remains
+blocked.
+
+Explicit reference-only clarification can now attach to one uniquely named
+Memory without creating an alarm or an extra review row. Ambiguous possessive
+references across two plausible place antecedents still keep their factual
+source in separate Memory rows; they are not yet one proven retrieval identity.
+Natural rambling can still produce extra resolved narration rows or split one
+coherent idea. These are whole-capture correctness failures even when every
+word remains in the capture and no unsafe action executes. V1 remains blocked.
+
+Explicit Long capture retains protected audio and requires verified whole-file
+recovery after a recognizer stops early, including retry from Today and launch
+recovery. Its current 45-second recovery pieces require an unambiguous spoken
+overlap to join. A natural pause spanning a five-second overlap can therefore
+leave an intact recording in visible failed-draft review even when both pieces
+transcribed correctly. This is safe but may exceed the locked unnecessary-review
+limit; measure it on real 1–5 minute iPhone recordings before release. The
+simulator and rules corpus cannot establish microphone completeness or seam
+usability. V1 remains blocked.
+
+The latest exposed development-only whole-capture review is 32 correct,
+1 safe incomplete, and 7 incorrect out of 40; natural rambling remains
+0/4 correct. Narration, tentative plans, and elaboration can still create
+extra or fragmented Memory rows even when the original transcript is safe.
+The first independently authored 240-case candidate was rejected in an
+editorial audit because its repeated templates and inconsistent expected
+answers would overstate qualification. Neither that set nor the exposed 40
+is V1 release evidence. A varied sealed set and live iPhone qualification
+remain required; V1 remains blocked.
+
+The separately authored and independently audited 240-case fresh long-capture
+qualification on September 27 failed decisively: 3 whole captures correct,
+2 safe incomplete, and 235 unsafe or silently incomplete. Clear long
+multi-task, natural rambling, coherent long Memory, corrections, withdrawals,
+quote/report, multiple dates/people, and 10–30 intention capacity each scored
+0/20 correct. One clear 30-job list produced only four unreviewed rows; quoted
+commands became Today actions in several captures. The original transcript
+survived, but missing or misrouted intentions were not reliably visible for
+review. See `Understanding/LONG_CAPTURE_FRESH_QUALIFICATION_2026-09-27.md`.
+That set is now development/regression evidence because source changes began
+after its failure. A different unseen set and authorized live microphone
+qualification are required for a new release decision. V1 remains blocked.
+
+The post-gate development candidate now gives independently numbered action
+slots visible identities and carries an explicit task-list commitment through
+platform-dependent verb tagging. Saved-row revisions have a typed identity but
+remain one visible Needs Review capture; they do not yet update the existing
+row in place. Unnumbered long speech, temporal and quote ownership, and mixed
+corrections still fail the whole-capture bar. These development regressions
+cannot replace a different unseen qualification set. V1 remains blocked.
+
+## September 28 current development status
+
+The preceding post-gate note describes an earlier candidate. The saved
+dentist date amendment now updates the identified existing item and has
+repository identity, provenance and duplicate-capture coverage. An ambiguous
+saved cancellation now preserves both targets until the user chooses; the
+choice and surviving independent shopping task passed a simulator UI test.
+These are development checks with notification delivery disabled, not a
+physical-device delivery claim.
+
+Long speech still fails the product contract. On a frozen pre-S001/S010
+revision, all 1,770 exposed development inputs executed in ten bounded
+repository batches, but a conservative scorer found 453 missing explicit
+clocks and 19 absent required saved mutations among 1,756 nonalias cases.
+That scorer does not measure wrong grouping, invented rows, conditional
+meaning, unnecessary review or whole-capture correctness. Later bounded
+repairs recovered the 19:00 photo reminder and independent shopping in one
+S001 rendering and the 08:00 parsley reminder in three S010 renderings.
+The lightly punctuated versions of both remain incomplete, and the pilot
+still contains many false extra rows from explanatory speech. The S001/S010
+source was rerun across all 1,770 inputs: the conservative missing-clock
+count fell to 381, absent required saved mutations stayed at 19, and no new
+hard-failure ID appeared. This is still a failure lower bound, not a
+whole-capture pass rate. The S049 30-row Today capture passed a simulator
+first/middle/final-item management test. The September 27
+240-case fresh qualification failed and is now exposed development data;
+there is no passing independent replacement.
+
+The normal in-app recording path is Continuous with explicit Finish in code,
+but no physical microphone continuity, long-duration fidelity, interruption
+handling, or real notification delivery has been observed on this candidate.
+The 120 supplied recording cases are specifications; 88 require physical
+microphone execution and 32 specify fault or recovery injection. V1 remains
+blocked on semantic failures and unexecuted qualification.
+
+A September 28 bounded saved-cancellation repair now applies the named
+community-key cancellation in all six S063 request renderings while preserving
+the library distractor and new capture source. The single-target path now
+saves a performed V5 receipt with the deletion and retains the saved target's
+original source session; a file-backed store reopen and retry test passed.
+The positive-action opposite control still keeps `also buy eggs` separate.
+The bounded S064 saved box-quantity and S065 notification-only amendments
+pass their six exposed request renderings, opposite controls and file-backed
+repeat/relaunch tests. On the S065 source the full 1,770 exposed inputs ran,
+with 381 missing required explicit clocks and one missing saved mutation among
+1,756 nonalias cases under the deterministic lower-bound checker. That one
+mutation was S062 with punctuation loss. S065's exact target notification
+removal passed with a simulated delivery sink; real iPhone delivery remains
+unverified.
+The S062 completion now passes all six exposed request renderings without an
+invented extra row, plus the opposite control and file-backed retry. The
+separately confirmed broad-cancel path now saves all deletions with a receipt
+in one transaction and preserves each original CaptureSession; stale target
+and reopen/retry tests passed. Broad completion is still a legacy path without
+that atomicity evidence. The S062-plus-broad full unit check passed 1,108
+tests with zero failures and three skips; unsigned Release compiled. Its
+complete 1,770-case exposed run retained every original and reduced absent
+required saved mutations from one to zero among 1,756 nonalias cases. It
+still missed 381 required explicit clocks under the lower-bound checker.
+The exact 25-case pilot was rerun on this receipt and boundary source with
+zero canonical persisted-output changes from the earlier S063 candidate.
+It still has 17 wrong persisted whole-capture interpretations on the current
+pilot rerun. A later bounded S011 clock repair recovered the 15:00 wheel
+collection reminder in four of its five main renderings and six related
+compositions without changing any of the 25 pilot outputs. S011's lightly
+punctuated rendering and explanatory-speech ownership still fail; its two
+correct clocks do not make the whole capture correct. The S011 source has not
+had a complete 1,770-case or independent qualification rerun. Release remains
+blocked.
+
+### 2026-09-29 — Paired reminder ownership and qualification remain open
+
+The S011 punctuation-loss capture still loses its second 15:00 clock on the
+accepted source and the punctuated variants still create separate explanatory
+rows. A paired-annotation challenger fixed the isolated punctuation-loss
+case but regressed C026/C041 composition dates and invented rows; it was
+rejected, with traces and diff preserved in the Understanding handoff. The
+new whole-capture S011 regression test is intentionally red. S001's exact
+pilot now persists three audited intentions and preserves its original after
+bounded source-role repair, but its photo title does not surface the new-photo
+qualifier without opening the source. It is provisionally tested, not release
+qualified. The current source passed the 1,403-case corpus gate; final-source
+full unit, UI, Release, 1,770-case, independent 240-case and physical
+microphone gates are still outstanding. A stopped 650-case intermediate trace
+does not count as a completed 1,770-case run.
+
+### 2026-09-29 — Clarification scope is only partially repaired
+
+S069 now saves the form and folder without extra instruction rows in the
+punctuated pilot and keeps the unresolved hour unarmed; S079 saves one bins
+task with its place intent. Across the affected 14 renderings and controls,
+S069 lowercase and punctuation-loss still merge or misclassify the folder,
+and spoken fillers invent shopping rows. A subsequent bounded boundary fixed
+S079 punctuation-loss so the bins reminder remains actionable. S079 opposite
+still adds an unnecessary review row. These are unresolved product failures, not successful
+clarification. The current source has only focused and short-corpus checks;
+the mandatory final full validation and physical microphone checks have not
+been executed on it. Actual Home/permission monitoring remains unverified.
+Exact traces and hashes are in the Understanding handoff.
+
+### 2026-09-29 — Elapsed recurrence explanations remain incomplete in some renderings
+
+The S072 punctuated pilot now saves one 24-hour duration recurrence and no
+extra calendar recurrence. Four main renderings and the concise form keep the
+correct first instant through the Toronto clock change. The spoken-filler
+rendering still invents shopping and note rows.
+Synthetic repository traces do not prove notification delivery or long-term
+recurrence scheduling. This source remains below the locked release gate.
+
+## Isolated candidate: keyboard frame diagnostic (2026-10-04)
+
+The October 2 readiness failure remains preserved. A later normal, bounded
+LLDB diagnostic reproduced two warnings in `SwiftUI.InputAccessoryBar.body`
+and keyboard accessory sizing during typed capture. The isolated candidate
+removes CaptureView's redundant keyboard toolbar and keeps its existing
+44-point inline Done action. On the same simulator/runtime, the repeated
+native typed-capture journey passed with no warning and no hits at the
+installed warning breakpoint. This closes the bounded simulator reproduction;
+physical keyboard/runtime behavior is still unverified. The original evidence
+and readiness requirements remain in
+[the readiness record](PRODUCT_READINESS_2026-10-01.md).
+
+## Runtime worked-example candidate remains unqualified (2026-10-04)
+
+The isolated candidate enables `SPEAKIT_RUNTIME_CANDIDATE` in both Debug and
+Release and bundles exactly 59 independently input-first reviewed records
+(352,256-byte index). These are AI reviews, not human approval or proof that
+all generated references are correct. The complete 510,000-row source library
+and 1,371,029,504-byte full index remain available outside the app bundle.
+Storage selection is measured on this Mac; supported-phone memory, latency,
+battery and thermal qualification remain open. Real-data Release use remains
+disabled outside this candidate.
+
+Current source and actual saved snapshots govern every fact and effect. The
+local source interpreter is available on iOS 17+, while generative Foundation
+Models requires the available iOS 26.4 API/model/locale. Equivalent complex
+interpretation across supported devices is unproven. Missing assets, model
+unavailability and validation failures retain the capture for visible review;
+this is safe incompleteness, not complete-capture success. A source-only
+certificate validates bounded discourse and identity lineage independently
+of parser confidence; it is reported separately from example benefit.
+
+A real approved-example quantity repair has passed through the actual
+repository, idempotent retry and file-backed relaunch, with three current
+allocations and no copied reference facts. Source-bound withdrawal and complete
+atomic saved-revision paths have focused native coverage. The formerly invalid
+saved-state developer exporter is corrected and retains pending revision,
+complete timing and independent-source metadata. Host proposals do not prove
+database or reminder effects. Native saved-target tests remain the authority
+for identity/version, untouched fields and retry; the dark largest-text UI
+journey additionally checks target traversal, stale exclusion, chosen fields,
+source and separate persisted deadline/alert receipt values.
+
+The retained 12-capture diagnostic was OFF 4 correct / 8 safe incomplete /
+0 unsafe and ON 6 / 6 / 0. Its two incremental gains came from approved quantity
+and quoted-refusal operators. The same Source11 candidate's broader 48-capture
+comparison is independently graded: OFF 17 correct / 31 safe incomplete /
+0 unsafe, ON 19 / 29 / 0, with 30/28 unnecessary-review outcomes. Selected
+references, actual model projections and the two compiled uses are accounted
+separately; source-only gains are not retrieval benefit. This is exposed
+host development evidence and falls below the locked release criteria.
+
+Unpromoted first-outline-example and staged-anchor challengers have not
+qualified the feature. The latter accepted a task whose November 18 date
+remained in the title but disappeared from dueDate and TemporalIntent. The
+exact host failure, contrasting simulator behavior and subsequent nested
+recipient repair are preserved; passing focused tests does not erase that
+failure or establish a new runtime result. No fresh release set has been
+commissioned. Existing difficult 240-case failures remain separate development
+evidence, not qualified by an easy bank denominator.
+
+Remaining family-role, coupled meaning, condition/list and complete-capture
+failures, unnecessary review, StoreKit setup failures and required final
+integration, account and physical checks still block release. No global family
+graph, guessed contact or missing location, automatic communication, schema
+reset, cloud processing or paid inference is introduced. The consolidated
+readiness and hardware requirements remain in
+[the product readiness record](PRODUCT_READINESS_2026-10-01.md).
+
+
+Isolated runtime candidate limitation (unshipped Source101): an explicit later instruction to combine previously independent Memory intentions has no complete source-bound reconciliation proof yet. Preserve the complete capture for review; do not automatically merge from vague pronouns, quoted or conditional instructions. This remains release work, with a diagnostic asserting visible retained source rather than automatic completion.
+
+### Isolated next nominal draft: pending qualification
+
+The draft present-owned plural task reader and quote-return segmentation have not been compiled or tested. Predicate coordination, conditional/report scope, unavailable lexical assets, exact source ownership and saved-operation boundaries require the new regression matrix plus existing checks before promotion. Multi-action completion is deliberately unsupported: a plural status is retained for review rather than closing one or several tasks. The new grammar is bounded; arbitrary modifiers, relative clauses, past/modal copulas and unknown continuations do not receive declaration authority. No release-readiness or accuracy improvement is claimed from source inspection.
+
+
+The frozen v20 focused run failed six checks, including an existing long paired-reminder regression. Those results remain failed evidence. A separate repaired draft addresses the reproduced ownership, reminder-wrapper, clock-context and recipient-boundary causes; it has not yet passed native or complete-engine qualification. Row quote spans may omit an outside terminal sentence delimiter under the established word-provenance contract; the immutable CaptureSession retains the exact original transcript, and the new tests check it explicitly. The compact and semantic routing defaults remain OFF.
+
+- October 12 retention follow-up: v22 focused checks had four failures (454 pass/3 skip). A late discourse-filing merge was found after correct retention/action segmentation; the next draft adds the shared positive retention guard and corrects two tracking-contract tests. These changes have no new qualification yet. Failed runs are preserved; compact and semantic retrieval remain disabled by default.
+
+
+2026-10-12 final normal-default capture qualification: frozen23 focused run completed with 458 passed, 1 failed, and 3 skipped (462 total). The sole failure was a newly added repository test expecting its retained originalTextSegment to lose the original terminal period. The repository correctly preserved the entire prefix including that period, consistent with the adjacent immutable-transcript tests. Frozen24 changes only that exact expected value to prefix; all persistence, revision, provenance, separate saved-call, and routing assertions remain intact. Application source is byte-identical to frozen23. Full native suite, Release compile, native harness build and large normal-default model comparison remain pending. Compact and semantic routing defaults remain off.
+
+
+2026-10-12 check evidence before the saved-field safety repair: frozen23 corpus replay exited0 with 1,434 cases, 1,428 clean, zero blocking and six cosmetic title differences. The earlier v13 run reported four cosmetic differences. The six current differences include titles retaining a fronted condition/adjunct with an explicit comma rather than silently flattening it; this observation does not independently identify the exact change set from v13. Frozen24 unsigned Release and host compilation passed; full native suite was still running when the additional field-tail and quoted-antecedent problems were reproduced. These receipts do not qualify the next changed application source. Normal full-bank lookup receives no compact/hybrid speed promotion; the new candidate will measure its own complete-engine text latency, with real iPhone voice-to-result latency still requiring device QA.
+
+
+2026-10-12 frozen24 full-suite result: 2,038 passed, eight failed, 35 skipped and one expected failure (2,082 total). Five failures are the separately tracked inherited StoreKit `notEntitled` setup limitation. Three new failing tests exposed two mechanisms: one exact-source expectation omitted a preserved terminal period, and two unchanged saved/reopen diagnostic tests crashed in the same recipient-repair range helper on the same original transcript. The expectation now includes the original period. The repair licence now requires the entire correction cue to fit its selected sentence before constructing the suffix range. Cross-sentence cues decline this narrow licence; original transcript and broader correction handling remain intact. Two additional regression methods cover the exact crash and 24 sentence-boundary/stacked-marker/whitespace controls. These changes and the saved-field scope/antecedent repair require their own native qualification; prior passes do not qualify frozen25.

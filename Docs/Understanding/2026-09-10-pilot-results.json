@@ -1,0 +1,213 @@
+{
+  "cohort": "MASSIVE alarm_set/calendar_set/lists_createoradd plus 24 authored contracts; explicit dataset filenames",
+  "datasets": [
+    "public.jsonl",
+    "authored.jsonl"
+  ],
+  "development_before": {
+    "split": "development",
+    "source_count": 264,
+    "unique_captures": 1021,
+    "elapsed_seconds": 0.01,
+    "probe_sha256": "773cec5bf945e0060c3ed9521132ca7fcf78f45f64761e3ae1e66f5dc6b5bf1e",
+    "dataset_sha256": "986abfc754412d7a663e77f56cf981892041aff70b29e00e68ccc13ffebe1420",
+    "totals": {
+      "sources": 264,
+      "outputs": 1021,
+      "comparisons": 757,
+      "semantic_consistent": 719,
+      "title_consistent": 708,
+      "contract_checks": 72,
+      "contract_passed": 66
+    },
+    "families": {
+      "MASSIVE-1.1/alarm_set": {
+        "sources": 80,
+        "outputs": 316,
+        "comparisons": 236,
+        "semantic_consistent": 224,
+        "title_consistent": 214
+      },
+      "MASSIVE-1.1/calendar_set": {
+        "sources": 80,
+        "outputs": 318,
+        "comparisons": 238,
+        "semantic_consistent": 229,
+        "title_consistent": 231
+      },
+      "MASSIVE-1.1/lists_createoradd": {
+        "sources": 80,
+        "outputs": 315,
+        "comparisons": 235,
+        "semantic_consistent": 224,
+        "title_consistent": 230
+      },
+      "SpeakIt-authored-v1/multi_errand": {
+        "sources": 9,
+        "outputs": 27,
+        "contract_checks": 27,
+        "contract_passed": 25,
+        "comparisons": 18,
+        "semantic_consistent": 16,
+        "title_consistent": 8
+      },
+      "SpeakIt-authored-v1/independent_actions": {
+        "sources": 6,
+        "outputs": 18,
+        "contract_checks": 18,
+        "contract_passed": 18,
+        "comparisons": 12,
+        "semantic_consistent": 12,
+        "title_consistent": 12
+      },
+      "SpeakIt-authored-v1/negation": {
+        "sources": 4,
+        "outputs": 12,
+        "contract_checks": 12,
+        "contract_passed": 8,
+        "comparisons": 8,
+        "semantic_consistent": 4,
+        "title_consistent": 4
+      },
+      "SpeakIt-authored-v1/self_correction": {
+        "sources": 3,
+        "outputs": 9,
+        "contract_checks": 9,
+        "contract_passed": 9,
+        "comparisons": 6,
+        "semantic_consistent": 6,
+        "title_consistent": 5
+      },
+      "SpeakIt-authored-v1/memory": {
+        "sources": 2,
+        "outputs": 6,
+        "contract_checks": 6,
+        "contract_passed": 6,
+        "comparisons": 4,
+        "semantic_consistent": 4,
+        "title_consistent": 4
+      }
+    },
+    "interpretation": "Consistency is not accuracy. Public source intent labels are not Speak It correctness labels. Authored contracts are assistant-reviewed, not human-reviewed."
+  },
+  "development_after": {
+    "split": "development",
+    "source_count": 264,
+    "unique_captures": 1021,
+    "elapsed_seconds": 36.29,
+    "probe_sha256": "d9cfd6fb456bd23a111722e900df68276f9d1def9d6ab5e6927e5a9ffb38b4eb",
+    "dataset_sha256": "986abfc754412d7a663e77f56cf981892041aff70b29e00e68ccc13ffebe1420",
+    "totals": {
+      "sources": 264,
+      "outputs": 1021,
+      "comparisons": 757,
+      "semantic_consistent": 744,
+      "title_consistent": 739,
+      "contract_checks": 72,
+      "contract_passed": 72
+    },
+    "families": {
+      "MASSIVE-1.1/alarm_set": {
+        "sources": 80,
+        "outputs": 316,
+        "comparisons": 236,
+        "semantic_consistent": 235,
+        "title_consistent": 224
+      },
+      "MASSIVE-1.1/calendar_set": {
+        "sources": 80,
+        "outputs": 318,
+        "comparisons": 238,
+        "semantic_consistent": 235,
+        "title_consistent": 236
+      },
+      "MASSIVE-1.1/lists_createoradd": {
+        "sources": 80,
+        "outputs": 315,
+        "comparisons": 235,
+        "semantic_consistent": 226,
+        "title_consistent": 231
+      },
+      "SpeakIt-authored-v1/multi_errand": {
+        "sources": 9,
+        "outputs": 27,
+        "contract_checks": 27,
+        "contract_passed": 27,
+        "comparisons": 18,
+        "semantic_consistent": 18,
+        "title_consistent": 18
+      },
+      "SpeakIt-authored-v1/independent_actions": {
+        "sources": 6,
+        "outputs": 18,
+        "contract_checks": 18,
+        "contract_passed": 18,
+        "comparisons": 12,
+        "semantic_consistent": 12,
+        "title_consistent": 12
+      },
+      "SpeakIt-authored-v1/negation": {
+        "sources": 4,
+        "outputs": 12,
+        "contract_checks": 12,
+        "contract_passed": 12,
+        "comparisons": 8,
+        "semantic_consistent": 8,
+        "title_consistent": 8
+      },
+      "SpeakIt-authored-v1/self_correction": {
+        "sources": 3,
+        "outputs": 9,
+        "contract_checks": 9,
+        "contract_passed": 9,
+        "comparisons": 6,
+        "semantic_consistent": 6,
+        "title_consistent": 6
+      },
+      "SpeakIt-authored-v1/memory": {
+        "sources": 2,
+        "outputs": 6,
+        "contract_checks": 6,
+        "contract_passed": 6,
+        "comparisons": 4,
+        "semantic_consistent": 4,
+        "title_consistent": 4
+      }
+    },
+    "interpretation": "Consistency is not accuracy. Public source intent labels are not Speak It correctness labels. Authored contracts are assistant-reviewed, not human-reviewed."
+  },
+  "reserved_public_evaluation": {
+    "before": {
+      "sources": 60,
+      "outputs": 239,
+      "comparisons": 179,
+      "semantic_consistent": 171,
+      "title_consistent": 171
+    },
+    "after": {
+      "sources": 60,
+      "outputs": 239,
+      "comparisons": 179,
+      "semantic_consistent": 173,
+      "title_consistent": 173
+    }
+  },
+  "existing_corpus": {
+    "clean": 1381,
+    "total": 1381
+  },
+  "existing_heldout": {
+    "routing_correct": 233,
+    "routing_total": 320,
+    "count_correct": 255,
+    "count_total": 310,
+    "ambiguous_acted_on": 7,
+    "ambiguous_total": 69,
+    "missing": 0
+  },
+  "limitations": [
+    "Controlled-variation consistency is not original-answer accuracy.",
+    "Authored contracts are assistant-reviewed, not independent human labels.",
+    "Rules path only; no model training, paid inference, ASR or device model evaluation."
+  ]
+}

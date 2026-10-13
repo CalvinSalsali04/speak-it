@@ -70,7 +70,14 @@ BETTER_SUBJECTS = {
 #: What each list held when this suite was written. Pinned so that a list
 #: quietly losing an entry fails here; a deliberate change re-pins it and says
 #: why in the commit, exactly as `test_observation.py`'s census does.
-SIZES = {"split": 144, "route": 22, "whose": 9, "title": 24, "glue": 10}
+# Build 21 expanded noun protection with each/every/no/all/both/either/neither/
+# several/few/many/much/whose/which/what, and added the explicit own frames
+# `i/we mean to`, `i/we will` and `i/we'll` to the router. The stale
+# `got ta` entry is removed under the documented no-unprotected-tail policy;
+# the supported single-token `gotta` remains unchanged.
+# These are source-form counts: `i/we'll` remains one regex alternative here;
+# exposed_tail expands its two concrete tokens only for the boundary invariant.
+SIZES = {"split": 158, "route": 25, "whose": 9, "title": 24, "glue": 10}
 
 #: Forms all four claimants agree are obligations.
 #:
@@ -164,6 +171,66 @@ class EveryListCanBeRead(unittest.TestCase):
         self.assertTrue(pv.obligation_lead())
 
 
+class DanglingAuxiliaryScope(unittest.TestCase):
+    """The reader owns one declaration, not a regex-shaped file-wide match."""
+
+    @staticmethod
+    def function(regexes):
+        return (
+            "    private static func isFragment(_ value: String) -> Bool {\n"
+            + "\n".join(
+                "        if text.range(\n            " + regex
+                + ",\n            options: .regularExpression\n"
+                "        ) != nil { return true }"
+                for regex in regexes
+            )
+            + "\n        return false\n    }\n"
+        )
+
+    def read(self, source):
+        original = pv.REPOS
+        with tempfile.TemporaryDirectory() as tmp:
+            tree = pathlib.Path(tmp)
+            (tree / "ThoughtExtractor.swift").write_text(source, encoding="utf-8")
+            pv.REPOS = tree
+            try:
+                return pv.dangling_auxiliary()
+            finally:
+                pv.REPOS = original
+
+    def test_unrelated_matching_regexes_do_not_enter_the_function_vocabulary(self):
+        vocabulary = r'of: #"^(?:i\s+)?(?:should|must)$"#'
+        unrelated = r'of: #"^(?:i\s+)?(?:will|can)$"#'
+        source = (
+            "    private static func unrelatedBefore() -> Bool {\n"
+            "        " + unrelated + "\n    }\n"
+            + self.function([vocabulary])
+            + "    private static func unrelatedAfter() -> Bool {\n"
+            "        " + unrelated + "\n    }\n"
+        )
+        self.assertEqual(self.read(source), {"should", "must"})
+
+    def test_duplicate_vocabulary_inside_the_function_refuses(self):
+        vocabulary = r'of: #"^(?:i\s+)?(?:should|must)$"#'
+        with self.assertRaisesRegex(pv.Refused, "dangling auxiliary: expected exactly one match, found 2"):
+            self.read(self.function([vocabulary, vocabulary]))
+
+    def test_duplicate_function_declarations_refuse(self):
+        function = self.function([r'of: #"^(?:i\s+)?(?:should|must)$"#'])
+        with self.assertRaisesRegex(pv.Refused, "isFragment declaration: expected exactly one match, found 2"):
+            self.read(function + function)
+
+    def test_missing_declaration_or_vocabulary_refuses(self):
+        function = self.function([r'of: #"^(?:i\s+)?(?:should|must)$"#'])
+        for source in [function.replace("func isFragment", "func renamedFragment"), self.function([])]:
+            with self.subTest(source=source), self.assertRaises(pv.Refused):
+                self.read(source)
+
+    def test_empty_vocabulary_refuses(self):
+        with self.assertRaisesRegex(pv.Refused, "vocabulary is empty"):
+            self.read(self.function([r'of: #"^(?:i\s+)?(?:)$"#']))
+
+
 class NoObligationFormIsCutOffFromWhatItGoverns(unittest.TestCase):
 
     def setUp(self):
@@ -221,6 +288,13 @@ class NoObligationFormIsCutOffFromWhatItGoverns(unittest.TestCase):
             "router calls an obligation, and `deonticBetterSubject` no longer "
             "holds them, so those sentences are cut at `better` after all."
         )
+
+    def test_speaker_contractions_expand_to_actual_splitter_tokens(self):
+        forms = pv._alternatives(r"(?:i|we)['’]ll|(?:i|we)\s+will|have\s+to")
+        self.assertEqual(forms, {"i/we'll", "i/we will", "have to"})
+        self.assertEqual(pv.exposed_tail(forms), {"i'll", "we'll", "will", "to"})
+        self.assertFalse(pv.exposed_tail(forms) - {"i'll", "we'll", "will", "to"})
+        self.assertEqual(pv.exposed_tail(forms) - {"i'll", "will", "to"}, {"we'll"})
 
     def test_the_check_notices_a_single_word_that_slips_through(self):
         """The mutation the invariant exists for, run against it."""
@@ -284,7 +358,7 @@ class WhatTheListsAgreeOn(unittest.TestCase):
         lists = pv.read_all()
         whole = pv.union(lists)
         self.assertLess(len(AGREED), len(whole) / 2)
-        self.assertEqual(len(whole), 37)
+        self.assertEqual(len(whole), 40)
 
 
 #: Every subject in the gating corpus that `obligationBelongsToAnotherPerson`

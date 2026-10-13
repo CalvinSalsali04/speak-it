@@ -476,4 +476,132 @@ final class ItemPresentationTests: XCTestCase {
             )
         )
     }
+
+    // MARK: Overdue item presentation
+
+    func testOverdueTimedItemIsFlaggedAndFormattedWithOverduePrefix() {
+        let fixedNow = Date(timeIntervalSince1970: 1_700_000_000)
+        let pastDate = fixedNow.addingTimeInterval(-3600)
+        let item = CapturedItem(
+            originalTextSegment: "Call the pharmacy",
+            displayTitle: "Call the pharmacy",
+            itemType: .task,
+            category: .general,
+            dueDate: pastDate
+        )
+
+        let presentation = presentation(for: item, now: fixedNow)
+        XCTAssertTrue(presentation.isOverdue)
+        XCTAssertEqual(presentation.destination, .overdue)
+        let formatted = presentation.formattedTimingText
+        XCTAssertNotNil(formatted)
+        XCTAssertTrue(formatted?.hasPrefix("Overdue · ") == true, "Expected 'Overdue · ' prefix, got \(String(describing: formatted))")
+    }
+
+    func testOverdueDateOnlyItemIsFlaggedAndFormattedWithOverduePrefix() {
+        let calendar = Calendar.autoupdatingCurrent
+        let fixedNow = Date(timeIntervalSince1970: 1_700_000_000)
+        let pastDay = calendar.date(byAdding: .day, value: -2, to: fixedNow)!
+        let item = CapturedItem(
+            originalTextSegment: "File taxes",
+            displayTitle: "File taxes",
+            itemType: .task,
+            category: .general,
+            dueDate: pastDay,
+            temporalIntent: TemporalIntent(kind: .dateOnly)
+        )
+
+        let presentation = presentation(for: item, now: fixedNow)
+        XCTAssertTrue(presentation.isOverdue)
+        XCTAssertEqual(presentation.destination, .overdue)
+        let formatted = presentation.formattedTimingText
+        XCTAssertNotNil(formatted)
+        XCTAssertTrue(formatted?.hasPrefix("Overdue · ") == true, "Expected 'Overdue · ' prefix, got \(String(describing: formatted))")
+    }
+
+    func testCompletedItemIsNeverOverdueEvenIfPastDue() {
+        let fixedNow = Date(timeIntervalSince1970: 1_700_000_000)
+        let pastDate = fixedNow.addingTimeInterval(-7200)
+        let item = CapturedItem(
+            originalTextSegment: "Call doctor",
+            displayTitle: "Call doctor",
+            itemType: .task,
+            category: .general,
+            dueDate: pastDate,
+            completedAt: fixedNow.addingTimeInterval(-1800)
+        )
+
+        let presentation = presentation(for: item, now: fixedNow)
+        XCTAssertFalse(presentation.isOverdue, "Completed items must not be marked overdue")
+        XCTAssertFalse(presentation.formattedTimingText?.contains("Overdue") == true)
+    }
+
+    func testFutureItemIsNotOverdue() {
+        let fixedNow = Date(timeIntervalSince1970: 1_700_000_000)
+        let futureDate = fixedNow.addingTimeInterval(3600)
+        let item = CapturedItem(
+            originalTextSegment: "Doctor appointment",
+            displayTitle: "Doctor appointment",
+            itemType: .task,
+            category: .general,
+            dueDate: futureDate
+        )
+
+        let presentation = presentation(for: item, now: fixedNow)
+        XCTAssertFalse(presentation.isOverdue)
+        XCTAssertFalse(presentation.formattedTimingText?.contains("Overdue") == true)
+        XCTAssertEqual(presentation.formattedTimingText, presentation.primaryTimingText)
+    }
+}
+
+
+@MainActor
+final class CompletedTodayBannerHistoryTests: XCTestCase {
+    func testPresentedCompletionDoesNotReplayAfterDestinationRecreation() {
+        let first = CompletedTodayBannerHistory.eventID(itemID: UUID(), completedAt: Date(timeIntervalSince1970: 100))
+        XCTAssertTrue(CompletedTodayBannerHistory.hasNewCompletion(current: [first], presented: "[]"))
+        let stored = CompletedTodayBannerHistory.encode([first])
+        XCTAssertFalse(CompletedTodayBannerHistory.hasNewCompletion(current: [first], presented: stored))
+    }
+
+    func testNewCompletionShowsEvenWhenCountStaysTheSame() {
+        let itemID = UUID()
+        let first = CompletedTodayBannerHistory.eventID(itemID: itemID, completedAt: Date(timeIntervalSince1970: 100))
+        let redone = CompletedTodayBannerHistory.eventID(itemID: itemID, completedAt: Date(timeIntervalSince1970: 101))
+        XCTAssertTrue(CompletedTodayBannerHistory.hasNewCompletion(current: [redone], presented: CompletedTodayBannerHistory.encode([first])))
+    }
+
+    func testUndoAndEmptyHistoryDoNotCreateCompletionEvents() {
+        let first = CompletedTodayBannerHistory.eventID(itemID: UUID(), completedAt: Date(timeIntervalSince1970: 100))
+        let second = CompletedTodayBannerHistory.eventID(itemID: UUID(), completedAt: Date(timeIntervalSince1970: 101))
+        let stored = CompletedTodayBannerHistory.encode([first, second])
+        XCTAssertFalse(CompletedTodayBannerHistory.hasNewCompletion(current: [first], presented: stored))
+        XCTAssertFalse(CompletedTodayBannerHistory.hasNewCompletion(current: [], presented: stored))
+    }
+
+    func testRestoringAnArchivedCompletionDoesNotReplayTheBanner() {
+        let event = CompletedTodayBannerHistory.eventID(itemID: UUID(), completedAt: Date(timeIntervalSince1970: 100))
+        let shown = CompletedTodayBannerHistory.recording(current: [event], presented: "[]")
+        let archived = CompletedTodayBannerHistory.recording(current: [], presented: shown)
+        XCTAssertFalse(CompletedTodayBannerHistory.hasNewCompletion(current: [event], presented: archived))
+    }
+
+    func testSameCalendarDateDoesNotResetPresentedEventsWhenTimeZoneChanges() {
+        let date = ISO8601DateFormatter().date(from: "2026-10-12T20:00:00Z")!
+        var toronto = Calendar(identifier: .gregorian)
+        toronto.timeZone = TimeZone(identifier: "America/Toronto")!
+        var vancouver = toronto
+        vancouver.timeZone = TimeZone(identifier: "America/Vancouver")!
+        XCTAssertEqual(CompletedTodayBannerHistory.dayKey(for: date, calendar: toronto),
+                       CompletedTodayBannerHistory.dayKey(for: date, calendar: vancouver))
+        XCTAssertNotEqual(CompletedTodayBannerHistory.dayKey(for: date, calendar: toronto),
+                          CompletedTodayBannerHistory.dayKey(for: date.addingTimeInterval(86_400), calendar: toronto))
+    }
+
+    func testDistinctTasksWithSameTimestampAreDistinctEvents() {
+        let date = Date(timeIntervalSince1970: 100)
+        let first = CompletedTodayBannerHistory.eventID(itemID: UUID(), completedAt: date)
+        let second = CompletedTodayBannerHistory.eventID(itemID: UUID(), completedAt: date)
+        XCTAssertTrue(CompletedTodayBannerHistory.hasNewCompletion(current: [first, second], presented: CompletedTodayBannerHistory.encode([first])))
+    }
 }

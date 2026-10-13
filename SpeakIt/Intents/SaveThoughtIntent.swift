@@ -583,32 +583,36 @@ private extension SpeechTranscriber.State {
 #endif
 
 @MainActor
-private enum ExternalCaptureWriter {
+enum ExternalCaptureWriter {
     struct Result: Sendable {
         let confirmationContext: String
         let isDuplicate: Bool
         let needsInterpretationConfirmation: Bool
     }
 
-    static func save(_ thought: String, createdAt: Date = .now) async throws -> Result {
-        guard PersistenceController.initializationError == nil else {
+    static func save(
+        _ thought: String,
+        createdAt: Date = .now,
+        repository suppliedRepository: (any ThoughtRepository)? = nil,
+        defaults: UserDefaults = .standard
+    ) async throws -> Result {
+        guard suppliedRepository != nil || PersistenceController.initializationError == nil else {
             throw RepositoryError.storageUnavailable
         }
         // Clamp here rather than at each call site: everything reaching this
         // function came from another process (Shortcuts, Siri, the Action
         // Button) and cannot be assumed to be a reasonable length.
         let thought = CaptureTextLimit.clamp(thought)
-        let defaults = UserDefaults.standard
         let tutorialBeganAt = defaults.double(forKey: "SpeakIt.captureSetupTestBeganAt")
         let isTutorialTest = defaults.string(forKey: FirstRunTutorialKeys.phase)
             == FirstRunTutorialPhase.readiness.rawValue
             && tutorialBeganAt > 0
             && createdAt.timeIntervalSince1970 - tutorialBeganAt < 30 * 60
-        guard isTutorialTest || SubscriptionStore.canCreateBackgroundCapture(now: createdAt) else {
+        guard isTutorialTest || SubscriptionStore.canCreateBackgroundCapture(defaults: defaults, now: createdAt) else {
             throw CaptureAccessError.freeLimitReached
         }
 
-        let repository = SwiftDataThoughtRepository(
+        let repository = suppliedRepository ?? SwiftDataThoughtRepository(
             modelContext: PersistenceController.shared.mainContext
         )
         let capture = try await repository.createCaptureResult(
@@ -619,8 +623,8 @@ private enum ExternalCaptureWriter {
             // Avoid a second asynchronous scheduler racing the verified request.
             schedulesReminders: false
         )
-        if capture.createdNewCapture, !isTutorialTest {
-            SubscriptionStore.recordBackgroundCapture(now: createdAt)
+        if capture.createdNewCapture, capture.consumesFreeCapture, !isTutorialTest {
+            SubscriptionStore.recordBackgroundCapture(defaults: defaults, now: createdAt)
         }
 
         if isTutorialTest {
@@ -646,9 +650,7 @@ private enum ExternalCaptureWriter {
                 requestAuthorizationIfNeeded: true
             )
             if schedulingResults.allSatisfy({ $0 == .scheduled }) {
-                confirmationContext = capture.itemCount == 1
-                    ? ReminderScheduler.confirmationContext(for: capture.primaryItem)
-                    : multiItemContext(for: capture)
+                confirmationContext = savedContext(for: capture)
             } else if schedulingResults.contains(.denied) {
                 confirmationContext = "Reminders are off in Settings"
             } else if schedulingResults.contains(.needsPermission) {
@@ -657,9 +659,7 @@ private enum ExternalCaptureWriter {
                 confirmationContext = "Reminder couldn’t be scheduled"
             }
         } else {
-            confirmationContext = capture.itemCount == 1
-                ? ReminderScheduler.confirmationContext(for: capture.primaryItem)
-                : multiItemContext(for: capture)
+            confirmationContext = savedContext(for: capture)
         }
 
         return Result(
@@ -669,7 +669,13 @@ private enum ExternalCaptureWriter {
         )
     }
 
-    private static func multiItemContext(for capture: CaptureCreationResult) -> String {
-        capture.receiptContext
+    private static func savedContext(for capture: CaptureCreationResult) -> String {
+        // Operations can intentionally produce no rows. Use the same outcome
+        // copy as the app rather than asking an empty capture for primaryItem.
+        if let outcome = capture.operationOutcome {
+            let copy = CaptureOperationCopy.make(for: outcome)
+            return "\(copy.title). \(copy.detail)"
+        }
+        return capture.receiptContext
     }
 }

@@ -1,5 +1,7 @@
 import SwiftData
 import XCTest
+import UserNotifications
+import CoreLocation
 @testable import SpeakIt
 
 /// Defects found by walking the app as a first-time user before submission.
@@ -11,6 +13,63 @@ import XCTest
 final class ReleaseReadinessTests: XCTestCase {
     private var container: ModelContainer!
     private var repository: SwiftDataThoughtRepository!
+
+    func testBuild20UpgradePreservesBothLibrariesMetadataAndOriginalsAndRunsOnce() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let sourceURL = directory.appendingPathComponent("legacy.store")
+        let source = try ModelContainer(for: PersistenceController.schema,
+            migrationPlan: SpeakItMigrationPlan.self,
+            configurations: [ModelConfiguration(schema: PersistenceController.schema, url: sourceURL, cloudKitDatabase: .none)])
+        let session = CaptureSession(originalTranscription: "My original preview words", captureSource: .inAppText)
+        let item = CapturedItem(originalTextSegment: "My original preview words", displayTitle: "Preview note", captureSession: session)
+        item.itemType = .note
+        source.mainContext.insert(session); source.mainContext.insert(item)
+        try source.mainContext.save()
+        let existing = CaptureSession(originalTranscription: "Build 19 words", captureSource: .inAppText)
+        container.mainContext.insert(existing); try container.mainContext.save()
+        let suite = "Build21UpgradeTest." + UUID().uuidString
+        let prefs = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { prefs.removePersistentDomain(forName: suite) }
+        let oldPins = Array(MemoryPinStore.records().values)
+        let oldGroups = ShoppingGroupStore.snapshot()
+        defer { MemoryPinStore.restore(oldPins); ShoppingGroupStore.restore(oldGroups) }
+        prefs.set(try JSONEncoder().encode([MemoryPinRecord(itemID: item.id, isPinned: true, modifiedAt: .now)]), forKey: "SpeakIt.pinnedMemoryRecords.v1")
+        prefs.set(try JSONEncoder().encode([item.id.uuidString: "Hardware"]), forKey: "SpeakIt.shoppingGroups.v1")
+        try repository.importBuild20LibraryIfPresent(at: sourceURL, preferences: prefs, sharedPreferences: prefs, completionDefaults: prefs)
+        XCTAssertEqual(Set(try container.mainContext.fetch(FetchDescriptor<CaptureSession>()).map(\.originalTranscription)), ["Build 19 words", "My original preview words"])
+        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<CapturedItem>()), 1)
+        XCTAssertTrue(MemoryPinStore.records()[item.id]?.isPinned == true)
+        XCTAssertEqual(ShoppingGroupStore.group(for: item.id), "Hardware")
+        XCTAssertEqual(try source.mainContext.fetchCount(FetchDescriptor<CapturedItem>()), 1)
+        XCTAssertTrue(prefs.bool(forKey: "SpeakIt.build20LibraryImported.v1"))
+        try repository.importBuild20LibraryIfPresent(at: sourceURL, preferences: prefs, sharedPreferences: prefs, completionDefaults: prefs)
+        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<CapturedItem>()), 1)
+    }
+
+    func testBuild20UpgradeUnreadableMetadataKeepsOriginalAndRetries() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("legacy.store")
+        let source = try ModelContainer(for: PersistenceController.schema,
+            migrationPlan: SpeakItMigrationPlan.self,
+            configurations: [ModelConfiguration(schema: PersistenceController.schema, url: url, cloudKitDatabase: .none)])
+        source.mainContext.insert(CaptureSession(originalTranscription: "Keep these exact words", captureSource: .inAppVoice))
+        try source.mainContext.save()
+        let suite = "Build21UpgradeFailure." + UUID().uuidString
+        let prefs = try XCTUnwrap(UserDefaults(suiteName: suite)); defer { prefs.removePersistentDomain(forName: suite) }
+        prefs.set(Data("invalid metadata".utf8), forKey: "SpeakIt.pinnedMemoryRecords.v1")
+        XCTAssertThrowsError(try repository.importBuild20LibraryIfPresent(at: url, preferences: prefs, sharedPreferences: prefs, completionDefaults: prefs))
+        XCTAssertFalse(prefs.bool(forKey: "SpeakIt.build20LibraryImported.v1"))
+        XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<CaptureSession>()), 0)
+        XCTAssertEqual(try source.mainContext.fetchCount(FetchDescriptor<CaptureSession>()), 1)
+        prefs.removeObject(forKey: "SpeakIt.pinnedMemoryRecords.v1")
+        try repository.importBuild20LibraryIfPresent(at: url, preferences: prefs, sharedPreferences: prefs, completionDefaults: prefs)
+        XCTAssertTrue(prefs.bool(forKey: "SpeakIt.build20LibraryImported.v1"))
+        XCTAssertEqual(try container.mainContext.fetch(FetchDescriptor<CaptureSession>()).first?.originalTranscription, "Keep these exact words")
+    }
 
     private var previousRecurrences: [RecurrenceRecordSnapshot] = []
 
@@ -32,6 +91,20 @@ final class ReleaseReadinessTests: XCTestCase {
         RecurrenceStore.restore(previousRecurrences)
         repository = nil
         container = nil
+    }
+
+    func testNotificationDiagnosticsExcludeAuthoredContentAndLocation() {
+        let content = UNMutableNotificationContent()
+        content.title = "Synthetic private title"
+        content.body = "Synthetic private task body"
+        content.userInfo = ["source": "Synthetic private transcript"]
+        let region = CLCircularRegion(center: CLLocationCoordinate2D(latitude: 43.65, longitude: -79.38),
+                                      radius: 100, identifier: "Synthetic private place")
+        let request = UNNotificationRequest(identifier: "Synthetic private identifier", content: content,
+                                           trigger: UNLocationNotificationTrigger(region: region, repeats: false))
+        XCTAssertEqual(NotificationDiagnostics.summary(for: request), "trigger=location")
+        let immediate = UNNotificationRequest(identifier: "private", content: content, trigger: nil)
+        XCTAssertEqual(NotificationDiagnostics.summary(for: immediate), "trigger=immediate")
     }
 
     // MARK: - Location is never requested during onboarding

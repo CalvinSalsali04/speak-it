@@ -677,30 +677,30 @@ Sources holding exactly the same utterances are one body, grouped first. Then
 a body wholly inside another is not a second population. 25 sources reduce to
 22 distinct bodies and **12 that sit inside no other**:
 
-| utterances | share of 5,901 | population |
+| utterances | share of 11,741 | population |
 |---:|---:|---|
-| 4,064 | 68.9% | the gating corpus in `SpeakItTests` |
-| 818 | 13.9% | `Tools/SpeechLab/phase2`, in four byte-identical files |
-| 695 | 11.8% | `Tools/SpeechLab/phase2/repair/trust-closure/cases.jsonl` |
-| 472 | 8.0% | `Tools/SpeechLab/audit/combined-renderings.jsonl` |
-| 163 | 2.8% | `Tools/CorpusRunner/devsets/unfinished.tsv` |
-| 123 | 2.1% | `Tools/SpeechLab/phase2/repair/trust-closure/exclusions.jsonl` |
-| 121 | 2.1% | `Tools/CorpusRunner/devsets/coordination.tsv` |
-| 114 | 1.9% | `Tools/CorpusRunner/devsets/routed.tsv` |
-| 85 | 1.4% | `Tools/CorpusRunner/devsets/rambling.tsv` |
-| 55 | 0.9% | `Tools/CorpusRunner/devsets/abandonment.tsv` |
-| 46 | 0.8% | `Tools/CorpusRunner/devsets/runon.tsv` |
-| 45 | 0.8% | `Tools/CorpusRunner/devsets/framing.tsv` |
+| 9,904 | 84.4% | the gating corpus in `SpeakItTests` |
+| 818 | 7.0% | `Tools/SpeechLab/phase2`, in four byte-identical files |
+| 695 | 5.9% | `Tools/SpeechLab/phase2/repair/trust-closure/cases.jsonl` |
+| 472 | 4.0% | `Tools/SpeechLab/audit/combined-renderings.jsonl` |
+| 163 | 1.4% | `Tools/CorpusRunner/devsets/unfinished.tsv` |
+| 123 | 1.0% | `Tools/SpeechLab/phase2/repair/trust-closure/exclusions.jsonl` |
+| 121 | 1.0% | `Tools/CorpusRunner/devsets/coordination.tsv` |
+| 114 | 1.0% | `Tools/CorpusRunner/devsets/routed.tsv` |
+| 85 | 0.7% | `Tools/CorpusRunner/devsets/rambling.tsv` |
+| 55 | 0.5% | `Tools/CorpusRunner/devsets/abandonment.tsv` |
+| 46 | 0.4% | `Tools/CorpusRunner/devsets/runon.tsv` |
+| 45 | 0.4% | `Tools/CorpusRunner/devsets/framing.tsv` |
 
 The four files under `Tools/SpeechLab/phase2` are the same 818 utterances four
 times: `adjudication/cases-adjudicated.jsonl`, `data/cases.jsonl`,
 `data/renderings.jsonl`, `review/independent-review-pack.jsonl`. A form
 appearing only there reads as four sources and is one.
 
-**That column sums to 6,801 and its shares to 115.3%, because the twelve
+**That column sums to 12,641 and its shares to 107.7%, because the twelve
 populations are maximal rather than disjoint.** A body inside no other body
 may still overlap one. The excess of 900 counts an utterance once for every
-additional maximal population that contains it. Only the union, 5,901, is a
+additional maximal population that contains it. Only the union, 11,741, is a
 total.
 
 ### By kind, and the one place two kinds overlap
@@ -708,18 +708,18 @@ total.
 Two of the three pairs share nothing: not one utterance is in both
 `SpeakItTests` and the SpeechLab tree, and not one is in both the SpeechLab
 tree and a development set. The development sets and the fixtures overlap by
-114, so the three kinds are 4,064 + 1,333 + 618 = 6,015 against a union of
-5,901 and do not add up. Written out so that they do:
+114, so the three kinds are 9,904 + 1,333 + 618 = 11,855 against a union of
+11,741 and do not add up. Written out so that they do:
 
-| kind | utterances | share of 5,901 |
+| kind | utterances | share of 11,741 |
 |---|---:|---:|
-| test fixtures only | 3,950 | 66.9% |
-| generated renderings (the SpeechLab tree) | 1,333 | 22.6% |
-| development sets only | 504 | 8.5% |
-| in both a development set and a fixture | 114 | 1.9% |
-| **total** | **5,901** | |
+| test fixtures only | 9,790 | 83.4% |
+| generated renderings (the SpeechLab tree) | 1,333 | 11.4% |
+| development sets only | 504 | 4.3% |
+| in both a development set and a fixture | 114 | 1.0% |
+| **total** | **11,741** | |
 
-**91.5% of everything this project may read — 5,397 of 5,901 — is either a
+**95.7% of everything this project may read — 11,237 of 11,741 — is either a
 fixture written to exercise the parser or a rendering generated from a
 blueprint.** The material written to look like somebody talking is 618
 utterances, of which 504 exist nowhere else.
@@ -1100,22 +1100,18 @@ plus a declared SpeechLab list checked against `corpus_paths.sealed()` at the
 point of use, and it refuses to run rather than score a zero if any source
 stops yielding rows.
 
-Run it for the figures rather than reading them here. The load-bearing result
-is the one this document does state, because a test recomputes it: **`which
-means`, `that means`, `because of that` and `therefore` appear in no readable
-row at all**, while `and` and `so` appear in hundreds.
-<!-- recomputed: absent-connectives which means, that means, because of that, therefore -->
+Run it for the figures rather than reading them here. The current recomputed
+claim is: **`that means`,
+`because of that` and `therefore` appear in no readable row at all**.
+`which means` is now attested in readable development material. This census
+measures attestation, not parser accuracy or the frequency of real speech.
+<!-- recomputed: absent-connectives that means, because of that, therefore -->
 
-**The two lists are the same list.** Every connective the splitter handles is
-attested in readable material — including `also` and `plus`, which the census
-found only because reading `connectorRun` turned them up and which the
-consequence rotation never used — and every
-connective it does not handle is attested in none. That correspondence is not a
-coincidence and it is not a compliment to the parser: the corpora and the rules
-were written by the same hands, working from the same intuitions about how a
-sentence goes. The parser handles what we thought to write down. A census over
-our own material can therefore confirm that a family is unsizeable and can
-never establish that one is rare.
+The earlier exact correspondence between readable attestation and handled
+connectives is historical; `which means` no longer belongs to the absent list.
+The corpora and rules were authored within the same project, so this census
+cannot establish how rare any family is in real speech or prove that an
+attested connective is handled correctly.
 
 **Read that in both directions, and the second one matters more.** A zero is
 not evidence that people do not say these things. Every row counted was

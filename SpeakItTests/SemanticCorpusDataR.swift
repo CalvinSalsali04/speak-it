@@ -684,14 +684,11 @@ enum SemanticCorpusR {
 
     // MARK: - Family 56: fronted conditions
 
-    /// "When I finish the essay call Dave" was a Memory note. The reader now
-    /// looks past a subordinator-plus-subject clause to the imperative behind
-    /// it, and the organizer holds the row in Needs review as it already did
-    /// for "When I get paid, remind me to transfer money" — the condition is
-    /// understood, and not enforceable. "After I" and "before I" join the
-    /// condition vocabulary in the splitter, the reader and the organizer, so
-    /// the sentence stays one row. A place trigger is a different path and is
-    /// covered by the location family.
+    /// The reader looks past a fronted subordinator to the imperative behind
+    /// it. Fronted conditions stay in review because the concise action title
+    /// can drop their wording. Trailing conditions stay on the task title and
+    /// need no automatic monitor unless the person explicitly asks for a
+    /// reminder. A place trigger is a different path.
     static let frontedConditions: [CorpusCase] = [
         corpusCase(.frontedConditions, "When I finish the essay call Dave",
                    count: 1, type: [.personFollowUp], route: [.today], person: ["Dave"], review: [true]),
@@ -712,7 +709,8 @@ enum SemanticCorpusR {
                    count: 1, route: [.today], title: ["Call Dave"], review: [true]),
         // A trailing condition reads the same way as a fronted one.
         corpusCase(.frontedConditions, "Text Mom after we land",
-                   count: 1, type: [.personFollowUp], route: [.today], review: [true]),
+                   count: 1, type: [.personFollowUp], route: [.today], review: [false],
+                   note: "A trailing condition stays visible on a usable task. No automatic reminder was requested."),
     ]
 
     /// What only looks like a condition, and what a condition must not become.

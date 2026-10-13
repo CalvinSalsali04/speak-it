@@ -524,6 +524,17 @@ enum DockScroll {
     }
 }
 
+private struct DockScrollClearanceKey: EnvironmentKey {
+    static let defaultValue: CGFloat = DockScroll.clearance
+}
+
+extension EnvironmentValues {
+    var dockScrollClearance: CGFloat {
+        get { self[DockScrollClearanceKey.self] }
+        set { self[DockScrollClearanceKey.self] = newValue }
+    }
+}
+
 /// Reports how far the scroll content has moved from its resting position.
 struct DockScrollObserver: ViewModifier {
     let onScroll: (CGFloat) -> Void
@@ -556,6 +567,7 @@ extension View {
 }
 
 struct LibraryView: View {
+    @Environment(\.dockScrollClearance) private var dockScrollClearance
     @Environment(\.thoughtRepository) private var repository
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var subscriptionStore: SubscriptionStore
@@ -619,14 +631,6 @@ struct LibraryView: View {
         if arguments.contains("--show-memory-reference") { return .reference }
 #endif
         return nil
-    }
-
-    private var memoryEyebrow: String {
-        switch memoryItems.count {
-        case 0: "Nothing saved yet"
-        case 1: "1 thing remembered"
-        case let count: "\(count) things remembered"
-        }
     }
 
     private var memoryItems: [CapturedItem] {
@@ -700,7 +704,7 @@ struct LibraryView: View {
         .listStyle(.plain)
         .listSectionSpacing(0)
         .scrollContentBackground(.hidden)
-        .contentMargins(.bottom, DockScroll.clearance, for: .scrollContent)
+        .contentMargins(.bottom, dockScrollClearance, for: .scrollContent)
         .coordinateSpace(name: DockScroll.coordinateSpace)
         .scrollBounceBehavior(.basedOnSize)
         .modifier(DockScrollObserver(onScroll: handleDockScroll))
@@ -777,12 +781,6 @@ struct LibraryView: View {
     private var header: some View {
         HStack(alignment: .bottom) {
             VStack(alignment: .leading, spacing: 6) {
-                // A count of what is kept, not a slogan. Always present so the
-                // title sits where Today's does when switching tabs.
-                Text(memoryEyebrow)
-                    .font(SpeakItTypography.eyebrow)
-                    .foregroundStyle(Color.speakMuted)
-
                 Text("Memory")
                     .font(SpeakItTypography.screenTitle)
                     .foregroundStyle(Color.speakInk)

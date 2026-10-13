@@ -74,6 +74,15 @@ enum SpeechCaptureDiagnosticsStore {
 
 @MainActor
 final class SpeechTranscriber: ObservableObject {
+    enum EndpointMode: Equatable {
+        case automatic
+        case longCapture
+    }
+
+    // Ordinary capture is hands-free after starting. Continuous dictation
+    // remains an explicit option for pauses longer than the adaptive windows.
+    static let inAppDefaultEndpointMode: EndpointMode = .automatic
+
     enum State: Equatable {
         case idle
         case requestingPermission
@@ -90,6 +99,10 @@ final class SpeechTranscriber: ObservableObject {
     @Published private(set) var hasDetectedAudioInput = false
     @Published private(set) var isWaitingForContinuation = false
     @Published private(set) var isPreparingEnhancedRecognition = false
+    @Published private(set) var endpointMode: EndpointMode = .automatic
+    @Published private(set) var requiresWholeRecordingVerification = false
+    @Published private(set) var requiresOfflineRecovery = false
+    @Published private(set) var hasAudioIntegrityFailure = false
     private(set) var speechEndpointDetectedAt: CapturePerformanceClock.Instant?
     private(set) var finalTranscriptAt: CapturePerformanceClock.Instant?
     private(set) var lastAudioQuality: SpeechCaptureAudioQuality?
@@ -105,6 +118,9 @@ final class SpeechTranscriber: ObservableObject {
     private let audioEngine = AVAudioEngine()
     private var recognitionBackend: (any SpeechRecognitionBackend)?
     private var audioProcessor: SpeechCaptureAudioProcessor?
+    private var audioIntegrity: CaptureAudioIntegrity?
+    private var receivedFinalResult = false
+    private var hasRecognitionForwardingFailure = false
     private var naturalPauseTask: Task<Void, Never>?
     private var lastEndpointingSignature = ""
     private var audioInputReadyTimeout: Task<Void, Never>?
@@ -114,8 +130,34 @@ final class SpeechTranscriber: ObservableObject {
     private var automaticFinalization: ((String) -> Void)?
     private var hasInstalledTap = false
     private var recoveryAudioFile: AVAudioFile?
+    private var activeRecoveryAudioURL: URL?
+    private var requestedRecoveryAudioURL: URL?
+    private var audioDrainPending = false
+    private var audioDrainCallbacks: [() -> Void] = []
+    private var isFailingLongCapture = false
     private var activeStartID: UUID?
+    // Unlike activeStartID, this remains valid after the first audio buffer.
+    // Backend callbacks can arrive after cancel/endAudio and must not reach a
+    // later capture that has already entered .listening.
+    private var activeCaptureID: UUID?
     private var audioProfile = SpeechCaptureAudioProfile.spokenAudio
+    private var finalizationSource: EndpointFinalizationSource?
+#if DEBUG
+    private static let endpointTraceLogger = Logger(
+        subsystem: "com.calvinwak.SpeakIt",
+        category: "SpeechEndpointTrace"
+    )
+    private var endpointTraceStartedAt: CapturePerformanceClock.Instant?
+#endif
+
+    private enum EndpointFinalizationSource: String {
+        case automaticFast = "automatic_1900"
+        case automaticMiddle = "automatic_4000"
+        case automaticExtended = "automatic_8000"
+        case backendFinal = "backend_final"
+        case manual
+        case recognizerError = "recognizer_error"
+    }
 
     /// How long a sentence that sounds finished may sit in silence before the
     /// capture closes.
@@ -148,10 +190,24 @@ final class SpeechTranscriber: ObservableObject {
 
     var isListening: Bool { state == .listening }
 
+    static func allowsManualFinish(transcript: String, mode: EndpointMode) -> Bool {
+        mode == .longCapture
+            || !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     init(reportsAudioLevel: Bool = true) {
         self.reportsAudioLevel = reportsAudioLevel
         observeAudioSessionChanges()
     }
+
+#if DEBUG
+    /// Exercises the production callback handlers at a capture boundary
+    /// without opening a microphone in XCTest. This does not verify hardware.
+    func setSyntheticCaptureForTesting(_ id: UUID) {
+        activeCaptureID = id
+        state = .listening
+    }
+#endif
 
     /// Starts the system-owned iOS 26 model installation without opening the
     /// microphone. Onboarding calls this as soon as the person chooses voice,
@@ -167,12 +223,42 @@ final class SpeechTranscriber: ObservableObject {
         contextualPhrases: [String] = [],
         prefersEnhancedRecognition: Bool = false,
         forcesLegacyRecognitionForBenchmark: Bool = false,
+        endpointMode: EndpointMode = .automatic,
         onAutomaticFinalization: @escaping (String) -> Void
     ) async {
-        guard state != .requestingPermission, state != .listening else { return }
+        guard state != .requestingPermission,
+              state != .listening,
+              state != .finalizing else { return }
 
         let startID = UUID()
         activeStartID = startID
+        activeCaptureID = startID
+        // A previous cancel may have returned to idle while its ordered audio
+        // queue is still draining. Do not replace its backend, file, or frame
+        // accounting until that generation has fully finished.
+        if audioDrainPending {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                audioDrainCallbacks.append { continuation.resume() }
+            }
+            guard activeStartID == startID else { return }
+        }
+#if DEBUG
+        endpointTraceStartedAt = CapturePerformanceClock.now
+#endif
+        traceEndpoint("capture_start")
+        finalizationSource = nil
+        self.endpointMode = endpointMode
+        requiresWholeRecordingVerification = Self.wholeRecordingVerificationRequired(
+            previously: false, nextMode: endpointMode
+        )
+        requiresOfflineRecovery = false
+        hasAudioIntegrityFailure = false
+        receivedFinalResult = false
+        hasRecognitionForwardingFailure = false
+        isFailingLongCapture = false
+        activeRecoveryAudioURL = nil
+        requestedRecoveryAudioURL = recoveryAudioURL
+        audioIntegrity = nil
         state = .requestingPermission
         transcript = ""
         audioLevel = 0
@@ -186,6 +272,13 @@ final class SpeechTranscriber: ObservableObject {
         speechEndpointDetectedAt = nil
         finalTranscriptAt = nil
         automaticFinalization = onAutomaticFinalization
+
+        if requiresWholeRecordingVerification && recoveryAudioURL == nil {
+            activeStartID = nil
+            automaticFinalization = nil
+            state = .failed("Long capture needs a protected recording before it can start.")
+            return
+        }
 
         let speechAuthorization = await requestSpeechAuthorization()
         guard activeStartID == startID else { return }
@@ -226,13 +319,13 @@ final class SpeechTranscriber: ObservableObject {
                 prefersEnhancedRecognition: prefersEnhancedRecognition,
                 forcesLegacyRecognitionForBenchmark: forcesLegacyRecognitionForBenchmark,
                 onTranscript: { [weak self] text, isFinal in
-                    self?.receiveTranscript(text, isFinal: isFinal)
+                    self?.receiveTranscript(text, isFinal: isFinal, captureID: startID)
                 },
                 onVoiceActivity: { [weak self] in
-                    self?.receiveVoiceActivity()
+                    self?.receiveVoiceActivity(captureID: startID)
                 },
                 onError: { [weak self] error in
-                    self?.receiveError(error)
+                    self?.receiveError(error, captureID: startID)
                 }
             )
             isPreparingEnhancedRecognition = false
@@ -250,11 +343,23 @@ final class SpeechTranscriber: ObservableObject {
                     forWriting: recoveryAudioURL,
                     settings: format.settings
                 )
+                if requiresWholeRecordingVerification {
+                    try FileManager.default.setAttributes(
+                        [.protectionKey: FileProtectionType.completeUnlessOpen],
+                        ofItemAtPath: recoveryAudioURL.path
+                    )
+                    guard FileManager.default.fileExists(atPath: recoveryAudioURL.path) else {
+                        throw SpeechCaptureError.invalidAudioInput
+                    }
+                }
                 recoveryAudioFile = recoveryFile
+                activeRecoveryAudioURL = recoveryAudioURL
                 CaptureDraftStore.protectAudio(at: recoveryAudioURL)
             } else {
                 recoveryFile = nil
             }
+            let integrity = recoveryFile == nil ? nil : CaptureAudioIntegrity()
+            audioIntegrity = integrity
             let levelGate = AudioLevelUpdateGate()
             let activityTracker = audioActivityTracker
             let qualityTracker = audioQualityTracker
@@ -269,15 +374,35 @@ final class SpeechTranscriber: ObservableObject {
             // also guarantees the recognizer receives the final microphone
             // buffer before it is asked to finalize.
             let audioProcessor = SpeechCaptureAudioProcessor(
+                enforcesBacklogLimit: requiresWholeRecordingVerification,
                 process: { buffer in
                     backend.append(buffer)
-                    try? recoveryFile?.write(from: buffer)
+                    if let recoveryFile, let integrity {
+                        integrity.recordExpected(buffer.frameLength)
+                        do {
+                            try recoveryFile.write(from: buffer)
+                            integrity.recordWritten(buffer.frameLength)
+                        } catch {
+                            integrity.markFailure()
+                            Task { @MainActor [weak self] in
+                                guard self?.activeCaptureID == startID else { return }
+                                self?.failForAudioIntegrity("The protected recording stopped accepting audio.")
+                            }
+                        }
+                    }
                     qualityTracker.record(buffer)
                 },
                 onFirstBufferProcessed: { [weak self] in
                     guard firstBufferGate.markReady() else { return }
                     Task { @MainActor [weak self] in
                         self?.markAudioInputReady(startID: startID)
+                    }
+                },
+                onBufferCopyFailure: { [weak self] in
+                    integrity?.markFailure()
+                    Task { @MainActor [weak self] in
+                        guard self?.activeCaptureID == startID else { return }
+                        self?.failForAudioIntegrity("Recording could not keep up with the microphone.")
                     }
                 }
             )
@@ -299,6 +424,7 @@ final class SpeechTranscriber: ObservableObject {
                 ) else { return }
                 Task { @MainActor [weak self] in
                     guard let self else { return }
+                    guard activeCaptureID == startID else { return }
                     guard state == .requestingPermission
                             || state == .listening
                             || state == .finalizing else { return }
@@ -326,8 +452,12 @@ final class SpeechTranscriber: ObservableObject {
                       activeStartID == startID else { return }
                 activeStartID = nil
                 automaticFinalization = nil
-                resetRecognitionResources()
-                state = .failed("The microphone did not begin delivering audio.")
+                if requiresWholeRecordingVerification {
+                    failLongCapture("The microphone did not begin delivering audio.")
+                } else {
+                    resetRecognitionResources()
+                    state = .failed("The microphone did not begin delivering audio.")
+                }
             }
         } catch SpeechRecognitionBackendError.recognizerUnavailable {
             guard activeStartID == startID else { return }
@@ -340,9 +470,13 @@ final class SpeechTranscriber: ObservableObject {
             guard activeStartID == startID else { return }
             activeStartID = nil
             isPreparingEnhancedRecognition = false
-            resetRecognitionResources()
-            automaticFinalization = nil
-            state = .failed(error.localizedDescription)
+            if requiresWholeRecordingVerification, audioProcessor != nil {
+                failLongCapture(error.localizedDescription)
+            } else {
+                resetRecognitionResources()
+                automaticFinalization = nil
+                state = .failed(error.localizedDescription)
+            }
         }
     }
 
@@ -399,22 +533,111 @@ final class SpeechTranscriber: ObservableObject {
 
     func stopAndFinalize(_ completion: @escaping (String) -> Void) {
         guard state == .listening else { return }
-        beginFinalization(completion)
+        if Self.requiresWholeRecordingRecovery(
+            verificationRequired: requiresWholeRecordingVerification,
+            engine: recognitionEngine,
+            offlineRecoveryRequired: requiresOfflineRecovery
+        ) {
+            finishWholeRecordingThroughRecovery()
+            return
+        }
+        beginFinalization(completion, source: .manual)
+    }
+
+    private func finishWholeRecordingThroughRecovery() {
+        guard state == .listening else { return }
+        // Legacy finality is not proof that every minute reached recognition.
+        // This applies even if Long was switched off before automatic endpointing.
+        naturalPauseTask?.cancel()
+        state = .finalizing
+        stopAudioInput { [weak self] in
+            guard let self, !self.isFailingLongCapture else { return }
+            self.resetRecognitionResources()
+            self.automaticFinalization = nil
+            self.state = .failed("Long capture needs transcription from its saved recording.")
+        }
+    }
+
+    @discardableResult
+    func setEndpointMode(_ mode: EndpointMode) -> Bool {
+        guard !requiresOfflineRecovery else { return false }
+        if mode == .longCapture {
+            let isInactive: Bool
+            switch state {
+            case .idle, .failed:
+                isInactive = true
+            default:
+                isInactive = false
+            }
+            if !isInactive {
+                guard requestedRecoveryAudioURL != nil else { return false }
+            }
+            if state == .listening {
+                guard recoveryAudioFile != nil,
+                      let activeRecoveryAudioURL,
+                      FileManager.default.fileExists(atPath: activeRecoveryAudioURL.path) else {
+                    return false
+                }
+                do {
+                    try FileManager.default.setAttributes(
+                        [.protectionKey: FileProtectionType.completeUnlessOpen],
+                        ofItemAtPath: activeRecoveryAudioURL.path
+                    )
+                } catch {
+                    return false
+                }
+            }
+        }
+        guard endpointMode != mode else { return true }
+        endpointMode = mode
+        requiresWholeRecordingVerification = Self.wholeRecordingVerificationRequired(
+            previously: requiresWholeRecordingVerification, nextMode: mode
+        )
+        if audioProcessor?.setBacklogLimitEnabled(requiresWholeRecordingVerification) == false {
+            failForAudioIntegrity("Recording could not keep up with the microphone.")
+        }
+        naturalPauseTask?.cancel()
+        naturalPauseTask = nil
+        isWaitingForContinuation = false
+        if state == .listening,
+           mode == .automatic,
+           !Self.endpointingSignature(for: transcript).isEmpty {
+            scheduleNaturalPauseFinish()
+        }
+        return true
+    }
+
+    nonisolated static func wholeRecordingVerificationRequired(
+        previously: Bool, nextMode: EndpointMode
+    ) -> Bool {
+        previously || nextMode == .longCapture
+    }
+
+    nonisolated static func requiresWholeRecordingRecovery(
+        verificationRequired: Bool,
+        engine: SpeechRecognitionEngine?,
+        offlineRecoveryRequired: Bool
+    ) -> Bool {
+        offlineRecoveryRequired || verificationRequired && engine == .legacyRecognizer
     }
 
     func cancel() {
         activeStartID = nil
+        activeCaptureID = nil
         naturalPauseTask?.cancel()
         audioInputReadyTimeout?.cancel()
         finalizationTimeout?.cancel()
         finalization = nil
         automaticFinalization = nil
+        finalizationSource = nil
         resetRecognitionResources()
         transcript = ""
         audioLevel = 0
         hasDetectedAudioInput = false
         isWaitingForContinuation = false
         isPreparingEnhancedRecognition = false
+        requiresOfflineRecovery = false
+        hasAudioIntegrityFailure = false
         audioActivityTracker.reset()
         speechEndpointDetectedAt = nil
         finalTranscriptAt = nil
@@ -423,9 +646,13 @@ final class SpeechTranscriber: ObservableObject {
 
     func resetAfterFailure() {
         activeStartID = nil
+        activeCaptureID = nil
         automaticFinalization = nil
+        finalizationSource = nil
         isWaitingForContinuation = false
         isPreparingEnhancedRecognition = false
+        requiresOfflineRecovery = false
+        hasAudioIntegrityFailure = false
         resetRecognitionResources()
         state = .idle
     }
@@ -436,9 +663,11 @@ final class SpeechTranscriber: ObservableObject {
         audioInputReadyTimeout = nil
         activeStartID = nil
         state = .listening
+        traceEndpoint("audio_ready")
     }
 
-    private func receiveVoiceActivity() {
+    func receiveVoiceActivity(captureID: UUID) {
+        guard activeCaptureID == captureID else { return }
         guard state == .requestingPermission || state == .listening || state == .finalizing else {
             return
         }
@@ -446,10 +675,12 @@ final class SpeechTranscriber: ObservableObject {
         hasDetectedAudioInput = true
     }
 
-    private func receiveTranscript(_ text: String, isFinal: Bool) {
+    func receiveTranscript(_ text: String, isFinal: Bool, captureID: UUID) {
+        guard activeCaptureID == captureID else { return }
         guard state == .requestingPermission || state == .listening || state == .finalizing else {
             return
         }
+        guard !requiresOfflineRecovery else { return }
 
         transcript = SpeechVocabularyStore.apply(to: text)
         let hasWords = !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -458,6 +689,7 @@ final class SpeechTranscriber: ObservableObject {
         let endpointingContentChanged = endpointingSignature != lastEndpointingSignature
 
         if state == .listening, endpointingContentChanged {
+            traceEndpoint("lexical_update")
             lastEndpointingSignature = endpointingSignature
             isWaitingForContinuation = false
             if !hasLexicalContent {
@@ -467,10 +699,18 @@ final class SpeechTranscriber: ObservableObject {
         }
 
         if isFinal {
+            traceEndpoint("asr_final")
             if state == .finalizing {
+                receivedFinalResult = true
                 completeFinalization()
+            } else if requiresWholeRecordingVerification {
+                // A backend may finalize its own request before the person
+                // has finished a multi-minute recording. Only manual finish
+                // can close this capture; keep the protected audio instead.
+                receiveError(SpeechRecognitionBackendError.unexpectedFinalization,
+                             captureID: captureID)
             } else if hasWords, let automaticFinalization {
-                beginFinalization(automaticFinalization)
+                beginFinalization(automaticFinalization, source: .backendFinal)
             }
             return
         }
@@ -480,14 +720,33 @@ final class SpeechTranscriber: ObservableObject {
         // timer or dismiss an already-visible continuation cue. Lexical
         // additions, deletions, and substitutions still cancel and reclassify.
         if state == .listening,
+           endpointMode == .automatic,
            hasLexicalContent,
            endpointingContentChanged || naturalPauseTask == nil {
             scheduleNaturalPauseFinish()
         }
     }
 
-    private func receiveError(_ error: Error) {
+    func receiveError(_ error: Error, captureID: UUID) {
+        guard activeCaptureID == captureID else { return }
         guard state == .requestingPermission || state == .listening || state == .finalizing else {
+            return
+        }
+
+        if requiresWholeRecordingVerification,
+           state == .listening,
+           recoveryAudioFile != nil,
+           audioEngine.isRunning {
+            naturalPauseTask?.cancel()
+            naturalPauseTask = nil
+            isWaitingForContinuation = false
+            requiresOfflineRecovery = true
+            recognitionBackend?.cancel()
+            return
+        }
+        guard !requiresOfflineRecovery else { return }
+        if requiresWholeRecordingVerification {
+            failLongCapture(error.localizedDescription)
             return
         }
 
@@ -501,6 +760,7 @@ final class SpeechTranscriber: ObservableObject {
                 completeFinalization()
             } else if let automaticFinalization {
                 finalization = automaticFinalization
+                finalizationSource = .recognizerError
                 markSpeechEndpointDetectedIfNeeded()
                 state = .finalizing
                 completeFinalization()
@@ -508,6 +768,7 @@ final class SpeechTranscriber: ObservableObject {
         case .recoverRecording, .reportFailure:
             resetRecognitionResources()
             automaticFinalization = nil
+            finalizationSource = nil
             state = .failed(error.localizedDescription)
         }
     }
@@ -542,8 +803,13 @@ final class SpeechTranscriber: ObservableObject {
 
     private func scheduleNaturalPauseFinish() {
         naturalPauseTask?.cancel()
+        naturalPauseTask = nil
         isWaitingForContinuation = false
-        let decision = Self.naturalPauseDecision(for: transcript)
+        guard let decision = Self.automaticPauseDecision(for: transcript, mode: endpointMode) else {
+            return
+        }
+        let source = Self.finalizationSource(for: decision)
+        traceEndpoint("timer_scheduled", source: source)
         let scheduledAt = CapturePerformanceClock.now
         naturalPauseTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -564,14 +830,53 @@ final class SpeechTranscriber: ObservableObject {
                 pauseBeganAt: &pauseBeganAt,
                 audioActivityDeferralsRemaining: &audioActivityDeferralsRemaining
             ) else { return }
-            guard let automaticFinalization else { return }
-            beginFinalization(automaticFinalization)
+            guard endpointMode == .automatic, let automaticFinalization else { return }
+            traceEndpoint("timer_fired", source: source)
+            beginFinalization(automaticFinalization, source: source)
         }
+    }
+
+    static func automaticPauseDecision(
+        for transcript: String, mode: EndpointMode
+    ) -> NaturalPauseDecision? {
+        guard mode == .automatic else { return nil }
+        return naturalPauseDecision(for: transcript)
+    }
+
+    private static func finalizationSource(
+        for decision: NaturalPauseDecision
+    ) -> EndpointFinalizationSource {
+        if decision.finishAfter == .milliseconds(completeThoughtPauseMilliseconds) {
+            return .automaticFast
+        }
+        if decision.finishAfter == .milliseconds(ambiguousThoughtPauseMilliseconds) {
+            return .automaticMiddle
+        }
+        return .automaticExtended
+    }
+
+    /// Local DEBUG log only. Event names and sources are fixed vocabulary; no
+    /// transcript, audio, vocabulary token, or capture identifier is recorded.
+    private func traceEndpoint(
+        _ event: String,
+        source: EndpointFinalizationSource? = nil
+    ) {
+#if DEBUG
+        guard let endpointTraceStartedAt else { return }
+        let elapsed = endpointTraceStartedAt.duration(to: CapturePerformanceClock.now).components
+        let milliseconds = elapsed.seconds * 1_000
+            + elapsed.attoseconds / 1_000_000_000_000_000
+        let sourceName = source?.rawValue ?? "none"
+        Self.endpointTraceLogger.debug(
+            "event=\(event, privacy: .public) source=\(sourceName, privacy: .public) t_ms=\(milliseconds)"
+        )
+#endif
     }
 
     private var canContinueAutomaticEndpointing: Bool {
         !Task.isCancelled
             && state == .listening
+            && endpointMode == .automatic
             && !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
@@ -682,37 +987,89 @@ final class SpeechTranscriber: ObservableObject {
         naturalPauseDecision(for: transcript).finishAfter
     }
 
-    private func beginFinalization(_ completion: @escaping (String) -> Void) {
+    private func beginFinalization(
+        _ completion: @escaping (String) -> Void,
+        source: EndpointFinalizationSource
+    ) {
         guard state == .listening else { return }
+        if Self.requiresWholeRecordingRecovery(
+            verificationRequired: requiresWholeRecordingVerification,
+            engine: recognitionEngine,
+            offlineRecoveryRequired: requiresOfflineRecovery
+        ) {
+            finishWholeRecordingThroughRecovery()
+            return
+        }
 
+        traceEndpoint("finalization_started", source: source)
+        finalizationSource = source
         naturalPauseTask?.cancel()
         isWaitingForContinuation = false
         markSpeechEndpointDetectedIfNeeded()
         state = .finalizing
         finalization = completion
-        stopAudioInput()
-        recognitionBackend?.endAudio()
-
-        finalizationTimeout?.cancel()
-        finalizationTimeout = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: Self.finalizationGracePeriod)
-            guard !Task.isCancelled else { return }
-            self?.completeFinalization()
+        stopAudioInput { [weak self] in
+            guard let self, self.state == .finalizing,
+                  !self.isFailingLongCapture else { return }
+            self.traceEndpoint("audio_input_stopped", source: source)
+            self.recognitionBackend?.endAudio()
+            if self.receivedFinalResult {
+                self.completeFinalization()
+                return
+            }
+            self.finalizationTimeout?.cancel()
+            self.finalizationTimeout = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: Self.finalizationGracePeriod)
+                guard !Task.isCancelled else { return }
+                self?.traceEndpoint("finalization_grace_expired", source: source)
+                self?.completeFinalization()
+            }
         }
     }
 
     private func completeFinalization() {
-        guard state == .finalizing else { return }
+        guard state == .finalizing, !audioDrainPending,
+              !isFailingLongCapture else { return }
         finalizationTimeout?.cancel()
+        if requiresWholeRecordingVerification
+            && !Self.hasVerifiedLongFinalTranscript(
+                transcript,
+                receivedFinalResult: receivedFinalResult,
+                hasAudioIntegrityFailure: hasAudioIntegrityFailure,
+                hasRecognitionForwardingFailure: hasRecognitionForwardingFailure
+            ) {
+            // The two-second grace period is a latency fallback, not proof
+            // that a multi-minute recognizer processed the entire recording.
+            resetRecognitionResources()
+            automaticFinalization = nil
+            finalization = nil
+            state = .failed("Long capture did not receive a complete transcript.")
+            return
+        }
         markSpeechEndpointDetectedIfNeeded()
         finalTranscriptAt = CapturePerformanceClock.now
         let completion = finalization
         let finalText = transcript
+        let source = finalizationSource
         finalization = nil
         automaticFinalization = nil
+        finalizationSource = nil
         resetRecognitionResources()
         state = .idle
+        traceEndpoint("callback", source: source)
         completion?(finalText)
+    }
+
+    nonisolated static func hasVerifiedLongFinalTranscript(
+        _ transcript: String,
+        receivedFinalResult: Bool,
+        hasAudioIntegrityFailure: Bool,
+        hasRecognitionForwardingFailure: Bool = false
+    ) -> Bool {
+        receivedFinalResult
+            && !hasAudioIntegrityFailure
+            && !hasRecognitionForwardingFailure
+            && !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func markSpeechEndpointDetectedIfNeeded() {
@@ -721,7 +1078,11 @@ final class SpeechTranscriber: ObservableObject {
         audioActivityTracker.finishEndpointDetection()
     }
 
-    private func stopAudioInput() {
+    private func stopAudioInput(onDrained: @escaping () -> Void = {}) {
+        if audioDrainPending {
+            audioDrainCallbacks.append(onDrained)
+            return
+        }
         if audioEngine.isRunning {
             audioEngine.stop()
         }
@@ -729,12 +1090,40 @@ final class SpeechTranscriber: ObservableObject {
             audioEngine.inputNode.removeTap(onBus: 0)
             hasInstalledTap = false
         }
-        // `finish` closes submissions and synchronously drains already-copied
-        // buffers. `beginFinalization` calls `endAudio` only after this returns,
-        // so the last spoken syllable cannot be stranded behind file I/O or
-        // analyzer format conversion.
-        audioProcessor?.finish()
+        // Drain off the main actor; endAudio and recovery only follow this
+        // ordered callback, after the last accepted microphone buffer.
+        guard let processor = audioProcessor else {
+            onDrained()
+            return
+        }
+        audioDrainPending = true
+        audioDrainCallbacks.append(onDrained)
+        processor.finish { [weak self] in
+            Task { @MainActor [weak self] in
+                self?.completeAudioInputDrain()
+            }
+        }
         audioProcessor = nil
+        recoveryAudioFile = nil
+        audioLevel = 0
+    }
+
+    private func completeAudioInputDrain() {
+        guard audioDrainPending else { return }
+        if recognitionBackend?.hadAudioForwardingFailure == true {
+            hasRecognitionForwardingFailure = true
+        }
+        if requiresWholeRecordingVerification {
+            if let audioIntegrity,
+               audioIntegrity.isComplete,
+               let activeRecoveryAudioURL,
+               let file = try? AVAudioFile(forReading: activeRecoveryAudioURL),
+               file.length == audioIntegrity.expectedFrameCount {
+                // Every accepted frame reached the protected file.
+            } else {
+                hasAudioIntegrityFailure = true
+            }
+        }
         if lastAudioQuality == nil {
             lastAudioQuality = audioQualityTracker.snapshot(
                 profile: audioProfile,
@@ -744,8 +1133,10 @@ final class SpeechTranscriber: ObservableObject {
                 SpeechCaptureDiagnosticsStore.save(lastAudioQuality)
             }
         }
-        recoveryAudioFile = nil
-        audioLevel = 0
+        audioDrainPending = false
+        let callbacks = audioDrainCallbacks
+        audioDrainCallbacks.removeAll()
+        callbacks.forEach { $0() }
     }
 
     private static func configureAudioSession(
@@ -830,6 +1221,11 @@ final class SpeechTranscriber: ObservableObject {
     private func failForAudioEnvironmentChange(_ message: String) {
         guard state == .listening || state == .finalizing else { return }
 
+        if requiresWholeRecordingVerification {
+            failLongCapture(message)
+            return
+        }
+
         if state == .finalizing,
            !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             completeFinalization()
@@ -838,8 +1234,34 @@ final class SpeechTranscriber: ObservableObject {
 
         finalization = nil
         automaticFinalization = nil
+        finalizationSource = nil
         resetRecognitionResources()
         state = .failed(message)
+    }
+
+    private func failForAudioIntegrity(_ message: String) {
+        guard requiresWholeRecordingVerification else { return }
+        failLongCapture(message, audioIntegrityFailed: true)
+    }
+
+    private func failLongCapture(_ message: String, audioIntegrityFailed: Bool = false) {
+        guard !isFailingLongCapture,
+              state == .requestingPermission || state == .listening || state == .finalizing else {
+            return
+        }
+        isFailingLongCapture = true
+        if audioIntegrityFailed { hasAudioIntegrityFailure = true }
+        finalizationTimeout?.cancel()
+        naturalPauseTask?.cancel()
+        finalization = nil
+        automaticFinalization = nil
+        finalizationSource = nil
+        state = .finalizing
+        stopAudioInput { [weak self] in
+            guard let self else { return }
+            self.resetRecognitionResources()
+            self.state = .failed(message)
+        }
     }
 
     private func requestSpeechAuthorization() async -> SFSpeechRecognizerAuthorizationStatus {
@@ -929,24 +1351,63 @@ final class SpeechCaptureAudioProcessor: @unchecked Sendable {
     private let lock = NSLock()
     private let process: (AVAudioPCMBuffer) -> Void
     private let onFirstBufferProcessed: () -> Void
+    private let onBufferCopyFailure: () -> Void
     private var isAcceptingInput = true
     private var hasProcessedFirstBuffer = false
+    private var pendingFrames = 0
+    private var reportedFailure = false
+    private var enforcesBacklogLimit: Bool
+    private var pendingLimitFrames = Int.max
+
+    static func acceptsPendingFrames(
+        current: Int, incoming: Int, sampleRate: Double
+    ) -> Bool {
+        incoming > 0 && current <= max(1, Int(sampleRate * 3)) - incoming
+    }
 
     init(
+        enforcesBacklogLimit: Bool = false,
         process: @escaping (AVAudioPCMBuffer) -> Void,
-        onFirstBufferProcessed: @escaping () -> Void = {}
+        onFirstBufferProcessed: @escaping () -> Void = {},
+        onBufferCopyFailure: @escaping () -> Void = {}
     ) {
+        self.enforcesBacklogLimit = enforcesBacklogLimit
         self.process = process
         self.onFirstBufferProcessed = onFirstBufferProcessed
+        self.onBufferCopyFailure = onBufferCopyFailure
+    }
+
+    @discardableResult
+    func setBacklogLimitEnabled(_ enabled: Bool) -> Bool {
+        lock.lock()
+        enforcesBacklogLimit = enabled
+        let withinLimit = !enabled || pendingFrames <= pendingLimitFrames
+        lock.unlock()
+        return withinLimit
     }
 
     func append(_ buffer: AVAudioPCMBuffer) {
         lock.lock()
-        guard isAcceptingInput,
-              let copiedBuffer = Self.copy(buffer) else {
+        guard isAcceptingInput else {
             lock.unlock()
             return
         }
+        pendingLimitFrames = max(1, Int(buffer.format.sampleRate * 3))
+        guard !enforcesBacklogLimit || Self.acceptsPendingFrames(
+            current: pendingFrames,
+            incoming: Int(buffer.frameLength),
+            sampleRate: buffer.format.sampleRate
+        ) else {
+            reportFailureLocked()
+            lock.unlock()
+            return
+        }
+        guard let copiedBuffer = Self.copy(buffer) else {
+            reportFailureLocked()
+            lock.unlock()
+            return
+        }
+        pendingFrames += Int(copiedBuffer.frameLength)
         queue.async { [self] in
             autoreleasepool {
                 process(copiedBuffer)
@@ -955,17 +1416,26 @@ final class SpeechCaptureAudioProcessor: @unchecked Sendable {
                     onFirstBufferProcessed()
                 }
             }
+            lock.lock()
+            pendingFrames -= Int(copiedBuffer.frameLength)
+            lock.unlock()
         }
         lock.unlock()
     }
 
-    /// Stops accepting buffers and waits for everything submitted before this
-    /// call. Safe to call repeatedly from the capture's main-actor teardown.
-    func finish() {
+    private func reportFailureLocked() {
+        guard !reportedFailure else { return }
+        reportedFailure = true
+        onBufferCopyFailure()
+    }
+
+    /// Closes submissions and invokes completion after all accepted buffers.
+    /// The caller must never wait for this queue on the main actor.
+    func finish(_ completion: @escaping @Sendable () -> Void = {}) {
         lock.lock()
         isAcceptingInput = false
         lock.unlock()
-        queue.sync {}
+        queue.async(execute: completion)
     }
 
     private static func copy(_ source: AVAudioPCMBuffer) -> AVAudioPCMBuffer? {
@@ -993,6 +1463,46 @@ final class SpeechCaptureAudioProcessor: @unchecked Sendable {
             )
         }
         return destination
+    }
+}
+
+/// Counts accepted microphone frames and successful protected-file writes.
+/// An AVAudioFile write error or a dropped tap copy prevents a long capture
+/// from being reported complete, even if ASR returned fluent-looking text.
+final class CaptureAudioIntegrity: @unchecked Sendable {
+    private let lock = NSLock()
+    private var expectedFrames: Int64 = 0
+    private var writtenFrames: Int64 = 0
+    private var failed = false
+
+    func recordExpected(_ frames: AVAudioFrameCount) {
+        lock.lock()
+        expectedFrames += Int64(frames)
+        lock.unlock()
+    }
+
+    func recordWritten(_ frames: AVAudioFrameCount) {
+        lock.lock()
+        writtenFrames += Int64(frames)
+        lock.unlock()
+    }
+
+    func markFailure() {
+        lock.lock()
+        failed = true
+        lock.unlock()
+    }
+
+    var isComplete: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return !failed && expectedFrames > 0 && writtenFrames == expectedFrames
+    }
+
+    var expectedFrameCount: Int64 {
+        lock.lock()
+        defer { lock.unlock() }
+        return expectedFrames
     }
 }
 
@@ -1106,10 +1616,24 @@ private final class AudioActivityTracker: @unchecked Sendable {
 }
 
 /// Reprocesses the protected temporary recording when live recognition fails.
-/// It intentionally uses the same system recognizer and vocabulary corrections
-/// as normal capture, keeping recovery local to the app's existing speech path.
+/// All callers dispatch from the durable draft requirement, so relaunch and
+/// retry cannot route a long recording through partial-tolerant short recovery.
 enum CaptureAudioRecovery {
+    enum Strategy: Equatable {
+        case shortCapture
+        case verifiedWholeRecording
+    }
+
+    @MainActor
+    static func strategy(for draft: CaptureDraftStore.Draft) -> Strategy {
+        draft.requiresWholeRecordingVerification
+            ? .verifiedWholeRecording : .shortCapture
+    }
+
     static func transcribe(_ draft: CaptureDraftStore.Draft) async throws -> String {
+        if await strategy(for: draft) == .verifiedWholeRecording {
+            return try await transcribeLongCapture(draft)
+        }
         guard let url = await CaptureDraftStore.audioURL(for: draft),
               await CaptureDraftStore.hasRecoveryAudio(for: draft) else {
             throw CaptureAudioRecoveryError.missingRecording
@@ -1117,7 +1641,93 @@ enum CaptureAudioRecovery {
         return try await transcribeAudio(at: url)
     }
 
-    static func transcribeAudio(at url: URL) async throws -> String {
+    /// A legacy live request can end around Apple's one-minute limit while the
+    /// explicit long capture keeps recording. Work from the protected whole
+    /// file after the person taps Finish; no partial live result is trusted.
+    private static func transcribeLongCapture(_ draft: CaptureDraftStore.Draft) async throws -> String {
+        guard let source = await CaptureDraftStore.audioURL(for: draft),
+              await CaptureDraftStore.hasRecoveryAudio(for: draft) else {
+            throw CaptureAudioRecoveryError.missingRecording
+        }
+        let recording = try AVAudioFile(forReading: source)
+        let ranges = try LongCaptureChunks.plan(
+            frameCount: recording.length,
+            sampleRate: recording.processingFormat.sampleRate
+        )
+        var transcripts: [String] = []
+        for range in ranges {
+            try Task.checkCancellation()
+            let chunkURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("SpeakIt-long-recovery-\(UUID().uuidString).caf")
+            defer { try? FileManager.default.removeItem(at: chunkURL) }
+            try writeChunk(from: recording, range: range, to: chunkURL)
+            // Strict mode requires a final result for every piece. A timeout,
+            // error or empty result retains the source recording for review.
+            let text = try await transcribeAudio(
+                at: chunkURL,
+                requiresFinalResult: true,
+                timeout: .seconds(60)
+            )
+            transcripts.append(text)
+        }
+        guard let stitched = LongCaptureChunks.stitch(transcripts) else {
+            throw CaptureAudioRecoveryError.unverifiableLongCapture
+        }
+        return stitched
+    }
+
+    private static func writeChunk(
+        from source: AVAudioFile, range: Range<AVAudioFramePosition>, to url: URL
+    ) throws {
+        // The writer leaves scope before reopening the file. `close()` is
+        // available only on iOS 18+, while Speak It still supports iOS 17.
+        try writeChunkFrames(from: source, range: range, to: url)
+        guard let written = try? AVAudioFile(forReading: url),
+              written.length == range.upperBound - range.lowerBound else {
+            throw CaptureAudioRecoveryError.unverifiableLongCapture
+        }
+    }
+
+    private static func writeChunkFrames(
+        from source: AVAudioFile, range: Range<AVAudioFramePosition>, to url: URL
+    ) throws {
+        let writer = try AVAudioFile(
+            forWriting: url,
+            settings: source.fileFormat.settings,
+            commonFormat: source.processingFormat.commonFormat,
+            interleaved: source.processingFormat.isInterleaved
+        )
+        try FileManager.default.setAttributes(
+            [.protectionKey: FileProtectionType.completeUnlessOpen],
+            ofItemAtPath: url.path
+        )
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        var protectedURL = url
+        try protectedURL.setResourceValues(values)
+        source.framePosition = range.lowerBound
+        while source.framePosition < range.upperBound {
+            let count = AVAudioFrameCount(min(8_192, range.upperBound - source.framePosition))
+            guard let buffer = AVAudioPCMBuffer(
+                pcmFormat: source.processingFormat,
+                frameCapacity: count
+            ) else { throw CaptureAudioRecoveryError.unverifiableLongCapture }
+            try source.read(into: buffer, frameCount: count)
+            guard buffer.frameLength > 0 else {
+                throw CaptureAudioRecoveryError.unverifiableLongCapture
+            }
+            try writer.write(from: buffer)
+        }
+        if #available(iOS 18.0, *) {
+            writer.close()
+        }
+    }
+
+    static func transcribeAudio(
+        at url: URL,
+        requiresFinalResult: Bool = false,
+        timeout: Duration = .seconds(25)
+    ) async throws -> String {
         guard SFSpeechRecognizer.authorizationStatus() == .authorized else {
             throw CaptureAudioRecoveryError.permissionRequired
         }
@@ -1157,13 +1767,17 @@ enum CaptureAudioRecovery {
                         )
                         completion.updateLatest(text)
                         if result.isFinal {
-                            completion.finish(with: .success(text))
+                            let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                            completion.finish(with: normalized.isEmpty && requiresFinalResult
+                                ? .failure(CaptureAudioRecoveryError.unverifiableLongCapture)
+                                : .success(text))
                             return
                         }
                     }
 
                     if let error {
-                        if let latest = completion.latestNonemptyTranscript {
+                        if !requiresFinalResult,
+                           let latest = completion.latestNonemptyTranscript {
                             completion.finish(with: .success(latest))
                         } else {
                             completion.finish(with: .failure(error))
@@ -1173,9 +1787,10 @@ enum CaptureAudioRecovery {
                 completion.setRecognitionTask(task)
 
                 let timeoutTask = Task {
-                    try? await Task.sleep(for: .seconds(25))
+                    try? await Task.sleep(for: timeout)
                     guard !Task.isCancelled else { return }
-                    if let latest = completion.latestNonemptyTranscript {
+                    if !requiresFinalResult,
+                       let latest = completion.latestNonemptyTranscript {
                         completion.finish(with: .success(latest))
                     } else {
                         completion.finish(with: .failure(CaptureAudioRecoveryError.timedOut))
@@ -1186,6 +1801,71 @@ enum CaptureAudioRecovery {
         } onCancel: {
             completion.finish(with: .failure(CancellationError()))
         }
+    }
+}
+
+/// Frame-based pieces keep every SFSpeech request below its documented
+/// one-minute planning limit. Five seconds of shared audio makes the seam
+/// check possible. A mismatch is a reviewable failure, never a guessed join.
+enum LongCaptureChunks {
+    static func plan(
+        frameCount: AVAudioFramePosition, sampleRate: Double
+    ) throws -> [Range<AVAudioFramePosition>] {
+        guard frameCount > 0, sampleRate.isFinite, sampleRate > 0 else {
+            throw CaptureAudioRecoveryError.unverifiableLongCapture
+        }
+        let window = AVAudioFramePosition(sampleRate * 45)
+        let overlap = AVAudioFramePosition(sampleRate * 5)
+        guard window > overlap, overlap > 0 else {
+            throw CaptureAudioRecoveryError.unverifiableLongCapture
+        }
+        var ranges: [Range<AVAudioFramePosition>] = []
+        var start: AVAudioFramePosition = 0
+        while start < frameCount {
+            let end = min(start + window, frameCount)
+            ranges.append(start..<end)
+            if end == frameCount { break }
+            start = end - overlap
+        }
+        return ranges
+    }
+
+    static func stitch(_ parts: [String]) -> String? {
+        guard let first = parts.first?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !first.isEmpty else { return nil }
+        var result = first
+        var previousPart = first
+        for part in parts.dropFirst() {
+            let previousWords = previousPart.split(whereSeparator: \.isWhitespace).map(String.init)
+            let nextWords = part.split(whereSeparator: \.isWhitespace).map(String.init)
+            let maximum = min(previousWords.count, nextWords.count, 40)
+            guard maximum >= 3 else { return nil }
+            let shared = (3...maximum).reversed().first { count in
+                zip(previousWords.suffix(count), nextWords.prefix(count)).allSatisfy {
+                    normalized($0.0) == normalized($0.1) && !normalized($0.0).isEmpty
+                }
+            }
+            guard let shared else { return nil }
+            let seam = Array(previousWords.suffix(shared)).map(normalized)
+            guard seam.filter({ $0.count >= 3 }).count >= 2,
+                  occurrenceCount(of: seam, in: previousWords) == 1,
+                  occurrenceCount(of: seam, in: nextWords) == 1 else { return nil }
+            result += " " + nextWords.dropFirst(shared).joined(separator: " ")
+            previousPart = part
+        }
+        return result.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func normalized(_ word: String) -> String {
+        String(word.lowercased().filter { $0.isLetter || $0.isNumber })
+    }
+
+    private static func occurrenceCount(of needle: [String], in words: [String]) -> Int {
+        guard words.count >= needle.count else { return 0 }
+        let normalizedWords = words.map(normalized)
+        return (0...(words.count - needle.count)).filter { offset in
+            Array(normalizedWords[offset..<(offset + needle.count)]) == needle
+        }.count
     }
 }
 
@@ -1278,6 +1958,7 @@ private enum CaptureAudioRecoveryError: LocalizedError, CaptureRecoveryFailureDe
     case onDeviceRecognitionUnavailable
     case timedOut
     case cancelled
+    case unverifiableLongCapture
 
     var errorDescription: String? {
         switch self {
@@ -1293,6 +1974,8 @@ private enum CaptureAudioRecoveryError: LocalizedError, CaptureRecoveryFailureDe
             "Recovery took too long. Your recording is still safe."
         case .cancelled:
             "Recovery was cancelled."
+        case .unverifiableLongCapture:
+            "The entire long recording could not be verified. It is still safe in Capture history."
         }
     }
 
@@ -1304,6 +1987,7 @@ private enum CaptureAudioRecoveryError: LocalizedError, CaptureRecoveryFailureDe
         case .onDeviceRecognitionUnavailable: .onDeviceRecognitionUnavailable
         case .timedOut: .timedOut
         case .cancelled: .cancelled
+        case .unverifiableLongCapture: .unknown
         }
     }
 }

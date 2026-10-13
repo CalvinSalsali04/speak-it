@@ -70,6 +70,7 @@ enum ShoppingListProjection {
 /// group headers are derived from `ShoppingGroupStore` at render time — an
 /// in-memory dictionary lookup per row, never a parse.
 struct ShoppingListView: View {
+    @Environment(\.dockScrollClearance) private var dockScrollClearance
     /// One named list and its open items, in a stable order.
     private struct GroupedList: Identifiable {
         let name: String
@@ -99,6 +100,8 @@ struct ShoppingListView: View {
     @State private var collapsedGroups: Set<String> = []
     @State private var addTarget: AddTarget?
     @State private var newEntryText = ""
+    @State private var addErrorMessage: String?
+    @FocusState private var isNewEntryFocused: Bool
     @State private var showsProGate = false
     @State private var hasInitializedCollapse = false
 
@@ -145,7 +148,7 @@ struct ShoppingListView: View {
         // dock sits on top of the last row of the list — and the last row is
         // the "Add items" field, so the control for adding to a list was the
         // one thing the dock covered.
-        .contentMargins(.bottom, DockScroll.clearance, for: .scrollContent)
+        .contentMargins(.bottom, dockScrollClearance, for: .scrollContent)
         .scrollContentBackground(.hidden)
         .navigationTitle("List")
         .navigationBarTitleDisplayMode(.large)
@@ -286,6 +289,7 @@ struct ShoppingListView: View {
             return
         }
         newEntryText = ""
+        addErrorMessage = nil
         addTarget = AddTarget(group: group)
     }
 
@@ -293,9 +297,11 @@ struct ShoppingListView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Milk, eggs, cheese", text: $newEntryText, axis: .vertical)
+                    TextField("Milk, eggs, cheese", text: $newEntryText)
                         .font(SpeakItTypography.itemTitle)
+                        .focused($isNewEntryFocused)
                         .submitLabel(.done)
+                        .onSubmit { commitNewEntries(to: group) }
                         .accessibilityIdentifier("list.addField")
                 } footer: {
                     Text("Separate items with commas. Tap the microphone on the keyboard to speak them.")
@@ -305,7 +311,10 @@ struct ShoppingListView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { addTarget = nil }
+                    Button("Cancel") {
+                        isNewEntryFocused = false
+                        addTarget = nil
+                    }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Add") { commitNewEntries(to: group) }
@@ -315,6 +324,7 @@ struct ShoppingListView: View {
             }
         }
         .presentationDetents([.height(230), .medium])
+        .repositoryErrorAlert($addErrorMessage)
     }
 
     private var parsedEntries: [String] {
@@ -325,8 +335,10 @@ struct ShoppingListView: View {
     }
 
     private func commitNewEntries(to group: String) {
+        // A queued keyboard submit must not save the same dismissed sheet twice.
+        guard addTarget?.group == group else { return }
         guard let repository else {
-            errorMessage = "Local storage is unavailable."
+            addErrorMessage = "Local storage is unavailable."
             return
         }
         let entries = parsedEntries
@@ -341,10 +353,12 @@ struct ShoppingListView: View {
                 needsReviewCount: 0,
                 plan: subscriptionStore.hasProAccess ? .pro : .free
             ))
+            isNewEntryFocused = false
             addTarget = nil
             collapsedGroups.remove(group)
         } catch {
-            errorMessage = error.localizedDescription
+            // Keep the sheet and its words available for another save attempt.
+            addErrorMessage = error.localizedDescription
         }
     }
 
@@ -391,6 +405,7 @@ struct ShoppingListView: View {
             }
             .buttonStyle(.speakIt)
             .accessibilityLabel("Complete \(item.displayTitle)")
+            .accessibilityHint("Marks this item complete and removes it from this list")
             .accessibilityIdentifier("list.complete.\(item.displayTitle)")
 
             Button { selectedItem = item } label: {
@@ -412,9 +427,20 @@ struct ShoppingListView: View {
             }
             .buttonStyle(.speakIt)
             .accessibilityLabel("Edit \(item.displayTitle)")
+            .accessibilityHint("Swipe left to remove this item from the list")
+            .accessibilityAction(named: Text("Remove from list")) { complete(item) }
             .accessibilityIdentifier("list.item.\(item.displayTitle)")
         }
         .padding(.vertical, 6)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button { complete(item) } label: {
+                Label("Remove", systemImage: "xmark")
+            }
+            .tint(Color.speakWarning)
+            .accessibilityLabel("Remove \(item.displayTitle) from list")
+            .accessibilityHint("Marks this item complete and keeps the original capture")
+            .accessibilityIdentifier("list.remove.\(item.displayTitle)")
+        }
         .listRowInsets(EdgeInsets(top: 0, leading: 14, bottom: 0, trailing: 18))
         .listRowSeparatorTint(Color.speakDivider)
         .listRowBackground(Color.speakBackground)
@@ -426,7 +452,7 @@ struct ShoppingListView: View {
             for: item,
             authorization: LocationReminderMonitor.shared.authorization
         )
-        if let timing = presentation.primaryTimingText {
+        if let timing = presentation.formattedTimingText {
             HStack(spacing: 3) {
                 if presentation.reminderState.alertGlyph == .notification {
                     Image(systemName: "bell.fill")
@@ -441,7 +467,7 @@ struct ShoppingListView: View {
                     .lineLimit(1)
             }
             .font(SpeakItTypography.metadata)
-            .foregroundStyle(Color.speakMuted)
+            .foregroundStyle(presentation.isOverdue ? Color.speakWarning : Color.speakMuted)
         }
     }
 
