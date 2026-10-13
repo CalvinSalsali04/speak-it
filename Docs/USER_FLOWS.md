@@ -48,10 +48,10 @@
 ## In-app voice capture
 
 1. Tap the central waveform control.
-2. Tap the animated pulse to begin listening.
+2. The voice screen begins listening automatically; no second pulse tap is needed.
 3. Grant microphone and speech-recognition permission when first requested.
 4. Speak while the pulse responds to audio level and live text appears.
-5. **Auto finish** is on by default: a natural pause finalizes and saves an ordinary completed thought without another tap. The visible control can switch to **Continuous capture** for thinking pauses and long recordings, then tap the pulse to Finish. Switching modes is possible while listening. The same control is available when an outside-the-app route starts the in-app voice screen automatically.
+5. A natural pause finalizes and saves an ordinary completed thought without another tap. Unfinished wording gets the existing longer adaptive pause. **Type instead** is the only footer action; there is no Auto finish/Continuous mode control. The pulse can still finish early. All routes into voice use this behavior.
 6. Finalize the transcription, separate independent intentions, save them under one untouched capture, play success haptics, and show the Remembered animation.
 7. If recognition fails after producing text, move that text into the typing interface instead of discarding it.
 8. Keep X visible while the keyboard is onscreen. Once speech exists, closing follows the same Save & Close / Discard rule as typing.

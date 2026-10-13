@@ -886,7 +886,7 @@ enum ThoughtExtractionEngine {
 #endif
                     return operationPlan
                 }
-                return result
+                return shapingShoppingResult(result, transcript: transcript)
             }
         }
 
@@ -943,6 +943,15 @@ enum ThoughtExtractionEngine {
             operations: processed.operations,
             method: .rules
         )
+    }
+
+    /// Model proposals use the same literal shopping post-pass as rules.
+    /// Products must still own exact, disjoint occurrences of the current source.
+    static func shapingShoppingResult(_ result: ThoughtExtractionResult,
+                                      transcript: String) -> ThoughtExtractionResult {
+        ThoughtExtractionResult(items: RuleBasedThoughtExtractor.shapingShoppingLists(
+            result.items, capture: transcript, sourceForOwnership: transcript),
+            operations: result.operations, method: result.method)
     }
 
     static func extractWithRules(
@@ -2579,8 +2588,9 @@ enum RuleBasedThoughtExtractor {
         let normalized = normalize(transcript)
         guard !normalized.isEmpty else { return ([], []) }
 
-        if let shopping = pastTripShoppingPlan(transcript,
-            referenceDate: referenceDate, calendar: calendar) {
+        if let shopping = literalPurchasePlan(transcript,
+            referenceDate: referenceDate, calendar: calendar)
+            ?? pastTripShoppingPlan(transcript, referenceDate: referenceDate, calendar: calendar) {
             return (shopping.items, shopping.operations)
         }
 
@@ -10167,6 +10177,62 @@ enum RuleBasedThoughtExtractor {
         )
     }
 
+    /// Prove an explicit purchase list before generic clause segmentation can
+    /// mistake an unknown product plus a clock for a second event. The normal
+    /// exact-occurrence expander must account for every word; independent
+    /// predicates, quotation, corrections and location triggers decline.
+    static func literalPurchasePlan(_ source: String, referenceDate: Date,
+                                    calendar: Calendar) -> ThoughtExtractionResult? {
+        guard !Task.isCancelled, source.count <= 2_000,
+              QuotedSpeechScope.ranges(in: source).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(source),
+              source.range(of: #"(?i)[;\n]|[.!?]\s+[\p{L}]|\b(?:actually|instead|correction|never\s+mind|don.t|not|without|when|whenever|if|unless)\b"#,
+                           options: .regularExpression) == nil else { return nil }
+        let normalized = normalize(source)
+        var command = withoutLeadingTemporalContext(normalized)
+        command = ShoppingGroupParser.withoutStoreContext(in: command)
+        command = ReminderCopy.action(from: command)
+        guard command.range(of: #"(?i)^(?:buy|order|get|grab|pick\s+up)\s+"#,
+                            options: .regularExpression) != nil else { return nil }
+        let reading = ThoughtOrganizer.organize(normalized, referenceDate: referenceDate, calendar: calendar)
+        guard reading.locationIntent == nil, reading.recurrenceRule == nil,
+              !reading.needsClarification, reading.state == .resolved,
+              ActionabilityReader.read(command).belongsOnToday else { return nil }
+        let organization = OrganizedThought(itemType: .shopping, category: .shopping,
+            priority: reading.priority, personName: nil, dueDate: reading.dueDate,
+            reminderDate: reading.reminderDate, reminderDelivery: reading.reminderDelivery,
+            recurrenceRule: nil, needsClarification: false,
+            temporalIntent: reading.temporalIntent, state: reading.state)
+        let parent = ExtractedThought(sourceQuote: source, rawQuote: source,
+            wasRepaired: false, analysisText: normalized, suggestedTitle: nil,
+            organization: organization, confidence: 1, needsReview: false,
+            sourceUnitIDs: Set(SourceUnitLedger(source).words.indices))
+        let entries = plainShoppingEntries(in: parent)
+        // Acquisition verbs also collect people. Without an explicit purchase
+        // verb, each object needs a known product head before this shortcut
+        // can authorize shopping; nominal coordination alone is insufficient.
+        let explicitlyBuys = command.range(of: #"(?i)^(?:buy|order)\s+"#,
+                                           options: .regularExpression) != nil
+        guard explicitlyBuys || entries.allSatisfy({
+            ShoppingGroupParser.namesOneProduct($0.product)
+                || ShoppingGroupParser.namesOneProduct(String($0.product.split(separator: " ").last ?? ""))
+        }) else { return nil }
+        guard entries.count > 1, entries.allSatisfy({ entry in
+            namesSomethingToBuy(entry.product)
+                && (!hasExplicitFinitePredicate(entry.product)
+                    || ShoppingGroupParser.namesOneProduct(String(entry.product.split(separator: " ").last ?? "")))
+                && entry.product.range(of: #"(?i)\b(?:at|from|on|by|also|then|call|email|text|remind|send|finish|water|clean|pay|book)\b"#,
+                                       options: .regularExpression) == nil
+        }), ShoppingGroupParser.allReadAsProducts(entries.map(\.product),
+            in: entries.map(\.product).joined(separator: ", ")) else { return nil }
+        let items = shapingShoppingLists([parent], capture: source, sourceForOwnership: source)
+        guard items.count == entries.count,
+              items.allSatisfy({ $0.organization.itemType == .shopping }),
+              items.reduce(into: Set<Int>(), { $0.formUnion($1.sourceUnitIDs) }) == parent.sourceUnitIDs,
+              items.reduce(0, { $0 + $1.sourceUnitIDs.count }) == parent.sourceUnitIDs.count else { return nil }
+        return .init(items: items, method: .rules)
+    }
+
     /// A complete past shopping-trip adjunct followed by a CURRENT product
     /// need names a shopping list, not future place monitoring. Normal rules
     /// and source certification recompute this same bounded whole-source plan.
@@ -10393,7 +10459,8 @@ enum RuleBasedThoughtExtractor {
 
         for item in items {
             let entries = plainShoppingEntries(in: item)
-            guard entries.count > 1 else {
+            guard entries.count > 1 || (entries.count == 1
+                && ShoppingGroupParser.storeName(in: item.rawQuote) != nil) else {
                 result.append(item)
                 continue
             }
@@ -10538,6 +10605,12 @@ enum RuleBasedThoughtExtractor {
                 with: "",
                 options: .regularExpression
             )
+        // Exclusions remain a separate visible constraint; they are not products.
+        title = title.replacingOccurrences(
+            of: #"(?i),\s*(?:but\s+)?(?:not|no|without)\s+[^,.;]+[.;]?\s*$"#,
+            with: "", options: .regularExpression)
+        let beforeStore = title
+        title = ShoppingGroupParser.withoutStoreContext(in: title)
         // "Remind me to get eggs, milk, and cheese in one hour": the command
         // lead and the trailing timing are the reminder's words, not products.
         // `ReminderCopy.action` already strips both; the parsed dates survive
@@ -10545,6 +10618,11 @@ enum RuleBasedThoughtExtractor {
         if organization.reminderDate != nil || organization.dueDate != nil {
             title = ReminderCopy.withoutTrailingTiming(ReminderCopy.action(from: title))
         }
+        title = ShoppingGroupParser.withoutStoreContext(in: title)
+        if organization.reminderDate != nil || organization.dueDate != nil {
+            title = ReminderCopy.withoutTrailingTiming(title)
+        }
+        let removedStore = title != beforeStore && ShoppingGroupParser.storeName(in: item.rawQuote) != nil
         guard let regex = NSRegularExpression.speakItCached(
             #"^(buy|order|get|grab|pick\s+up)\s+(.+)$"#,
             options: [.caseInsensitive]
@@ -10574,10 +10652,13 @@ enum RuleBasedThoughtExtractor {
             if let recognized = ShoppingGroupParser.recognizedProducts(in: body) {
                 return recognized.map { (verb, $0) }
             }
-            guard let structural = ShoppingGroupParser.structuralProducts(
-                in: body, verb: verb
-            ) else { return [] }
-            return structural.map { (verb, $0) }
+            if let structural = ShoppingGroupParser.structuralProducts(in: body, verb: verb) {
+                return structural.map { (verb, $0) }
+            }
+            if removedStore, !body.localizedCaseInsensitiveContains(" and "), namesSomethingToBuy(body) {
+                return [(verb, body)]
+            }
+            return []
         }
 
         var products = body
@@ -12266,6 +12347,15 @@ enum RuleBasedThoughtExtractor {
                 // to the instruction after it. Cutting "After lunch, call
                 // Theo" here creates a phantom context row before the call.
                 let head = normalize(String(sentence[lowerBound..<range.lowerBound]))
+                // A reminder opener has no action of its own. Its arrival
+                // condition and following action belong to the same envelope.
+                if (head.range(of: #"(?i)^(?:please\s+)?(?:remind|notify|alert|ping|tell)\s+(?:me|us)$"#,
+                               options: .regularExpression) != nil
+                    || (lowerBound > sentence.startIndex
+                        && head.range(of: "(?i)^" + triggerLeadPattern, options: .regularExpression) != nil)),
+                   LocationIntentParser.actionBody(in: String(sentence[lowerBound...])) != nil {
+                    continue
+                }
                 // A complete fronted calendar/clock adjunct belongs to the
                 // instruction following its comma. It has no predicate that
                 // could authorize a separate event or reminder.
@@ -14165,8 +14255,12 @@ enum RuleBasedThoughtExtractor {
                 options: .regularExpression) {
                 return normalize(String(text[clock]) + String(tail[daypart]))
             }
-            // A bare clock retains its existing routing. Only the proved
-            // clock-and-day adjunct extends shared command inheritance here.
+            // A fronted bare clock also governs a literal purchase command.
+            // It cannot become a standalone event beside untimed products.
+            if tail.range(of: #"(?i)^[\s,]+(?:buy|order|get|grab|pick\s+up)\s+"#,
+                          options: .regularExpression) != nil {
+                return normalize(String(text[clock]))
+            }
         }
         // Discourse before a calendar adjunct does not narrow that adjunct
         // to the first sibling. Keep the complete prefix for inheritance and
@@ -16096,8 +16190,11 @@ enum RuntimeCompleteLiteralCertificate {
     static func interpret(_ source: String, referenceDate: Date, calendar: Calendar,
                           rules: ThoughtExtractionResult? = nil) -> ThoughtExtractionResult? {
         if let corrected = calendarRepair(source, referenceDate: referenceDate, calendar: calendar) { return corrected }
-        if let shopping = RuleBasedThoughtExtractor.pastTripShoppingPlan(source,
-            referenceDate: referenceDate, calendar: calendar), rules == nil || rules == shopping {
+        if let rules, let arrival = arrivalReminder(source, rules: rules) { return arrival }
+        if let shopping = RuleBasedThoughtExtractor.literalPurchasePlan(source,
+            referenceDate: referenceDate, calendar: calendar)
+            ?? RuleBasedThoughtExtractor.pastTripShoppingPlan(source,
+                referenceDate: referenceDate, calendar: calendar), rules == nil || rules == shopping {
             return shopping
         }
         guard !Task.isCancelled, !source.isEmpty, source.count <= 12_000,
@@ -16133,6 +16230,27 @@ enum RuntimeCompleteLiteralCertificate {
         return aligned(.init(items: items, method: .rules), with: processed, source: source,
             referenceDate: referenceDate, calendar: calendar)
     }
+    /// The reminder act, own arrival condition and explicit action form one
+    /// literal envelope. Named-place support remains a downstream live blocker.
+    /// This never certifies third-party arrivals or adds a geographic match.
+    static func arrivalReminder(_ source: String, rules: ThoughtExtractionResult) -> ThoughtExtractionResult? {
+        guard rules.operations.isEmpty, rules.items.count == 1,
+              source.range(of: #"(?i)^\s*(?:(?:please\s+)?remind\s+me\s*,?\s*)?(?:when|once|as\s+soon\s+as|next\s+time)\s+(?:I|we)\b"#,
+                           options: .regularExpression) != nil,
+              QuotedSpeechScope.ranges(in: source).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(source),
+              ReminderPhrasing.requestsReminder(source),
+              let action = LocationIntentParser.actionBody(in: source),
+              ActionabilityReader.read(action).belongsOnToday,
+              let item = rules.items.first, !item.wasRepaired, !item.needsReview,
+              item.rawQuote == source, item.sourceQuote == source,
+              item.sourceUnitIDs == Set(SourceUnitLedger(source).words.indices),
+              item.organization.locationIntent != nil,
+              item.organization.itemType.isActionable,
+              !item.organization.needsClarification, item.organization.state == .resolved else { return nil }
+        return rules
+    }
+
     /// The repair reader proves an exact single calendar-slot replacement,
     /// including every deleted occurrence. Re-read only its complete final
     /// source; the old first clock cannot donate metadata to the new action.

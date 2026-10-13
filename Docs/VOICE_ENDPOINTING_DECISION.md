@@ -4,10 +4,10 @@
 **Decision date:** 2026-08-24  
 **Audience:** Product, engineering, QA, and beta support
 
-> **October 12, Build 22 default change.** The in-app voice screen starts in
-> **Auto finish** again, so an ordinary completed thought saves after a natural
-> pause without a second tap. Continuous capture remains an explicit option
-> for thinking pauses and long recordings; its protected recovery is unchanged.
+> **October 12 follow-up fix (unreleased).** Every new in-app voice screen
+> begins listening automatically and saves after the adaptive pause. The
+> Auto finish/Continuous selector is removed; Type instead is the sole footer
+> action. Existing protected long-recording drafts retain their recovery path.
 
 > **Window sizes, corrected.** The finished-sentence window is **1.9 s**
 > (`completeThoughtPauseMilliseconds`), settled in build 16 — this document
@@ -33,21 +33,13 @@ The implemented behavior is:
 | Wording appears clearly incomplete | Show **Still listening…** | 8 seconds | More speech resets the decision; a pulse tap finishes immediately; otherwise save at the cap |
 | No recognized words | Keep the existing listening UI | 10 seconds | Speech begins, or the existing no-speech recovery/timeout runs |
 
-## Continuous capture
+## Existing long-recording recovery
 
-The capture screen offers **Continuous capture** before recording and while listening,
-including when an outside-the-app route starts voice automatically. Auto finish
-is the default; Continuous is an explicit choice. When Continuous is on, neither the 1.9/4/8-second natural-pause timers nor the
-10-second no-speech timer ends the recording. The screen says **Long capture ·
-Listening** and tells the person to tap the pulse to finish and save. Switching
-back to automatic mode resumes the normal endpoint policy from the current
-transcript. Once Long capture has been enabled for a recording, whole-recording
-verification remains required even if the person switches it off before
-finishing; changing pause behavior cannot turn a partial transcript into a
-complete save. An early backend final or recognizer error never marks long capture
-complete; recording continues when the microphone and protected file remain
-available, and interruption still enters visible recovery. Long capture does
-not change extraction or persistence after audio is finalized.
+New voice captures always use automatic endpointing. Long-recording recovery
+remains available for protected drafts created by earlier versions: removing
+the mode selector must not weaken their whole-recording verification or discard
+their audio. The implementation details below describe that retained recovery
+contract, rather than a mode offered for new captures.
 
 On older iOS versions the live SFSpeech task may stop before a long recording
 does. Long mode keeps writing the protected local audio until the person taps

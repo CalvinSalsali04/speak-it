@@ -94,10 +94,33 @@ enum ShoppingGroupParser {
     /// capitalized word, which is how speech transcription renders brands.
     /// Generic words ("the store", "the shop") are deliberately not names —
     /// grouping under "Store" would read like a bug — and the grocery-flavored
-    /// generics fold into the Groceries group instead.
+    /// generics retain the spoken place; product-only lists use Groceries.
     static func storeName(in capture: String) -> String? {
         if let name = travelStoreName(in: capture) { return name }
         return trailingStoreName(in: capture)
+    }
+
+    /// Remove only a complete, validated store adjunct. Timing is removed by
+    /// the caller after it has been parsed; original words remain in rawQuote.
+    /// A brand or an unknown noun inside the product list is never a boundary.
+    static func withoutStoreContext(in text: String) -> String {
+        let patterns = [
+            #"(?i)\s+(?:at|from)\s+(?:the\s+)?([\w'&.-]+(?:\s+[\w'&.-]+){0,2})[.!?]*\s*$"#,
+            #"(?i)^(?:at|from)\s+(?:the\s+)?([\w'&.-]+(?:\s+[\w'&.-]+){0,2}?)\s*,?\s+(?=(?:buy|order|get|grab|pick\s+up)\b)"#
+        ]
+        for pattern in patterns {
+            guard let regex = NSRegularExpression.speakItCached(pattern),
+                  let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+                  let whole = Range(match.range, in: text),
+                  let name = Range(match.range(at: 1), in: text) else { continue }
+            let spoken = String(text[name]).trimmingCharacters(in: CharacterSet(charactersIn: ".!?"))
+            guard let candidate = storeCandidate(from: Substring(spoken), in: text, requiresEnd: true),
+                  candidate.caseInsensitiveCompare(spoken) == .orderedSame else { continue }
+            var cleaned = text
+            cleaned.removeSubrange(whole)
+            return cleaned.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return text
     }
 
     /// True when `text` is nothing but "go to <store>" in some phrasing — the
@@ -195,6 +218,7 @@ enum ShoppingGroupParser {
         // is a known store spoken in lowercase.
         while tokens.count > 1,
               !knownStores.contains(tokens.joined(separator: " ").lowercased()),
+              !genericGroceryPlaces.contains(tokens.joined(separator: " ").lowercased()),
               tokens.last?.first?.isLowercase == true {
             tokens.removeLast()
         }
@@ -202,7 +226,10 @@ enum ShoppingGroupParser {
         let candidate = tokens.joined(separator: " ")
         let lowered = candidate.lowercased()
 
-        if genericGroceryPlaces.contains(lowered) { return groceriesGroup }
+        if genericGroceryPlaces.contains(lowered) {
+            return lowered == "groceries" ? groceriesGroup
+                : String(lowered.prefix(1)).uppercased() + lowered.dropFirst()
+        }
         guard !genericPlaces.contains(lowered) else { return nil }
 
         let isKnown = knownStores.contains(lowered)
@@ -229,7 +256,7 @@ enum ShoppingGroupParser {
         "store", "stores", "shop", "shops", "mall", "market", "place", "town"
     ]
 
-    /// Grocery-flavored generics that mean the Groceries list by definition.
+    /// Explicit grocery places retain the place wording as the list name.
     private static let genericGroceryPlaces: Set<String> = [
         "grocery store", "the grocery store", "supermarket", "groceries",
         "grocery"

@@ -176,7 +176,6 @@ struct CaptureView: View {
 
     let onSaved: () -> Void
     private let startsInTextMode: Bool
-    private let autoStartsVoiceCapture: Bool
     private let autoDismissesSingleItemConfirmation: Bool
     private let showsGuidedExamples: Bool
     private let tutorialMission: TutorialCaptureMission?
@@ -187,9 +186,6 @@ struct CaptureView: View {
 
     @StateObject private var transcriber = SpeechTranscriber()
     @State private var mode: CaptureMode
-    // A fresh in-app capture stays open through thinking pauses. Automatic
-    // pause saving is available only when the person selects it explicitly.
-    @State private var isLongVoiceCapture = SpeechTranscriber.inAppDefaultEndpointMode == .longCapture
     @State private var typedText = ""
     @State private var errorMessage: String?
     @State private var captureNotice: String?
@@ -256,7 +252,6 @@ struct CaptureView: View {
 
     init(
         initialMode: CaptureInitialMode = .voice,
-        autoStartsVoiceCapture: Bool = false,
         initialText: String = "",
         performance: CapturePerformanceTrace? = nil,
         autoDismissesSingleItemConfirmation: Bool = true,
@@ -269,7 +264,6 @@ struct CaptureView: View {
     ) {
         self.onSaved = onSaved
         startsInTextMode = initialMode == .text
-        self.autoStartsVoiceCapture = autoStartsVoiceCapture && initialMode == .voice
         self.autoDismissesSingleItemConfirmation = autoDismissesSingleItemConfirmation
         self.showsGuidedExamples = showsGuidedExamples
         self.tutorialMission = tutorialMission
@@ -369,13 +363,11 @@ struct CaptureView: View {
                 if accessibilityVoiceOverEnabled {
                     UIAccessibility.post(
                         notification: .announcement,
-                        argument: isLongVoiceCapture
-                            ? "Long capture listening. Tap the pulse to finish."
-                            : "Listening"
+                        argument: "Listening"
                     )
                 }
                 performance?.markMicrophoneReady()
-                if !isLongVoiceCapture { armNoSpeechTimeout() }
+                armNoSpeechTimeout()
                 Task { await CaptureActivityManager.beginListening() }
             case .finalizing:
                 performance?.markEndOfSpeechDetected(
@@ -439,9 +431,8 @@ struct CaptureView: View {
             if startsInTextMode {
                 try? await Task.sleep(for: .milliseconds(140))
                 isTextFocused = true
-            } else if autoStartsVoiceCapture, !hasAutoStarted {
+            } else if !hasAutoStarted {
                 hasAutoStarted = true
-                try? await Task.sleep(for: .milliseconds(180))
                 guard !Task.isCancelled, mode == .voice else { return }
                 await startVoiceCapture()
             }
@@ -585,36 +576,23 @@ struct CaptureView: View {
                 .tint(Color.speakInk)
             }
 
-            captureActionLayout {
-                longCaptureButton
-
-                Button {
-                    switchToTyping()
-                } label: {
-                    captureActionLabel(
-                        dynamicTypeSize.isAccessibilitySize ? "Type" : "Type instead",
-                        systemImage: "keyboard"
-                    )
-                        .background(Color.speakInk.opacity(0.08), in: Capsule())
-                        .contentShape(Capsule())
-                }
-                .buttonStyle(.speakIt)
-                .foregroundStyle(Color.speakInk)
-                .disabled(transcriber.state == .finalizing || isSaving || isRecoveringAudio
-                    || transcriber.requiresOfflineRecovery)
-                .accessibilityLabel("Type instead")
-                .accessibilityHint("Switches from voice capture to a text field")
-                .accessibilityIdentifier("capture.typeInstead")
+            Button {
+                switchToTyping()
+            } label: {
+                captureActionLabel("Type instead", systemImage: "keyboard")
+                    .background(Color.speakInk.opacity(0.08), in: Capsule())
+                    .contentShape(Capsule())
             }
+            .buttonStyle(.speakIt)
+            .foregroundStyle(Color.speakInk)
+            .disabled(transcriber.state == .finalizing || isSaving || isRecoveringAudio
+                || transcriber.requiresOfflineRecovery)
+            .accessibilityLabel("Type instead")
+            .accessibilityHint("Switches from voice capture to a text field")
+            .accessibilityIdentifier("capture.typeInstead")
             .padding(.bottom, 34)
         }
         .padding(.horizontal, 20)
-    }
-
-    private var captureActionLayout: AnyLayout {
-        dynamicTypeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(spacing: 12))
-            : AnyLayout(HStackLayout(spacing: 12))
     }
 
     private func captureActionLabel(_ title: String, systemImage: String) -> some View {
@@ -631,57 +609,6 @@ struct CaptureView: View {
         )
         .padding(.horizontal, 12)
         .padding(.vertical, dynamicTypeSize.isAccessibilitySize ? 8 : 0)
-    }
-
-    private var longCaptureButton: some View {
-        Button {
-            let nextMode: SpeechTranscriber.EndpointMode = isLongVoiceCapture
-                ? .automatic : .longCapture
-            if nextMode == .longCapture && activeDraft == nil {
-                ensureDraft(source: .inAppVoice)
-            }
-            if nextMode == .longCapture {
-                guard let draft = activeDraft,
-                      (try? CaptureDraftStore.prepareAudioURL(for: draft)) != nil else {
-                    voiceNotice = "Long capture needs protected recording storage. Try again or type your thought."
-                    return
-                }
-                guard CaptureDraftStore.requireWholeRecordingVerification(id: draft.id) else {
-                    voiceNotice = "Long capture could not protect its recovery record. Try again or type."
-                    return
-                }
-            }
-            guard transcriber.setEndpointMode(nextMode) else {
-                voiceNotice = "Long capture needs a protected recording before it can start."
-                return
-            }
-            isLongVoiceCapture = nextMode == .longCapture
-            if isLongVoiceCapture {
-                noSpeechTimeoutTask?.cancel()
-            } else if transcriber.isListening,
-                      transcriber.transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                armNoSpeechTimeout()
-            }
-        } label: {
-            captureActionLabel(
-                isLongVoiceCapture ? "Continuous" : "Auto finish",
-                systemImage: isLongVoiceCapture ? "checkmark.circle.fill" : "circle"
-            )
-            .foregroundStyle(Color.speakInk)
-            .background(
-                isLongVoiceCapture ? Color.speakInk.opacity(0.10) : Color.speakSurface,
-                in: Capsule()
-            )
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.speakIt)
-        .disabled(transcriber.state == .finalizing || isSaving || isRecoveringAudio
-            || transcriber.requiresOfflineRecovery)
-        .accessibilityLabel(isLongVoiceCapture ? "Continuous capture on" : "Auto finish on")
-        .accessibilityHint(isLongVoiceCapture
-            ? "Tap to use automatic pause saving. Continuous capture listens through pauses until you finish."
-            : "Tap to keep listening through pauses until you finish.")
-        .accessibilityIdentifier("capture.longCapture")
     }
 
     @ViewBuilder
@@ -1161,9 +1088,7 @@ struct CaptureView: View {
                 ? "Preparing accurate recognition…"
                 : "Getting ready…"
         case .listening:
-            isLongVoiceCapture
-                ? "Long capture · Listening"
-                : (transcriber.isWaitingForContinuation ? "Still listening…" : "Listening")
+            transcriber.isWaitingForContinuation ? "Still listening…" : "Listening"
         case .finalizing: "Saving your thought…"
         case .permissionDenied: "Microphone access is off"
         case .unavailable: "Speech recognition is unavailable"
@@ -1189,11 +1114,9 @@ struct CaptureView: View {
                 ? "One-time voice setup stays on this iPhone."
                 : "Speak It only listens while you’re capturing."
         case .listening:
-            isLongVoiceCapture
-                ? "Keep speaking through pauses. Tap the pulse to finish and save."
-                : transcriber.isWaitingForContinuation
+            transcriber.isWaitingForContinuation
                 ? "Take your time. Keep speaking, or tap the pulse when you’re finished."
-                : "Auto finish is on. I’ll save after a natural pause, or tap the pulse now."
+                : "I’ll save after a natural pause."
         case .finalizing: "The original words are saved first."
         case .permissionDenied: "Allow microphone and speech recognition, or type instead."
         case .unavailable: "You can still capture this thought by typing."
@@ -1207,9 +1130,7 @@ struct CaptureView: View {
 
     private var voiceButtonAccessibilityHint: String {
         transcriber.isListening
-            ? (isLongVoiceCapture
-                ? "Finishes and saves this long capture"
-                : "Finishes immediately; otherwise Speak It waits longer when your words sound unfinished")
+            ? "Finishes immediately; otherwise Speak It waits longer when your words sound unfinished"
             : "Requests permission if needed, then begins listening"
     }
 
@@ -1245,30 +1166,11 @@ struct CaptureView: View {
         } catch {
             recoveryURL = nil
         }
-        if isLongVoiceCapture && recoveryURL == nil {
-            if let activeDraftID {
-                CaptureDraftStore.markFailed(
-                    id: activeDraftID,
-                    message: "Protected recording storage was unavailable before long capture started."
-                )
-            }
-            activeDraftID = nil
-            captureNotice = "Long capture could not prepare protected recording storage. Type your thought instead."
-            mode = .text
-            return
-        }
-        if isLongVoiceCapture,
-           let activeDraftID,
-           !CaptureDraftStore.requireWholeRecordingVerification(id: activeDraftID) {
-            captureNotice = "Long capture could not protect its recovery record. Type your thought instead."
-            mode = .text
-            return
-        }
         await transcriber.start(
             recoveryAudioURL: recoveryURL,
             contextualPhrases: tutorialMission?.contextualPhrases ?? [],
             prefersEnhancedRecognition: tutorialMission != nil,
-            endpointMode: isLongVoiceCapture ? .longCapture : .automatic
+            endpointMode: SpeechTranscriber.inAppDefaultEndpointMode
         ) { finalText in
             save(finalText, source: .inAppVoice)
         }

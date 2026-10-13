@@ -1450,61 +1450,54 @@ And email Jonah the final volunteer rota once Priya has approved it. She has loo
         XCTAssertTrue(app.buttons["item.edit.Send Mina the monitor stand dimensions"].waitForNonExistence(timeout: 5))
     }
 
-    func testLongCaptureToggleIsAvailableBeforeMicrophonePermission() {
+    func testVoiceCaptureStartsOnOpeningAndOnlyOffersTypeInstead() {
+        // The simulator has no dependable live microphone. A denied first-use
+        // request leaves the real voice screen visible rather than invoking
+        // speech-engine failure recovery before the footer can be inspected.
+        XCUIApplication().resetAuthorizationStatus(for: .microphone)
+        let interruption = addUIInterruptionMonitor(withDescription: "Capture permission") { alert in
+            let deny = alert.buttons["Don’t Allow"].exists
+                ? alert.buttons["Don’t Allow"] : alert.buttons["Don't Allow"]
+            guard deny.exists else { return false }
+            deny.tap()
+            return true
+        }
+        defer { removeUIInterruptionMonitor(interruption) }
         let app = launchApp("--ui-testing-skip-welcome")
-        let capture = app.buttons["dock.capture"]
-        XCTAssertTrue(capture.waitForExistence(timeout: 5))
-        capture.tap()
-
-        let longCapture = app.buttons["capture.longCapture"]
-        XCTAssertTrue(longCapture.waitForExistence(timeout: 5))
-        assertMinimumTouchTarget(longCapture)
-        XCTAssertEqual(longCapture.label, "Auto finish on")
-        XCTAssertTrue(app.staticTexts["Tap to speak"].exists)
-
-        // Exercise the capsule edge, then its other edge on the way back.
-        // This uses only the mode control; the pulse and permission UI stay idle.
-        longCapture.coordinate(withNormalizedOffset: CGVector(dx: 0.10, dy: 0.5)).tap()
-        XCTAssertEqual(longCapture.label, "Continuous capture on")
-        XCTAssertTrue(longCapture.isHittable)
-        XCTAssertTrue(app.staticTexts["Tap to speak"].exists)
-        XCTAssertFalse(app.alerts.firstMatch.exists)
-        // Let the button's pressed-state animation finish before layout QA.
-        Thread.sleep(forTimeInterval: 0.5)
-        let longCaptureScreenshot = XCTAttachment(screenshot: app.screenshot())
-        longCaptureScreenshot.name = "Long capture — ready"
-        longCaptureScreenshot.lifetime = .keepAlways
-        add(longCaptureScreenshot)
-
-        longCapture.coordinate(withNormalizedOffset: CGVector(dx: 0.90, dy: 0.5)).tap()
-        XCTAssertEqual(longCapture.label, "Auto finish on")
-        XCTAssertTrue(app.staticTexts["Tap to speak"].exists)
+        app.buttons["dock.capture"].tap()
+        // An interaction lets XCTest service any first-use system alert.
+        app.tap()
+        let typeInstead = app.buttons["capture.typeInstead"]
+        XCTAssertTrue(typeInstead.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["capture.longCapture"].exists)
+        // Permission/recognizer preparation may vary by simulator, but the
+        // screen must leave idle without a second press on the pulse.
+        XCTAssertTrue(app.staticTexts["Tap to speak"].waitForNonExistence(timeout: 5))
+        assertMinimumTouchTarget(typeInstead)
+        let capture = XCTAttachment(screenshot: app.screenshot())
+        capture.name = "Automatic voice capture — single Type instead action"
+        capture.lifetime = .keepAlways
+        add(capture)
+        typeInstead.tap()
+        XCTAssertTrue(app.textViews["capture.text"].waitForExistence(timeout: 5))
     }
 
-    func testLongCaptureToggleStaysReachableInDarkAppearance() {
-        let app = launchApp(
-            "--ui-testing-skip-welcome",
-            "-AppleInterfaceStyle",
-            "Dark",
-            "-SpeakIt.appearance",
-            "dark"
-        )
+    func testAutomaticVoiceCaptureTypeInsteadInDarkAccessibilitySize() {
+        let app = launchApp("--ui-testing-skip-welcome", "-SpeakIt.appearance", "dark",
+                            "--ui-testing-dynamic-type-axxxl")
         app.buttons["dock.capture"].tap()
-
-        let longCapture = app.buttons["capture.longCapture"]
         let typeInstead = app.buttons["capture.typeInstead"]
-        XCTAssertTrue(longCapture.waitForExistence(timeout: 5))
-        XCTAssertTrue(longCapture.isHittable)
+        XCTAssertTrue(typeInstead.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["capture.longCapture"].exists)
+        XCTAssertTrue(app.staticTexts["Tap to speak"].waitForNonExistence(timeout: 5))
         XCTAssertTrue(typeInstead.isHittable)
-        assertMinimumTouchTarget(longCapture)
-        longCapture.tap()
-        XCTAssertEqual(longCapture.label, "Continuous capture on")
-        // Allow the pressed-button transition to settle before visual QA.
-        Thread.sleep(forTimeInterval: 0.5)
-        let screenshot = XCTAttachment(screenshot: app.screenshot())
-        screenshot.name = "Long capture — dark appearance"
-        screenshot.lifetime = .keepAlways
-        add(screenshot)
+        assertMinimumTouchTarget(typeInstead)
+        let capture = XCTAttachment(screenshot: app.screenshot())
+        capture.name = "Automatic voice capture — dark accessibility size"
+        capture.lifetime = .keepAlways
+        add(capture)
+        typeInstead.tap()
+        XCTAssertTrue(app.textViews["capture.text"].waitForExistence(timeout: 5))
     }
 
     func testClosingANonemptyCaptureRequiresAnExplicitChoice() {

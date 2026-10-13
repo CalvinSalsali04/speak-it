@@ -10591,3 +10591,206 @@ final class RuntimeCaptureRetentionIntentTests: XCTestCase {
     }
 }
 #endif
+
+
+@MainActor
+final class AutomaticCaptureShoppingRegressionTests: XCTestCase {
+    private var calendar: Calendar {
+        var result = Calendar(identifier: .gregorian)
+        result.timeZone = TimeZone(identifier: "America/Toronto")!
+        return result
+    }
+    private let reference = ISO8601DateFormatter().date(from: "2026-08-03T14:00:00Z")!
+    private var nine: Date { ISO8601DateFormatter().date(from: "2026-08-04T13:00:00Z")! }
+    private func read(_ text: String) -> ThoughtExtractionResult {
+        ThoughtExtractionEngine.extractWithRules(text, referenceDate: reference, calendar: calendar)
+    }
+    private func assertOwnership(_ result: ThoughtExtractionResult, source: String,
+                                 file: StaticString = #filePath, line: UInt = #line) {
+        let ids = result.items.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) }
+        XCTAssertEqual(ids, Set(SourceUnitLedger(source).words.indices), source, file: file, line: line)
+        XCTAssertEqual(result.items.reduce(0) { $0 + $1.sourceUnitIDs.count }, ids.count,
+                       "Every word must have one owner: " + source, file: file, line: line)
+    }
+    func testReportedTimedShoppingHasProductOnlyRowsAndSpokenPlace() {
+        let text = "Buy cheesecake, crumble cookies, and chocolate at the grocery store at 9 a.m."
+        let result = read(text)
+        XCTAssertEqual(result.items.map(\.suggestedTitle), ["buy cheesecake", "buy crumble cookies", "buy chocolate"])
+        XCTAssertEqual(result.items.map(\.sourceQuote), ["cheesecake", "crumble cookies", "chocolate"])
+        for item in result.items {
+            XCTAssertEqual(item.shoppingGroup, "Grocery store")
+            XCTAssertEqual(item.organization.dueDate, nine)
+            XCTAssertNil(item.organization.reminderDate, "A due time alone does not request a notification")
+            XCTAssertEqual(item.rawQuote, text)
+            XCTAssertFalse(item.needsReview)
+        }
+        assertOwnership(result, source: text)
+    }
+    func testStoreAndTimingVariationsKeepIndependentProducts() {
+        let cases: [(String, String, [String])] = [
+            ("Buy milk, bread and eggs at Costco at 9 AM.", "Costco", ["milk", "bread", "eggs"]),
+            ("Buy cheesecake, crumble cookies and chocolate from the grocery store at 9 AM.", "Grocery store", ["cheesecake", "crumble cookies", "chocolate"]),
+            ("Get 2 apples, oat milk, and sourdough at Whole Foods at 9 AM.", "Whole Foods", ["2 apples", "oat milk", "sourdough"]),
+            ("Pick up paper towels, batteries and soap from Target tomorrow at 9 AM.", "Target", ["paper towels", "batteries", "soap"]),
+            ("Buy milk and eggs at Costco at 9 AM.", "Costco", ["milk", "eggs"]),
+            ("Buy cheesecake, crumble cookies, and chocolate at the supermarket.", "Supermarket", ["cheesecake", "crumble cookies", "chocolate"]),
+            ("Buy milk, eggs, and bread at the grocery store.", "Grocery store", ["milk", "eggs", "bread"]),
+            ("Buy mac and cheese, peanut butter, and chocolate at Costco.", "Costco", ["mac and cheese", "peanut butter", "chocolate"])
+        ]
+        for (text, group, products) in cases {
+            let result = read(text)
+            XCTAssertEqual(result.items.map { $0.sourceQuote.lowercased() }, products, text + String(reflecting: result))
+            XCTAssertTrue(result.items.allSatisfy { $0.shoppingGroup == group }, text)
+            XCTAssertTrue(result.items.allSatisfy { !$0.needsReview }, text)
+            XCTAssertTrue(result.items.allSatisfy { !$0.analysisText.localizedCaseInsensitiveContains(" at ") }, text)
+            assertOwnership(result, source: text)
+        }
+    }
+    func testExplicitShoppingReminderPreservesSharedTimeAndDelivery() {
+        let text = "Remind me to buy cheesecake, crumble cookies, and chocolate at the grocery store at 9 AM."
+        let result = read(text)
+        XCTAssertEqual(result.items.count, 3, String(reflecting: result))
+        for item in result.items {
+            XCTAssertEqual(item.shoppingGroup, "Grocery store")
+            XCTAssertEqual(item.organization.reminderDate, nine)
+            XCTAssertEqual(item.organization.reminderDelivery, .notification)
+            XCTAssertFalse(item.analysisText.localizedCaseInsensitiveContains("9 AM"))
+        }
+        assertOwnership(result, source: text)
+    }
+    func testStoreCleanupNeedsAnExactPlaceAdjunct() {
+        XCTAssertEqual(ShoppingGroupParser.withoutStoreContext(in: "buy milk, eggs at Costco"), "buy milk, eggs")
+        XCTAssertEqual(ShoppingGroupParser.withoutStoreContext(in: "at the grocery store, buy milk, eggs"), "buy milk, eggs")
+        for text in ["buy At Home cookies and chocolate", "buy milk at room temperature", "buy eggs from happy hens", "buy milk, eggs at Costco bakery department"] {
+            XCTAssertEqual(ShoppingGroupParser.withoutStoreContext(in: text), text)
+        }
+    }
+    func testHamiltonReminderEnvelopeIsOneActionWithCorrectRecipient() throws {
+        for text in [
+            "Remind me, when I get to Hamilton, to go say hi to Minnie.",
+            "Remind me when I get to Hamilton to go say hi to Minnie.",
+            "When I get to Hamilton, remind me to go say hi to Minnie.",
+            "Remind me to go say hi to Minnie when I get to Hamilton.",
+            "Please remind me, when I arrive at Northbridge, to call Nora."
+        ] {
+            let result = read(text)
+            XCTAssertEqual(result.items.count, 1, text + String(reflecting: result))
+            let item = try XCTUnwrap(result.items.first)
+            XCTAssertNotNil(item.organization.locationIntent, text)
+            XCTAssertEqual(item.organization.personName, text.contains("Nora") ? "Nora" : "Minnie", text)
+            XCTAssertNil(item.organization.reminderDate, text)
+            XCTAssertFalse(item.needsReview, text)
+            XCTAssertEqual(item.rawQuote, text)
+            assertOwnership(result, source: text)
+        }
+    }
+    func testIndependentActionsAndReportedWordsStillKeepTheirScope() {
+        let actions = read("Remind me to call Nora, then when I get home, remind me to water the plants.")
+        XCTAssertEqual(actions.items.count, 2, String(reflecting: actions))
+        for text in ["I bought cheesecake, cookies and chocolate at Costco at 9 AM.",
+                     "I don't need to buy milk, bread and eggs at Costco.",
+                     "Nora said, 'Buy milk, bread and eggs at Costco at 9 AM.'"] {
+            let result = read(text)
+            XCTAssertFalse(result.items.contains { $0.organization.itemType == .shopping }, text + String(reflecting: result))
+        }
+    }
+    func testRuntimeWholeShoppingProposalUsesTheSamePostPassAndPersists() async throws {
+        let text = "Buy cheesecake, crumble cookies, and chocolate at the grocery store at 9 a.m."
+        let parent = ExtractedThought(sourceQuote: text, rawQuote: text, wasRepaired: false,
+            analysisText: text, suggestedTitle: text,
+            organization: ThoughtOrganizer.organize(text, referenceDate: reference, calendar: calendar),
+            confidence: 1, needsReview: false, sourceUnitIDs: Set(SourceUnitLedger(text).words.indices))
+        let proposal = ThoughtExtractionResult(items: [parent], method: .appleIntelligence)
+        let configuration = RuntimeExampleConfiguration(libraryURL: URL(fileURLWithPath: "/unused-synthetic-library.json"),
+            allowProposed: false, retrievalEnabled: true)
+        let container = try ModelContainer(for: PersistenceController.schema,
+            migrationPlan: SpeakItMigrationPlan.self,
+            configurations: [ModelConfiguration(isStoredInMemoryOnly: true)])
+        let repository = SwiftDataThoughtRepository(modelContext: container.mainContext,
+            requestsReminderAuthorization: false)
+        let result = try await RuntimeExampleConfiguration.$testConfiguration.withValue(configuration) {
+            try await RuntimeExampleTestFixtures.withInterpretation(proposal) {
+                try await repository.createCaptureResult(text: text, source: .inAppText,
+                    createdAt: reference, schedulesReminders: false)
+            }
+        }
+        XCTAssertEqual(result.items.count, 3)
+        XCTAssertEqual(Set(result.items.map(\.displayTitle)), Set(["Buy cheesecake", "Buy crumble cookies", "Buy chocolate"]))
+        XCTAssertEqual(result.items.first?.captureSession?.originalTranscription, text)
+        for item in result.items {
+            XCTAssertEqual(ShoppingGroupStore.group(for: item.id), "Grocery store")
+            XCTAssertFalse(item.displayTitle.localizedCaseInsensitiveContains("9 a.m."))
+        }
+        assertOwnership(ThoughtExtractionEngine.shapingShoppingResult(proposal, transcript: text), source: text)
+    }
+    func testAdditionalStoreTimeOrderAndUnknownBrandRegressions() {
+        for text in [
+            "At 9 AM, buy cheesecake, crumble cookies and chocolate at the grocery store.",
+            "Buy cheesecake, crumble cookies and chocolate at 9 AM at the grocery store.",
+            "At the grocery store, buy cheesecake, crumble cookies and chocolate at 9 AM.",
+            "At Costco, buy cheesecake, crumble cookies and chocolate at 9 AM.",
+            "Buy Crumbl cookies and cheesecake at Costco at 9 AM."
+        ] {
+            let result = read(text)
+            XCTAssertEqual(result.items.count, text.contains("Crumbl") ? 2 : 3, text + String(reflecting: result))
+            for item in result.items {
+                XCTAssertEqual(item.shoppingGroup, text.contains("Costco") ? "Costco" : "Grocery store", text)
+                XCTAssertEqual(item.organization.dueDate, nine, text)
+                XCTAssertFalse(item.analysisText.localizedCaseInsensitiveContains(" at "), text)
+                XCTAssertFalse(item.needsReview, text)
+            }
+            assertOwnership(result, source: text)
+        }
+        let single = read("Buy milk at Costco at 9 AM.")
+        XCTAssertEqual(single.items.count, 1)
+        XCTAssertEqual(single.items.first?.suggestedTitle, "buy milk")
+        XCTAssertEqual(single.items.first?.organization.dueDate, nine)
+    }
+    func testPurchaseCertificateCannotConsumeAnIndependentPredicateOrCondition() {
+        for text in [
+            "Get Alice and Bob at 9 AM.",
+            "Buy milk, eggs, Nora sleeps.",
+            "Buy milk and eggs at Costco. Call Nora at 3 PM.",
+            "Buy milk and eggs when I get to Costco.",
+            "Remind Minnie, when she gets to Hamilton, to call me."
+        ] {
+            XCTAssertNil(RuleBasedThoughtExtractor.literalPurchasePlan(text, referenceDate: reference, calendar: calendar), text)
+        }
+        let people = read("Get Alice and Bob at 9 AM.")
+        XCTAssertEqual(people.items.count, 1, String(reflecting: people))
+        XCTAssertEqual(people.items.first?.organization.itemType, .task)
+        let herbs = read("Get Rosemary and Basil at 9 AM.")
+        XCTAssertEqual(herbs.items.count, 2)
+        XCTAssertTrue(herbs.items.allSatisfy { $0.organization.itemType == .shopping })
+        let condition = read("Remind me when I get to Costco to buy milk and eggs.")
+        XCTAssertEqual(condition.items.count, 1, String(reflecting: condition))
+        XCTAssertNotNil(condition.items.first?.organization.locationIntent)
+        XCTAssertNil(condition.items.first?.organization.reminderDate)
+    }
+    func testCompleteArrivalEnvelopeIsCertifiedBeforeOptionalGeneration() {
+        let text = "Remind me, when I get to Hamilton, to go say hi to Minnie."
+        let result = read(text)
+        XCTAssertEqual(RuntimeCompleteLiteralCertificate.arrivalReminder(text, rules: result), result)
+        for other in ["Remind Minnie, when she gets to Hamilton, to call me.",
+                      "Nora said, 'When I get to Hamilton, remind me to call Minnie.'"] {
+            XCTAssertNil(RuntimeCompleteLiteralCertificate.arrivalReminder(other, rules: read(other)), other)
+        }
+    }
+    func testUnresolvedArrivalNeedsPlaceSetupRatherThanSplitReview() throws {
+        let text = "Remind me, when I get to Hamilton, to go say hi to Minnie."
+        let container = try ModelContainer(for: PersistenceController.schema,
+            migrationPlan: SpeakItMigrationPlan.self,
+            configurations: [ModelConfiguration(isStoredInMemoryOnly: true)])
+        let repository = SwiftDataThoughtRepository(modelContext: container.mainContext,
+            requestsReminderAuthorization: false)
+        let item = try repository.createCapture(text: text, source: .inAppText,
+            createdAt: reference, schedulesReminder: false)
+        XCTAssertEqual(item.captureSession?.items.count, 1)
+        XCTAssertEqual(item.captureSession?.originalTranscription, text)
+        XCTAssertNil(item.clarificationRequirement, "The meaning is clear; place support is live device state")
+        let authorization = LocationAuthorization(status: .always, isPrecise: true, isRegionMonitoringAvailable: true)
+        XCTAssertEqual(item.locationBlocker(authorization: authorization), .ambiguousPlace)
+        XCTAssertNotEqual(item.clarificationRequirement, .splitDecision)
+        XCTAssertEqual(item.personName, "Minnie")
+    }
+}

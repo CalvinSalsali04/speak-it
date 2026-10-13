@@ -557,9 +557,14 @@ enum PersonMentionResolver {
             index + 1
         } else if verb == "get",
                   index + 2 < list.count,
-                  list[index + 2].lower == "from" || list[index + 2].lower == "at" {
-            // "Get Sam from the airport". "Get" alone acquires; the source
-            // phrase behind the object is what makes it a collection.
+                  list[index + 2].lower == "from" || list[index + 2].lower == "at"
+                    || (list[index + 2].lower == "and" && index + 3 < list.count
+                        && [list[index + 1], list[index + 3]].allSatisfy({
+                            $0.isCapitalized && isCommonFirstName($0.core)
+                                && !ShoppingGroupParser.namesOneProduct($0.core)
+                        })) {
+            // A source/place adjunct or two corroborated named humans makes
+            // this a collection. Product-name homonyms cannot supply the cue.
             index + 1
         } else {
             nil
