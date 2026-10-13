@@ -1152,7 +1152,15 @@ enum ShoppingGroupParser {
     private static func listPieces(in body: String) -> [String] {
         body
             .split(separator: ",", omittingEmptySubsequences: false)
-            .flatMap { splittingConjunctions(in: String($0)) }
+            .enumerated()
+            .flatMap { index, piece in
+                var value = piece.trimmingCharacters(in: .whitespacesAndNewlines)
+                if index > 0 {
+                    value = value.replacingOccurrences(of: #"(?i)^(?:and|plus)\s+"#,
+                        with: "", options: .regularExpression)
+                }
+                return splittingConjunctions(in: value)
+            }
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
     }
