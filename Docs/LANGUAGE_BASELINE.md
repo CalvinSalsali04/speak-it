@@ -1100,8 +1100,8 @@ plus a declared SpeechLab list checked against `corpus_paths.sealed()` at the
 point of use, and it refuses to run rather than score a zero if any source
 stops yielding rows.
 
-Run it for the figures rather than reading them here. The claim recomputed
-for the Build 22 integration on October 12, 2026 is: **`that means`,
+Run it for the figures rather than reading them here. The current recomputed
+claim is: **`that means`,
 `because of that` and `therefore` appear in no readable row at all**.
 `which means` is now attested in readable development material. This census
 measures attestation, not parser accuracy or the frequency of real speech.
