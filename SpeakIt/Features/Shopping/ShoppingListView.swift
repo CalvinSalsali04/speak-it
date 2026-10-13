@@ -105,6 +105,7 @@ struct ShoppingListView: View {
     }
 
     @Environment(\.thoughtRepository) private var repository
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var subscriptionStore: SubscriptionStore
 
     let items: [CapturedItem]
@@ -252,16 +253,27 @@ struct ShoppingListView: View {
                     .foregroundStyle(Color.speakMuted)
                     .rotationEffect(.degrees(isCollapsed ? 0 : 90))
 
-                Text(group.name)
-                    .font(SpeakItTypography.itemTitle.weight(.semibold))
-                    .foregroundStyle(Color.speakInk)
-                    .lineLimit(1)
-
-                Spacer(minLength: 8)
-
-                Text(itemCountLabel(group.items.count))
-                    .font(SpeakItTypography.metadata)
-                    .foregroundStyle(Color.speakMuted)
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(group.name)
+                            .font(SpeakItTypography.itemTitle.weight(.semibold))
+                            .foregroundStyle(Color.speakInk)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(itemCountLabel(group.items.count))
+                            .font(SpeakItTypography.metadata)
+                            .foregroundStyle(Color.speakMuted)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Text(group.name)
+                        .font(SpeakItTypography.itemTitle.weight(.semibold))
+                        .foregroundStyle(Color.speakInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Text(itemCountLabel(group.items.count))
+                        .font(SpeakItTypography.metadata)
+                        .foregroundStyle(Color.speakMuted)
+                }
             }
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .contentShape(Rectangle())

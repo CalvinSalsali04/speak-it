@@ -15,6 +15,8 @@ Entries before September 2026 were reconstructed from the commit history and
   voice/typing screens at accessibility text sizes.
 - Offer explicit removable local voice hints after saved-item corrections,
   without automatic word replacement or learning from tutorial edits.
+- Keep list headings readable and bottom navigation compact at accessibility
+  text sizes; distinguish voice hints from explicit automatic replacements.
 - Source changes only; no distribution build or upload.
 
 ## Unreleased — everyday capture and tutorial readiness

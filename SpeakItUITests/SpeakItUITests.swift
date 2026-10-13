@@ -294,6 +294,8 @@ final class SpeakItUITests: XCTestCase {
             ["--ui-testing-skip-welcome", "-SpeakIt.appearance", "dark", "--ui-testing-dynamic-type-axxxl"]
         ] {
             let app = launchAppForShoppingDetail(arguments)
+            XCTAssertLessThanOrEqual(app.buttons["dock.today"].frame.height, 80)
+            XCTAssertLessThanOrEqual(app.buttons["dock.memory"].frame.height, 80)
             saveTypedCapture("Buy milk and eggs, but no bread.", in: app)
             let receiptClose = app.buttons["capture.close"]
             if receiptClose.waitForExistence(timeout: 2) { receiptClose.tap() }
@@ -326,6 +328,9 @@ final class SpeakItUITests: XCTestCase {
             let jacket = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'list.item.' AND label CONTAINS[c] 'jacket' AND label CONTAINS[c] 'size medium'")).firstMatch
             for _ in 0..<5 where !jacket.isHittable { app.swipeUp() }
             XCTAssertTrue(jacket.isHittable)
+            for _ in 0..<5 where shirts.frame.maxY > app.buttons["dock.capture"].frame.minY - 20 { app.swipeUp() }
+            XCTAssertTrue(shirts.isHittable)
+            XCTAssertLessThanOrEqual(shirts.frame.maxY, app.buttons["dock.capture"].frame.minY - 20)
             captureFlowScreenshot("shopping-shared-size-" + (arguments.contains("dark") ? "dark-largest" : "light"))
             app.terminate()
         }

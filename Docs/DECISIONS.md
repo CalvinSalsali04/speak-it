@@ -1,5 +1,18 @@
 # Decisions
 
+## 2026-10-13 — Keep compact navigation usable at accessibility text sizes
+
+Passing interaction checks did not reveal that list group names truncated while
+Today/Memory dock labels wrapped into a panel covering much of the screen.
+Screenshot review did. Group names and counts now stack at accessibility sizes,
+and product labels retain all lines. Only compact dock labels cap at xxxLarge;
+content elsewhere retains the requested accessibility size. Stable identifiers,
+44-point targets, row actions and section membership remain unchanged. Focused
+light/dark-largest list flows and dock navigation pass with screenshot inspection.
+Names & phrases also separates optional voice hints from explicit automatic
+replacement mappings, avoiding an oversized “No corrections yet” card below an
+already confirmed hint.
+
 ## 2026-10-13 — Measure startup without guessing a phone optimization
 
 Tools/CaptureStartup executes two fixed synthetic cases through live production

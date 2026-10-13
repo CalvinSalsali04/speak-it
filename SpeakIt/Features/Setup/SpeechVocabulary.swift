@@ -233,7 +233,10 @@ struct SpeechVocabularyView: View {
                     footer: { Text("These words can influence similar-sounding names. Swipe to remove a hint. Hints stay on this iPhone and never automatically replace words.") }
                 }
                 Section {
-                    if corrections.isEmpty {
+                    if corrections.isEmpty && !recognitionHints.isEmpty {
+                        Text("No automatic replacements.")
+                            .foregroundStyle(Color.speakMuted)
+                    } else if corrections.isEmpty {
                         ContentUnavailableView {
                             Label("No corrections yet", systemImage: "textformat.abc")
                         } description: {
@@ -252,8 +255,10 @@ struct SpeechVocabularyView: View {
                         }
                         .onDelete(perform: delete)
                     }
+                } header: {
+                    Text("Automatic replacements")
                 } footer: {
-                    Text("Corrections stay on this iPhone and are applied before a thought is organized.")
+                    Text("These explicit corrections stay on this iPhone and replace the heard phrase before a thought is organized.")
                 }
             }
             .navigationTitle("Names & phrases")
