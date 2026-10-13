@@ -17,6 +17,12 @@
 > *asking* whether an unfinished thought is still coming. Different number,
 > different job.
 
+
+> **October 13 follow-up (unreleased).** Unfinished negative commands such as
+> “Don't …” now hold the existing eight-second continuation window. Completed
+> negatives keep the 1.9-second fast path. Synthetic ASR cadence and repository
+> replay cover the reproduced cutoff; this is not physical-phone qualification.
+
 ## Direct answer
 
 Speak It should not use one silence timeout for every utterance. It should keep

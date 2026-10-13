@@ -1,5 +1,14 @@
 # Known Issues
 
+## Synthetic spoken-capture follow-up (unreleased)
+
+A reproduced unfinished “Don’t …” cutoff is repaired with focused real-timer
+and repository replay. Generated voices still expose recognition errors in names
+and some products. Completing an ASR stream is not successful capture accuracy.
+The matched alternate-recognizer experiment did not justify changing engines.
+Synthetic file/noise replay does not qualify phone microphones, routes, competing
+speakers, human prosody, or physical stop-to-visible-row latency.
+
 ## Everyday list and tutorial follow-up (unreleased)
 
 Polite explicit requests, own product needs with bounded store/date context,

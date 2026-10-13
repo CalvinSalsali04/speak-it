@@ -9615,3 +9615,107 @@ final class RuntimeQuotedRevisionBoundaryDiagnosticTests:XCTestCase {
     func testActualQuotedRevisionBoundaryRecordsUntypedMutationAndMustPreserveSeed() async throws { try await runBoundary(checked:false) }
 }
 #endif
+
+
+/// Real app endpoint tasks and callbacks, without opening microphone hardware.
+/// These timings belong to simulator state replay, not a phone latency grade.
+@MainActor
+final class EndpointConfidenceReplayTests: XCTestCase {
+    func testNegatedStarterKeepsListeningAcrossAThinkingPause() async throws {
+        let transcriber = SpeechTranscriber(reportsAudioLevel: false)
+        defer { transcriber.cancel() }
+        let id = UUID()
+        var saved: [String] = []
+        transcriber.setSyntheticCaptureForTesting(id, onAutomaticFinalization: { saved.append($0) })
+        transcriber.receiveTranscript("Don't.", isFinal: false, captureID: id)
+        try await Task.sleep(for: .milliseconds(2_400))
+        XCTAssertEqual(transcriber.state, .listening, "A negated command has not supplied its action yet")
+        XCTAssertTrue(saved.isEmpty)
+        guard transcriber.state == .listening else { return }
+        let complete = "Don't book the flight yet"
+        transcriber.receiveTranscript(complete, isFinal: false, captureID: id)
+        for _ in 0..<60 where transcriber.state == .listening {
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        XCTAssertEqual(transcriber.state, .finalizing)
+        transcriber.receiveTranscript(complete, isFinal: true, captureID: id)
+        XCTAssertEqual(saved, [complete])
+        transcriber.receiveTranscript("stale result", isFinal: true, captureID: id)
+        XCTAssertEqual(saved.count, 1)
+    }
+
+    func testNegatedOpenersHoldButCompletedNegationsRemainFast() {
+        for text in ["Don't", "Don’t.", "Dont", "Do not", "Please don't", "Remind me not to"] {
+            XCTAssertEqual(SpeechTranscriber.naturalPauseDuration(for: text), .seconds(8), text)
+        }
+        for text in ["Don't book the flight yet", "I don't need milk", "I do not know",
+                     "Maybe not", "Buy milk", "Pick up the dry cleaning"] {
+            XCTAssertEqual(SpeechTranscriber.naturalPauseDuration(for: text), .milliseconds(1_900), text)
+        }
+    }
+
+    func testFormattingOnlyRevisionDoesNotRestartTheRealEndpointTask() async throws {
+        let transcriber = SpeechTranscriber(reportsAudioLevel: false)
+        defer { transcriber.cancel() }
+        let id = UUID()
+        var saved: [String] = []
+        transcriber.setSyntheticCaptureForTesting(id, onAutomaticFinalization: { saved.append($0) })
+        transcriber.receiveTranscript("Buy milk", isFinal: false, captureID: id)
+        try await Task.sleep(for: .milliseconds(1_100))
+        transcriber.receiveTranscript("Buy milk.", isFinal: false, captureID: id)
+        try await Task.sleep(for: .milliseconds(1_200))
+        XCTAssertEqual(transcriber.state, .finalizing, "Punctuation is not resumed speech")
+        transcriber.receiveTranscript("Buy milk.", isFinal: true, captureID: id)
+        XCTAssertEqual(saved, ["Buy milk."])
+    }
+}
+
+
+@MainActor
+final class RecordedPartialEndpointReplayTests: XCTestCase {
+    func testActualSyntheticASRCadenceAutomaticallySavesTheWholeCaptureOnce() async throws {
+        // These are the actual Mac real-time recognition callbacks retained in
+        // AS02-first-stream.json, not hand-written word-arrival timings.
+        // This joins ASR cadence to real app timers; it does not open a mic.
+        let events: [(Double, String, Bool)] = [
+            (1.517794167, "Don't", false),
+            (4.569035834, "Don't book", false),
+            (4.576511959, "Don't book the", false),
+            (4.778398459, "Don't book the flight", false),
+            (5.297612125, "Don't book the flight yet", false),
+            (11.469541042, "Don't book the flight yet", false),
+            (11.47889625, "Don't book the flight yet", true),
+        ]
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: PersistenceController.schema, migrationPlan: SpeakItMigrationPlan.self, configurations: [configuration])
+        let repository = SwiftDataThoughtRepository(modelContext: container.mainContext,
+            requestsReminderAuthorization: false, permitsOnDeviceIntelligence: false)
+        let transcriber = SpeechTranscriber(reportsAudioLevel: false)
+        defer { transcriber.cancel() }
+        let id = UUID()
+        let durable = expectation(description: "Automatic endpoint persists the complete original once")
+        var callbacks = 0
+        var saves: [CaptureCreationResult] = []
+        var saveError: Error?
+        transcriber.setSyntheticCaptureForTesting(id, onAutomaticFinalization: { text in
+            callbacks += 1
+            Task { @MainActor in
+                do { saves.append(try await repository.createCaptureResult(text: text, source: .inAppVoice, createdAt: .now, schedulesReminders: false)) }
+                catch { saveError = error }
+                durable.fulfill()
+            }
+        })
+        var previous = 0.0
+        for event in events {
+            try await Task.sleep(for: .seconds(event.0 - previous))
+            previous = event.0
+            transcriber.receiveTranscript(event.1, isFinal: event.2, captureID: id)
+        }
+        await fulfillment(of: [durable], timeout: 3)
+        XCTAssertNil(saveError)
+        XCTAssertEqual(callbacks, 1)
+        XCTAssertEqual(saves.count, 1)
+        XCTAssertEqual(saves.first?.session.originalTranscription, "Don't book the flight yet")
+        XCTAssertEqual(try container.mainContext.fetch(FetchDescriptor<CaptureSession>()).count, 1)
+    }
+}

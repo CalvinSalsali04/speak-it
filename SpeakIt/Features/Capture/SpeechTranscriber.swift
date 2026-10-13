@@ -203,8 +203,11 @@ final class SpeechTranscriber: ObservableObject {
 #if DEBUG
     /// Exercises the production callback handlers at a capture boundary
     /// without opening a microphone in XCTest. This does not verify hardware.
-    func setSyntheticCaptureForTesting(_ id: UUID) {
+    func setSyntheticCaptureForTesting(
+        _ id: UUID, onAutomaticFinalization: ((String) -> Void)? = nil
+    ) {
         activeCaptureID = id
+        automaticFinalization = onAutomaticFinalization
         state = .listening
     }
 #endif
@@ -956,6 +959,9 @@ final class SpeechTranscriber: ObservableObject {
             "another", "first", "like", "next", "second", "so", "third", "well"
         ]
         let continuationPhrases = [
+            // A negative command has not supplied its verb yet. ASR may emit
+            // the contraction as a complete punctuated fragment after a pause.
+            "do not", "don't", "dont", "don’t",
             "do not forget", "don't forget", "dont forget", "don’t forget", "i have to",
             "i meant to", "i need to", "i want to", "make sure", "one more",
             "one more thing", "remind me", "remind me about", "remind me to"

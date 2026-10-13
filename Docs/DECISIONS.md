@@ -5606,3 +5606,30 @@ ending the tutorial/test clears eligibility, rather than elapsed time changing
 billing. A repository-backed outside-capture test verifies the practice source
 and unchanged usage defaults after an hour, with other phases/absent markers
 remaining ineligible.
+
+## 2026-10-13 — Sequential confidence follow-up: audio replay first
+
+A local synthetic replay tool compiles the production speech backend unchanged.
+It freezes twelve scripts and generates 36 voice/noise variants, retaining the
+input/audio hashes and actual transcript events. File ASR, real-time callback
+cadence, app endpoint/repository replay and physical-phone evidence remain
+separate. There is no microphone recording or phone installation in this pass.
+
+The actual “Don't … book the flight yet” trace exposed a missing unfinished
+negative-command opener: the app finalized after the first fragment. Closed
+“do not”/“don't” spellings now use the existing eight-second continuation
+window; completed negatives keep 1.9 seconds. Six focused endpoint/callback
+methods pass, and replaying the recorded ASR cadence through real timers and
+SwiftData saves the complete original once. A new fixture compile error was
+corrected before its successful execution; it is not counted as a product fail.
+
+All 36 shipping-backend audio replays completed, but raw lexical identity was
+only 16/36. A matched comparison using identical accent/punctuation normalization
+was 18/36 for each Apple module, with one existing exact match lost by the newer
+module. Three same-audio real-time controls confirmed that pacing alone did not
+remove the observed word errors. These are exposed synthetic development
+results, not human or semantic accuracy. No recognizer switch is justified.
+Named words, isolated TTS prosody, incomplete/ambiguous sentence endings and
+actual phone routes remain limitations. Claude Opus 5.5 reviewed descriptions
+and challenged the separation between real ASR cadence and hand-written timer
+fixtures; that gap is now explicitly covered without claiming phone equivalence.

@@ -1,0 +1,14 @@
+{"schemaVersion":1,"syntheticDevelopmentOnly":true,"cases":[
+{"id":"AS01","parts":["Remind me to call Priya and","book the vet for Thursday"],"pauseSeconds":2.5,"expected":"two Today actions; missing reminder time may need review","hold":true},
+{"id":"AS02","parts":["Don't","book the flight yet"],"pauseSeconds":2.5,"expected":"preserve negation; no affirmative booking action","hold":true},
+{"id":"AS03","parts":["Dentist Wednesday, no, Thursday at four"],"expected":"one dentist action; corrected Thursday at four"},
+{"id":"AS04","parts":["Text Jon, sorry, Joan, dinner is at seven"],"expected":"communication to corrected Joan; no duplicate Jon action"},
+{"id":"AS05","parts":["Ask Siobhan about Nnamdi's birthday gift"],"expected":"one person action; score synthetic name spelling separately"},
+{"id":"AS06","parts":["Idea for the cafe","a loyalty card for regulars"],"pauseSeconds":2.5,"expected":"one Memory idea; ambiguous complete-prefix pause is explicitly not guaranteed","hold":false},
+{"id":"AS07","parts":["Buy oat milk, um","eggs","and the good bread"],"pauseSeconds":0.6,"expected":"three shopping products; no filler product"},
+{"id":"AS08","parts":["Pick up the dry cleaning"],"expected":"one Today task; automatic completion"},
+{"id":"AS09","parts":["Move the meeting to Friday"],"expected":"no saved mutation without a proven target; background voice is an adverse ASR contrast"},
+{"id":"AS10","parts":["Sam said grab the kids at five","but that is Leo's job"],"pauseSeconds":0.6,"expected":"reported responsibility retained; no confident user action"},
+{"id":"AS11","parts":[],"expected":"no empty capture or quota charge"},
+{"id":"AS12","parts":["Email the invoice to"],"expected":"retain incomplete capture for review; no recipient invented"}
+]}
