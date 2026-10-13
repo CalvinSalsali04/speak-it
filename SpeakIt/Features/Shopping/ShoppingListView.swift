@@ -70,6 +70,7 @@ enum ShoppingListProjection {
 /// group headers are derived from `ShoppingGroupStore` at render time — an
 /// in-memory dictionary lookup per row, never a parse.
 struct ShoppingListView: View {
+    @Environment(\.dockScrollClearance) private var dockScrollClearance
     /// One named list and its open items, in a stable order.
     private struct GroupedList: Identifiable {
         let name: String
@@ -145,7 +146,7 @@ struct ShoppingListView: View {
         // dock sits on top of the last row of the list — and the last row is
         // the "Add items" field, so the control for adding to a list was the
         // one thing the dock covered.
-        .contentMargins(.bottom, DockScroll.clearance, for: .scrollContent)
+        .contentMargins(.bottom, dockScrollClearance, for: .scrollContent)
         .scrollContentBackground(.hidden)
         .navigationTitle("List")
         .navigationBarTitleDisplayMode(.large)
@@ -426,7 +427,7 @@ struct ShoppingListView: View {
             for: item,
             authorization: LocationReminderMonitor.shared.authorization
         )
-        if let timing = presentation.primaryTimingText {
+        if let timing = presentation.formattedTimingText {
             HStack(spacing: 3) {
                 if presentation.reminderState.alertGlyph == .notification {
                     Image(systemName: "bell.fill")
@@ -441,7 +442,7 @@ struct ShoppingListView: View {
                     .lineLimit(1)
             }
             .font(SpeakItTypography.metadata)
-            .foregroundStyle(Color.speakMuted)
+            .foregroundStyle(presentation.isOverdue ? Color.speakWarning : Color.speakMuted)
         }
     }
 

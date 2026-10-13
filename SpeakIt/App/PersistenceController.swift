@@ -7,7 +7,8 @@ enum SpeakItMigrationPlan: SchemaMigrationPlan {
             SpeakItSchemaV1.self,
             SpeakItSchemaV2.self,
             SpeakItSchemaV3.self,
-            SpeakItSchemaV4.self
+            SpeakItSchemaV4.self,
+            SpeakItSchemaV5.self
         ]
     }
 
@@ -36,6 +37,10 @@ enum SpeakItMigrationPlan: SchemaMigrationPlan {
             .lightweight(
                 fromVersion: SpeakItSchemaV3.self,
                 toVersion: SpeakItSchemaV4.self
+            ),
+            .lightweight(
+                fromVersion: SpeakItSchemaV4.self,
+                toVersion: SpeakItSchemaV5.self
             )
         ]
     }
@@ -62,6 +67,27 @@ enum PersistenceController {
         do {
 #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--ui-testing") {
+                // A unique store per UI journey permits a real relaunch check
+                // without touching the app's ordinary store or other tests.
+                if let value = ProcessInfo.processInfo.environment["SPEAKIT_UI_QA_STORE_ID"],
+                   let identifier = UUID(uuidString: value) {
+                    let directory = FileManager.default.temporaryDirectory
+                        .appendingPathComponent("SpeakItUIQA", isDirectory: true)
+                        .appendingPathComponent(identifier.uuidString, isDirectory: true)
+                    try FileManager.default.createDirectory(
+                        at: directory, withIntermediateDirectories: true
+                    )
+                    let configuration = ModelConfiguration(
+                        schema: schema,
+                        url: directory.appendingPathComponent("capture.store"),
+                        cloudKitDatabase: .none
+                    )
+                    let container = try ModelContainer(
+                        for: schema, migrationPlan: SpeakItMigrationPlan.self,
+                        configurations: [configuration]
+                    )
+                    return StoreBootstrap(container: container, initializationError: nil)
+                }
                 let configuration = ModelConfiguration(
                     isStoredInMemoryOnly: true,
                     cloudKitDatabase: .none

@@ -1,5 +1,155 @@
 # Decisions
 
+## 2026-10-12 — Source-proved local interpretation before optional generation
+
+Complete factual notes and explicit own tasks can resolve locally only when a
+bounded reader accounts for every original word occurrence exactly once.
+Unknown dependencies, quoted inner instructions, communication complements,
+ambiguous lists, abbreviations and typed corrections decline this certificate
+and keep the existing interpretation path. Ordinary idea typing is retained.
+This reduces optional-model work for proved captures without granting a
+parser-confidence shortcut over unresolved source.
+
+The certificate also compares its reading against the cached processed rules:
+it cannot collapse established rows, bypass normalization or repair, or replace
+resolved organization and richer metadata. Only an untyped, metadata-free hold
+can be partitioned by a newly complete source proof. This preserves established
+list, calendar, person and display parsing without another rules pass.
+
+A narrow exception removes a calendar adjunct from actionable timing only when
+it belongs to a complete past copular state. The exact predicate is checked
+inside the original finite sentence against usable lexical evidence or the
+existing bounded descriptive-quality grammar. The independently resolved
+calendar must account for the old timing, and all non-temporal metadata must
+agree. Event facts and unproved qualities keep the existing path. Short captures
+also retain complete named-subject perfect facts as Memory when those facts
+supply context to an adjacent task; shared context is not exclusive ownership.
+Bare settled commentary and long-account grouping retain their existing rules.
+
+Weekly recurrence and its interval must come from the same temporal phrase.
+An unrelated nominal “every” or “every other” cannot create or alter a series.
+
+Calendar repairs use their complete final day, hour and daypart with exact
+source ancestry. A local withdrawal or reconsideration requires one eligible
+own action and cannot borrow authority from conditional or foreign actions.
+Other people's responsibilities and completed reports remain knowledge unless
+the user independently adopts an action. The review from the approved Claude
+Opus 5.5 session informed the bounded actionability changes; it was a code
+review, not execution or accuracy evidence.
+
+The full 510,000-record bank remains configured for local indexed lookup;
+compact and semantic routing remain disabled. Unsupported recurrence shapes
+and deliberately unset hours retain review without guessed schedules. No
+persistent schema, external inference, or original-transcript mutation is
+introduced. Reuse unchanged qualification evidence and retry affected failures
+instead of repeating the exposed 330-case model campaign. Record new native,
+integration, UI and archive results beside the exact source used for Build 21.
+
+## 2026-10-10 — Build 21 uses the normal app and the full local development bank
+
+The isolated native rules latency gate exposed repeated ICU expression compilation
+in action-prefix peeling and repeated construction of the immutable relationship
+grammar. Prefix replacements now use the existing bounded compiled-expression
+cache with the same case-insensitive ICU templates and full UTF-16 ranges; the
+closed relationship pattern is initialized once. No parser vocabulary, extraction
+rule, latency threshold or capture source is changed. Unicode/case/relationship
+regressions accompany the unchanged 250 ms native p95 gate.
+
+Capture reconciliation retains independent first-person modal commitments after
+Memory headings, each visit in a dated shopping plan, and explicit message
+addressees. Successive timing revisions reach the existing unique-owner validator.
+Unobservable event prerequisites keep their specific review reason. Explicit ideas
+own their explanatory context, and elapsed-hour recurrences retain their relative
+start across daylight-saving changes. Test fixtures pin relative
+clocks and declare runtime dependencies; Apple schema checks cover both iOS 26.5
+referenced singleton enums and SDK 27 inline enums without relaxing allowed values.
+
+Native full-suite reconciliation also preserves recording idioms without
+removing source words, keeps event clocks inside a message's explicit “to say”
+payload, and keeps an explicitly declared task day outside that payload.
+A later conditional cancellation cannot govern an earlier complete reminder.
+Named clock corrections retain their sentence boundaries in lowercase dictation;
+only one matching prior reminder may receive the correction. An affirmative
+restatement of a uniquely named action attaches as context, while repeated
+matching actions retain the ambiguity for review. Inherited calendar context stays
+outside a communication payload, and a consumed full stop still ends a prior
+reported imperative's operation scope. A later conditional instruction is
+recognized at its own sentence boundary; an inline postposed condition and its
+causal explanation cannot swallow a separate following shopping instruction.
+
+The user requested a complete Build 21 personal TestFlight trial after Build 20
+showed a preview with only 59 reviewed references. The app uses its original
+identity, normal settings, extensions, optional iCloud support, StoreKit and
+Today/Memory interface. The capture engine comes from Source126v2, reconciled
+with integration main 5c4c5fb (including the newer Settings and tutorial flows).
+
+On supported iPhones the model searches the bundled 510,000-record SQLite bank,
+then receives at most six relevant worked examples, further reduced by its
+actual context budget. The complete current capture and saved context retain
+priority. The bank is read-only and SHA-256 pinned to
+`ea60fc340160eb9e98f00c04e775e421ae4a4bf24e476dc474bfb4ed88c8b56b`.
+Verification streams the file on a background actor and caches the handle.
+The three disputed records remain excluded. No proposal was relabelled as
+approved: the full bank still has zero production-approved records. Reference
+answers are demonstrations; they cannot authorize saved-item changes or
+replace the user's source. Existing grounding and operation checks remain.
+This personal full-bank trial is not evidence of independent release accuracy.
+
+An iPhone 13 cannot run Apple's on-device language model. It uses the updated
+rules and source interpreter, including full-bank retrieval when a source
+certificate has not already resolved the capture. An iPhone 16 can additionally
+use model-assisted interpretation when the OS, language and downloaded Apple
+Intelligence model are available. Speech recognition and semantic interpretation
+remain separate stages.
+
+Build 20's isolated captures are imported once into the normal local library,
+using stable IDs and the existing snapshot merge. Its original store is opened
+read-only and retained. Metadata, original transcripts and operation receipts
+are preserved. Import is marked complete only after persistence; failures keep
+the originals and offer retry. Unfinished drafts/audio are copied with the same
+retention policy. The old app group remains an additional entitlement only to
+read its pending shares and metadata. Stale legacy reminder identifiers in the
+normal app's own notification namespace are retired only after library import;
+normal reminders are reconciled from saved items. iOS keeps the separate
+preview app's notification namespace isolated. That app's existing reminders
+require disabling its notifications or removing it after import is verified.
+
+### Build 21 language assets and clause ownership
+
+NaturalLanguage asset preparation checks an actual fixed English tagging probe,
+rather than assuming advertised schemes are usable. Asset requests are bounded
+and cancellable. Inert readings are not cached, and asset completion invalidates
+the cache so later captures can benefit when Apple's local assets become ready.
+
+An in-capture cancellation keeps its original action available to the ownership
+resolver instead of rewriting it into an unscoped saved-item cancellation.
+Store visits retain the existing shopping-list expansion: a named store is
+context for its products, and each product keeps its own shopping row. The
+sequencing regression test checks every spoken action, rather than accepting a
+row count that could hide dropped earlier actions.
+
+Named event context can qualify several independent jobs without supplying a
+new deadline. An explicit booked-visit receipt can bind the matching arrival
+prerequisite; its day and clock stay visible context. A separate action's own
+clock remains its own. Questions inside a call do not acquire deadlines from
+the question's subject, while an explicit instruction to make that question a
+task tomorrow does own tomorrow. Shared prerequisites stay attached even when
+one member names its own day.
+
+The full-bank configuration is opt-in at the build level. The unit-test action
+uses the existing runtime environment override to keep automatic model calls
+out of deterministic tests. Explicit test configurations take precedence, so
+runtime integration tests still exercise their declared paths. The full-bank
+check reads the shipping bundled configuration directly and searches that exact
+bank; the app's Run and Release configurations continue to enable the full bank.
+Repository fixtures
+that test saved changes and delivery explicitly select deterministic extraction;
+model validation and full-bank retrieval retain separate integration checks.
+The production repository defaults to model-assisted interpretation. An SDK
+availability report alone cannot establish successful model generation on a
+simulator; the installed 26.5 runtime reports available but fails with a missing
+prompt template on this Mac.
+
 ## 2026-09-21 — The brief names one thing, and acting on it counts as answering it
 
 The morning brief said `"2 due today · 1 overdue"` and nothing else. Counts
@@ -1050,9 +1200,11 @@ down rather than emerging from whichever branch ran first:
   date-only reminder alerts at. Three private definitions of morning would be
   three ways to be wrong; when this becomes configurable it becomes configurable
   once.
-- **"next week"** stays Needs review. A week is seven days and none of them is
-  more defensible than the others, so picking Monday would look on the row
-  exactly like something the person had chosen.
+- **"next week"** stayed Needs review in this version. A week is seven days and
+  none of them is more defensible than the others, so picking Monday would look
+  on the row exactly like something the person had chosen. Superseded by the
+  calendar-window representation below: an ordinary task can retain the entire
+  week, while a request to fire a reminder during it still needs review.
 
 **"Next Friday" is Friday of the following calendar week**, and plain "Friday"
 is the nearest upcoming one. Speakers genuinely disagree about this, so the
@@ -2814,452 +2966,2391 @@ untouched held-out run stayed 233/320 destinations, 255/310 thought counts,
 7/69 ambiguous captures acted on, and zero captures lost. No broader accuracy
 improvement is claimed, and no held-out failures were read.
 
-## 2026-09-11 — Measure language in CI, because the parser only runs on macOS
+## 2026-09-10 — Dates are found, not constructed, and a question has no deadline
 
-The engine depends on Apple's `NaturalLanguage`, and `NLEmbedding` is
-load-bearing: it decides whether an unknown word is an ordinary noun or a
-person's name. So the parser cannot run on Linux or in a container, and
-stubbing the framework would produce numbers that do not match the shipping
-app. Until now the only language check CI ran was the corpus gate, and the
-development-set and held-out numbers came solely from a hand-run on one Mac.
-Anyone else changing language rules was working blind, and three sessions doing
-so at once is how unverified claims enter the record.
+Six defects, all of them the app stating a date or time nobody said. They were
+found by scoring captures the project did not write: public utterances imported
+into `Tools/UnderstandingLab/`, and the negative corpora that Duckling and
+chrono ship — the strings a date parser's own authors record as *not* times.
+Eleven new `calendarEdges` and `quantitiesNotClocks` cases were authored from
+the contract and run untouched first; seven failed, four guards passed.
 
-`Tools/CI/language-metrics.sh` now produces every language number this project
-quotes in one run: the gating corpus, all four development sets, and the
-held-out set. The `language` job in `ci.yml` runs it with no simulator, no unit
-suite and no release build, which costs roughly five macOS minutes against the
-allowance's two hundred — about thirty measurements a month where the iOS job
-affords one or two. Dispatching with `language_only` skips the iOS job so the
-question "did this parser change help" never costs a unit-suite run.
+**A day the named month does not have is not a date.**
+`ThoughtOrganizer.date(month:day:)` built `DateComponents` and let `Calendar`
+resolve them, which is lenient: June 31 came back as July 1, that had already
+passed, so the year rolled too and "book the appointment for June 31" was filed
+as July 1 of the *following* year. The resolver now searches for the date
+instead of constructing it — it walks forward to a year that actually has that
+month and day and returns nothing when no year does. February 29 therefore
+resolves to the next real leap day rather than to March 1. The same validation
+was added to the "31st of next month" path.
 
-Two deliberate choices in it:
+**A number a separator continues is not a clock.** `ClockDigitRepair`'s
+third-digit-group guard refused a space or a dash but not a dot, so a phone
+number written `416.555.0134` was rewritten to `4:16.555.0134` — into the row
+title and the quote, not merely into the schedule. Two parser guards join it:
+`decimalGuard` refuses an hour that a dot or comma continues into another
+digit, and `adjacentNumberGuard` refuses a bare hour that another number
+follows, because `ClockDigitRepair` runs first and a bare hour still standing
+in front of digits is one that layer already declined to join. Both keep their
+digit test, so the full stop that ends a dictated sentence still leaves
+"dinner at 6." a clock. The amount-noun guard was extended from the
+"<noun> is <number>" shape to the noun directly in front of the cue, which is
+what the unpunctuated rendering of "at 12.50" collapses into.
 
-The scorers report and do not gate. Only the corpus gate's blocking count sets
-the exit status. Destination accuracy moves either way for defensible reasons,
-and a number that blocks a merge is a number people eventually learn to game.
+**A question is not a plan, so the day inside it is not a deadline.** The
+interrogative test wanted a wh-word, a space and an auxiliary, so it held "what
+is the date today" and scheduled "what's the date today" — the same question,
+decided by a punctuation mark the speaker never chose. Contracted wh-forms are
+now read, with `['’]?s` keeping "whose" out. The polar test was extended to
+pronoun subjects: an English imperative cannot take a subject pronoun, so "have
+I set any alarm for today" is unambiguously a question while "have the car
+serviced Friday" stays an instruction. Without it, a question about alarms was
+answered by scheduling one.
 
-The script refuses `--verbose` rather than forwarding it. Scoring the held-out
-set is safe; reading its failures during development is what destroys it, per
-`Tools/CorpusRunner/heldout/README.md`. Refusing the flag means running the
-metrics can never be the thing that unseals the set, and reviewing those
-failures at release stays a deliberate act with its own command.
+The pronoun branch cost one regression, and the unit suite caught it
+immediately: "can you remind me to submit the form at 4 PM" stopped scheduling
+its reminder. Second-person inversion forms a polite request rather than a
+question, so "you" is excluded from the pronoun list; first and third person
+invert only to ask. One authored expectation was also wrong rather than the app:
+"could you book the dentist for Tuesday" belongs in Memory by the
+action-ownership contract, like "Dana is supposed to book the venue", and the
+case was corrected to match rather than the rule changed.
 
-No accuracy claim is attached to this change. It alters no parsing behaviour;
-it only makes the existing measurements reachable by more than one machine.
-The script was verified for argument handling, `shellcheck` and `actionlint` on
-Linux; its macOS path is unrun here by construction and needs a Mac or a
-dispatch.
+Verification: corpus 1,403 of 1,403 clean, zero blocking in all four renderings,
+812 unit tests with zero failures, release compile clean, and the mutation gate
+protected on all 22 subsystems including a new `calendar-date` entry that costs
+46 blocking failures to delete. Development sets unchanged on every row. The
+unseen set held its safety number at 7 of 69 ambiguous captures acted on and its
+thought count at 255/310; destination moved one case to 232/320, which was
+recorded and not read. On the public sets, the question families improved from
+1,065/1,109 to 1,085/1,109 and the imported negative corpora from 86/99 to
+96/96, with the distinct captures that still take a date falling from 11 to 6.
 
-## 2026-09-11 — A removal names a row by the head of its noun phrase
+### What was deliberately not fixed
 
-Two cases were filed together as "delete and remove are not operation verbs".
-They fail for different reasons and only one of them was a defect.
+Four question-shaped captures still take a date, and each would need attachment
+analysis rather than a guard. "Let me know", "tell me" and "read out" frames can
+legitimately carry a deadline — "let me know tomorrow" is a real reminder — so
+the date has to be attached to the request verb or to its complement before
+either reading is safe. "Time and date of today" is a bare noun phrase with no
+question shape at all. These are recorded in `Docs/KNOWN_ISSUES.md`.
 
-"Delete the reminder to call Dave" failed on **word order**: the rule required
-the container noun to be the final token of the sentence, so it recognised the
-pre-modified phrasing of a request and refused the post-modified phrasing of
-the same request. The fix reads the head of the object noun phrase instead of
-its last word, admitting head-initial phrases only through a complement (`to`,
-`about`, `for`, `regarding`) and head-final phrases only when no preposition
-stands in front of the head. Verb particles are deliberately not prepositions:
-"pick up the parcel reminder" has a head, "drop the kids off at the
-appointment" does not. No other guard on the destructive path moved.
+## 2026-09-18 — An opened section scrolls itself onto the screen
 
-`that` and `which` were in the first version of the complement set and are out.
-They open a relative clause, the peel in `cleaned()` only ever handled the four
-above, and a word admitted as a complement but not peeled is recognised and
-then handed to `CaptureTargetMatcher` with the frame still attached — a match
-that cannot happen, which reads like a feature. The two lists are now the same
-list, which is what the comment above the peel had been claiming.
+A Today disclosure grows downward and the scroll view does not follow it.
+*Coming up* and *When you have time* sit at the bottom of Today, so the header a
+person taps is usually in the lower half of the screen — often partly under the
+floating capture dock, which is an overlay rather than a safe-area inset. Every
+row the tap revealed therefore opened into the band the dock covers, or below
+the screen edge entirely, and the only feedback was a chevron turning over.
+The section had to be scrolled to by hand before it could be read.
 
-"Remove the dentist appointment" failed on **reach**, and is left open. It is
-not a word-order problem: `appointment` has never been a container noun. The
-change deliberately does not add one. Reading the shape of a noun phrase and
-widening what a destructive verb may reach are different changes with different
-risks, and the second belongs to whoever owns the product, not to this rule.
+Opening a collapsible Today section now scrolls that section to the top of the
+viewport. Aligning the header, rather than any one row, is what makes the target
+stable: a section opened low on the screen has no row worth aligning to yet, and
+the header's position does not depend on how far the section has grown. The
+scroll runs at the same duration and curve as the open, so the section
+travelling up the screen reads as the end of the gesture that grew it rather
+than a second, unrelated movement.
 
-The plurals of the six existing container nouns were added, because
-`CaptureTargetMatcher.stopWords` already treated "reminders" and "reminder" as
-the same word; the singular-only spelling was an inflection gap, not a boundary.
+The scroll waits for the open to finish. `TodayDisclosureContent` opens by
+growing a clipped frame, so while that animation is still running the scroll
+view's content is shorter than its final height and a scroll issued then clamps
+short of the target — the first open of a section, which also has to wait for a
+height measurement, lands worst. Under Reduce Motion the height is applied in
+the first layout pass instead, so the wait there is only that pass and the
+scroll itself does not animate. A second tap that closes the section again
+during the wait cancels the move.
 
-The **verbs** did not move: `removalVerb` is exactly what the two patterns it
-replaces admitted. `erase` is the obvious addition and is left out on the same
-grounds as `appointment` — it would make "erase the gym reminder" destroy a row
-that is an ordinary capture today, which is reach. It went in by accident in
-the first version of this change and was caught in review; both the code and
-the tests now say out loud that it is absent on purpose.
+Nothing was added to make the dock get out of the way. Dock visibility already
+follows the scroll view's own position, so the reveal's own downward scroll is
+what slides the dock away — and when the move is short enough to leave the dock
+in place, the section is near the top and clear of it anyway. Closing is left
+alone: nothing new appears, so there is nothing to bring into view, and moving
+the screen under someone who just tidied a section away would lose their place
+for no gain.
 
-One thing is newly admitted beyond the shape: a leading "please". It moves no
-verb and no noun, and `cancelsAnArrangement` has always taken one, so the two
-tiers now agree on this much. Recorded rather than left to be found, because an
-undeclared widening is undeclared however small it is.
+Verification: `testTodayDisclosureRevealsItsRowsAboveTheFloatingDock` pins the
+dock visible with `--ui-testing-keep-dock-visible`, scrolls the collapsed
+*Coming up* header into the lower half of the screen in steps short enough to
+stop inside that band, opens it, and asserts the first revealed row ends above
+the dock. Without the reveal the row opens at y=865 against a dock edge at
+y=766. Twenty-six UI tests pass, the corpus gate is 1,403 of 1,403 clean, and
+the release compile is clean. The section was also opened by hand on an
+iPhone 17 simulator with Reduce Motion on and off, from a mid-screen header and
+from one already under the dock.
 
-**Measured on macOS, after the fact.** The change was written in a Linux
-container; the engine depends on Apple's `NaturalLanguage` and cannot run
-there, so the first evidence was a pattern-level model of the old and new rules
-over 31 utterances — 7 shapes newly recognised, no false positive over 18
-errands and calendar nouns. That model is not the engine, and the real numbers
-came from dispatched macOS runs: the corpus gate green over 1,404 cases with
-`DO02` gone from the routed development set's failures and `DO03` still there,
-and the capture-operation classes green on a simulator. The whole unit suite
-and the release compile check have still not run.
+## 2026-09-18 — The appearance switch is a cross-fade, not an assignment
 
-## 2026-09-16 — The first Foundation Models run, and the prompt leak it found
+Reported from a phone: choosing System under Appearance is fine, but choosing
+Light or Dark makes the buttons glitch. The first half of that is a clue rather
+than a fact — System looked fine only because the phone was already in the
+appearance the app was showing, so nothing changed. Recording the switch at
+60 fps on a simulator (`simctl io recordVideo`, frames pulled with ffmpeg) shows
+the same defect on all three choices.
 
-The first run of the interpretation prototype on hardware that has Apple
-Intelligence: 46 `runon` development captures, greedy, `repairedFirst: false`,
-instructions fingerprint `329d9c7d`, one run each, 280s — **6.1 seconds per
-capture**, so one pass over all 631 development captures costs about an hour of
-one Mac. Both paths were scored by `Tools/CorpusRunner/heldout/score.py`, the
-same instrument, and the run file is on branch `claude/first-run-runon`.
+Assigning `window.overrideUserInterfaceStyle` does not reach the whole screen at
+once. SwiftUI repaints on the next frame, so the page was black immediately.
+`UINavigationBar` runs its own ~0.2s fade over its title and bar buttons, so for
+thirteen frames "Account & Settings" sat in the old colour on the new background
+— black on black, invisible — and Done crossed through a grey that belongs to
+neither appearance. `UISegmentedControl` redraws its selection separately again,
+so the Appearance control's own pill snapped dark while the page around it was
+still light. Three clocks, one change.
 
-| | parser | model only | model + rules fallback |
-|---|---|---|---|
-| destination | 42/46 (91.3%) | 16/46 (34.8%) | 39/46 (84.8%) |
-| thought count | 35/44 (79.5%) | 15/46 (32.6%) | 36/45 (80.0%) |
-| produced nothing | 0 | 25 | 0 |
-| acted on anyway | 0 | 0 | 0 |
+`UIView.performWithoutAnimation` around the assignment does not help, because
+the bar's fade is scheduled by its own later layout pass, outside the block.
+`UIView.transition(with: window, options: .transitionCrossDissolve)` fades the
+window but still lets the segmented control's indicator through ahead of it,
+because that indicator is not in the snapshot UIKit takes.
 
-**Do not read 80.0% against 79.5% as "no change".** The composition is
-different at the same total. `statement-runon` went from the parser's **0/6**
-to the model's **5/6**, with none of those six captures refused, so it is the
-model unaided; the scorer's own control-pair block moved all three of the
-parser's guard comparisons from `NOT INFORMATIVE` to `informative`.
-`bridging-guard` fell 4/4 to 2/4, which `Docs/KNOWN_ISSUES.md` and the
-development set's header had both predicted would happen the day anything
-split a statement: the guard was passing because nothing ever split, not
-because bridging was handled. The real cost is `mixed-runon` destination, 7/8
-to 4/8, and on the four of those the model was trusted with it scored 0/4
-against the parser's 3/4.
+So the order is inverted. `SpeakItAppearance.apply(to:fading:)` takes a
+`snapshotView(afterScreenUpdates: false)` of the window, adds it on top, applies
+the override and forces `layoutIfNeeded()` inside `performWithoutAnimation`, and
+then fades the snapshot out over 0.22s. By the time anything animates, every
+view underneath already holds the new appearance, so nothing can arrive late;
+what animates is a flat picture of the old one. The snapshot takes no touches
+and is hidden from VoiceOver, a stale one is removed when a second choice
+arrives, and `sceneWillEnterForeground` still applies the stored choice with
+`fading: false`, where there is no old appearance to fade from.
 
-**One defect dominated every measure.** 32 of the 99 row-bearing segments
-carried a quote that is not a verbatim span of their capture — 22 whose words
-are not in it and 10 that are empty — and `InterpretationPolicy` refused 25 of the
-46 readings — 23 `ungroundedSpan`, one `inventedPerson`, one
-`impossibleCombination` (`reported` + `speakerOwes`, refused by the rule
-written for exactly that failure). Two captures reported destructive operations
-that were not in the speech at all, including two broad cancels against a
-capture containing no cancellation; both were refused at the grounding check
-before reaching the operation layer, and `ACTED ON ANYWAY` was 0 in all three
-columns. That is the deterministic gate doing the job it was built for, and it
-is the reason the prototype could be pointed at a development set at all.
+Measured on the SpeakIt-Slim-3 simulator, tapping Dark from Light: before, the
+background changed in one frame and the bar took 215 ms to catch up; after, the
+whole screen moves together over 200 ms with no element out of step. `System`
+still hands the decision back to iOS (app follows `simctl ui appearance` both
+ways) and an explicit Dark still wins over the phone being light.
 
-**Part of the cause was our own prompt.** The model was copying its brief into
-the transcript's place. Ten captures emitted a segment quoted as the bare word
-`tomorrow`, which was the example inside the `@Guide` for `carriedContext`; one
-emitted `Ask Dana about Friday`, a verbatim instructions sentence; one emitted
-`Dana said I should call the dentist`, which is line 93's sentence frame
-carrying the name from line 99, so two separate examples blended rather than
-one copied. **An illustration sitting in a field's own description is a
-candidate value for that field.**
+The launch screen is untouched and still follows the *device* appearance rather
+than the app's, because it is drawn before any app code runs; a Dark user on a
+light phone still gets a light launch screen. That is an OS constraint, not this
+change.
 
-**The rest of the cause is not ours, and it is the more serious half.** RO02 is
-six words — *Sarah gave me her new number* — and the model returned it as one
-segment followed by ten fabricated errands: buy a toothbrush, toothpaste,
-floss, mouthwash, a razor, a toothpaste holder, a toothbrush holder, a
-toothbrush case, a toothbrush box, a toothbrush brush. None of those words
-appears in the prompt, the schema or the development set; all four
-interpretation sources were grepped and return nothing. It is a degenerate
-repetition loop rather than an echo, every segment of it marked `reported`,
-`attributedTo: unknown` and **confidence 100**, and `sampling: greedy` is the
-setting that failure mode lives in. The deterministic gate is the only thing
-that stood between a six-word capture and ten invented errands in somebody's
-Today list, and it held.
+## 2026-09-21 — Overdue item visual and accessibility presentation
 
-**`confidencePercent` is unusable and nothing should be built on it.** Across
-all 99 segments it reported **100 on 91 and 0 on 8, never any other value**,
-and it reported 100 on every one of the 22 segments whose quote is not in the
-capture, RO02's ten inventions included. It is not weakly correlated with
-correctness; in this run it is uncorrelated with fabrication. One thing reads
-it today — `InterpretationBridge` forces review below 82 — and because that can
-only widen review it is a dead term rather than a hole, but it should not
-become a ranking or triage input. The model also never used three of its six
-dispositions: `corrected`, `hypothetical` and `aside` appear nowhere in 99
-segments.
+Items whose scheduled due date or time had passed rendered with their regular
+timing string (e.g. "9:00 AM" or "Sep 15") in `Color.speakMuted`, indistinguishable
+from future or date-only items without manual date calculation by the user.
 
-So the quoted examples are gone from the instructions and from the two
-`@Guide` descriptions that carried one, replaced by descriptions of the same
-distinctions; the instructions now say outright that they are not part of the
-transcript, and that a segment must quote at least one word of it. Nothing else
-was tuned, and nothing was tuned against the 46: a prompt changed to fix a
-defect those captures revealed cannot then be scored on them, so the next run
-goes to `framing` and `routed`, which drove nothing here.
-`Tools/CorpusRunner/test_interpretation_isolation.py` now fails on a quoted
-example anywhere in the prompt, verified by running it against the prompt as it
-was — five sites, all named. The rule is narrower than the defect and says so:
-it catches an example written in quotation marks and cannot catch one written
-without them.
+`ItemPresentation` now derives `isOverdue: Bool` (`!item.isCompleted && destination == .overdue`)
+and provides `formattedTimingText: String?`, prepending `"Overdue · "` to the timing
+when an item is overdue.
 
-**A short-circuiting checker undercounts defects, and this one hid two.**
-`InterpretationPolicy.check` returns on its first failure, so the tally above —
-23 `ungroundedSpan`, 1 `inventedPerson`, 1 `impossibleCombination` — describes
-which rule fired first, not how many defects the reading carried. Evaluating
-every rule independently over the same 46 captures gives a different picture:
-`ungroundedSpan` has something to fire on in 24 captures and
-**`impossibleCombination` in 18**, not one. Three distinct sub-causes, counted
-by segment and by capture:
+1. **Row presentation (`CapturedItemRow`):**
+   - Trailing timing text and any active alert glyphs (bell / alarm) are tinted with
+     `Color.speakWarning` (Speak It's established muted brick-red accent).
+   - Trailing text renders `presentation.formattedTimingText` (e.g. `"Overdue · 9:00 AM"`).
+   - VoiceOver accessibility label (`spokenLabel`) announces `"Overdue"` ahead of
+     the item title and timing, giving screen reader users immediate awareness.
+2. **Editor (`ItemEditorView`):**
+   - Under the "Due" DatePicker, an `"Overdue"` label with `clock.badge.exclamationmark`
+     appears in `Color.speakWarning` whenever the configured due date/time is in the past.
+3. **Shopping lists (`TodayView` & `ShoppingListView`):**
+   - Shopping group cards in Today and rows in ShoppingListView reflect the overdue state
+     with `Color.speakWarning` and formatted overdue timing.
 
-| sub-cause | segments | captures | addressed by this prompt pass |
-|---|---|---|---|
-| `speakerOwes` on a non-`stated` segment that has a quote | 17 | 8 | no |
-| `supersededBy` on a segment that is not `corrected` | 15 | 7 | no |
-| `speakerOwes` on a segment with an empty quote | 9 | 9 | yes, if the new rule holds |
+## 2026-09-23 — Long-capture mechanisms remain a release gate
 
-The second is its own defect: **not one segment in the run used
-`disposition: corrected`**, yet fifteen named a span they had replaced, all of
-them on `abandoned` or `reported` segments. The model appears to fill that
-field whenever a segment relates to another one, rather than when a sentence
-was actually replaced. Found by the evaluation thread and confirmed here.
+Clear independent intentions have no extraction-stage row limit; the 25-item
+development capture now yields 25 independently persisted rows. Splitting is
+followed by a conservative word-gap hold over repaired creation text. Quoted
+speech is scoped before operation detection, and an unclosed quote is held for
+review. A later named postponement revises one uniquely matched local
+intention in spoken order; an unmatched owner is held for review.
+An adjacent request to save an anaphoric fact is attached to its resolved
+Memory antecedent; an intervening action or a concrete file object blocks that
+attachment. A trailing unfinished self-commitment after an independent action
+is split deterministically even when the device tagger cannot label a missing
+verb; ordinary coordinated objects and quoted speech remain together. The
+original `CaptureSession` transcript remains immutable. These mechanisms do
+not prove raw-source coverage or whole-capture correctness. A final-row
+word-count guard
+was rejected because repeated shared context can mask a missing occurrence and
+it created 73 blocking corpus regressions. Stable ordered source-span identity
+is required to close this invariant, so V1 stays blocked pending a frozen
+candidate, independently authored unseen validation, and device speech testing.
+The exposed gate is development evidence only.
 
-The first matters more than its size, because it is the family named as
-dangerous: **a `reported` segment claiming the speaker owes the action** is
-somebody else's words turned into the user's errand, and it appears on 17
-segments across 8 captures. `InterpretationPolicy` refuses it
-(`impossibleCombination`), which is why it costs nothing today.
+## 2026-09-24 — Ordered creation-source ownership and narrow model adjudication
 
-**A prediction, recorded before the next run rather than after it.** Neither of
-the first two sub-causes is touched by removing the quoted examples, so if
-everything else about the model's behaviour held and only grounding and the
-empty trailing segment were fixed, refusals over these 46 would fall from 25 to
-**14, not to 0**. The next run is `framing` and `routed`, so the number will
-not transfer; the claim is that the *mode* persists and
-`impossibleCombination` appears among the rules that fire. **The falsifier: if
-it does not appear at all, this is wrong.**
+The long-capture development gate exposed a source-coverage problem that word
+sets could not detect: duplicated shared context or repeated actions can make
+one missing occurrence look covered by another row. Each word in the repaired
+creation text now has an ordered occurrence identity. Extraction, shopping
+expansion, temporal revision, shared context, resolved choices, and narrative
+consolidation carry those identities through row shaping. Unowned meaningful
+occurrences become a visible Needs Review hold. Where a shopping row cannot be
+mapped back to one exact source span, it stays whole. Dated trips to the same
+store attach only to product rows with matching dates; ambiguous trips remain
+separate. The 25-action development capture still yields 25 independent rows,
+and 1,403 corpus cases remain clean.
 
-Deliberately not fixed in the same pass. The instruction the model is missing
-is that naming a replaced span belongs only to a sentence that was actually
-replaced — one sentence, and it would confound the experiment. A prompt pass
-that changes two things cannot say which one moved the result, and the
-pre-registered prediction above is worth more than the round trip it would
-save.
+Optional Foundation Models refinement is now restricted to one unresolved
+rules row. Its one proposed quote must match that row's complete raw quote, so
+it cannot replace a multi-row capture with a shorter segmentation. This is a
+safety restriction on the existing path, not a new model experiment.
 
-**One claim of ours needs softening for the same reason.** RO02's repetition
-loop was described as something the prompt fix does not touch. That is right
-about removing the quoted examples and wrong about the pass as a whole: the new
-sentence "when there is nothing left to quote, emit no further segment"
-plausibly bears on a runaway list too. So if RO02 comes back clean, the honest
-reading is that we do not know which change did it.
+This invariant covers the repaired creation remainder. Speech repair can
+remove raw words, and operation partitioning can intentionally remove a
+withdrawn clause; their ownership is not yet represented in the ledger.
+The current gate is development evidence, and V1 remains blocked pending a
+frozen candidate, independently authored unseen long captures, and real
+microphone validation.
 
-## 2026-09-16 — A repair may not delete a marker the layers above it read
+A later repair probe found a concrete punctuation failure: a named local
+withdrawal such as "no, skip the envelopes" could be mistaken for a
+replacement of the entire preceding clause and erase an independent errand.
+The correction resolver now leaves such clauses to the operation partitioner.
+Only a uniquely named prior intention is withdrawn; an unmatched target stays
+reviewable beside the other creations. A pure operation whose target is absent
+keeps its original pending row in Needs Review after the "not found" receipt,
+without spending a free capture. The session transcript remains durable.
 
-`SpeechRepair` stripped a leading "I was thinking" without looking at what
-followed, so `"I was thinking of calling Priya"` reached the rest of the
-pipeline as `"of calling Priya"`. Fixed in #96; recorded here because the
-sentence-level fix is the least interesting part of it.
+An explicit "thinking of/about/to" proposal frame is no longer stripped as
+disfluency or consumed as narrative preamble. The organizer sends its undated
+proposal to Memory as an idea; an explicit "I should" commitment stays on
+Today, and a direct command after a spoken pause retains its action reading.
 
-**The rule. The test for a repair rule is what survives it, not what it
-removes.** A repair stage exists to make text easier for later stages to read,
-so it is judged by whether those stages can still see what they need. Deleting
-a hedge leaves a grammatical sentence and destroys the modality — the errand
-was *contemplated*, not committed to — and modality is exactly what the
-interpretation layer in `Docs/FOUNDATION_MODELS_ARCHITECTURE.md` is being built
-to read. No gating field moved on either affected capture, which is why nothing
-caught it for as long as it shipped.
+The September 24 independent long-capture gate failed 1/40 whole captures and
+is development evidence from this point forward. This candidate remains a
+work in progress. Ordinal dates require a date-compatible boundary so ordinal
+nouns do not manufacture events. Quote and source directives belong to the
+quoted Memory's occurrence identity when there is one unique owner, even when
+actions intervene. An adjacent recorded fact may ground a direct pronoun
+follow-up only when it names one person; unresolved antecedents stay in review.
+First-person promises to perform named actions are open commitments. These
+rules have opposite-direction controls for true dates, independent memories,
+third-party promises, concrete file actions, and real contact instructions.
+The 1,403-case corpus gate is clean, but full simulator tests and new unseen
+long-capture validation are not green. V1 stays blocked.
 
-**Why the two halves of #96 are one decision rather than two.** The same rule
-explains a measurement hazard: a family's rate can be carried by a stage
-*upstream* of the engine being measured. `Tools/LanguageMutations` gained
-meaning-changing mutations, and one of `modality`'s four variants is "I was
-thinking I should" — the exact prefix this repair used to erase. The instrument
-was not wrong; an engine genuinely cannot see a distinction deleted before it
-arrives. But a reader would have attributed the rate to the engine. So: before
-attributing a divergent family's rate to the engine, check that the repair
-chain still delivers the marker the mutation added.
+The iOS simulator exposed platform-dependent lexical tags in short fragments:
+fronted time and condition phrases, comparative "had better", and explicit
+first-person commitments were read differently from the host corpus. Bounded
+grammar rules now decide those forms, and the English tagger is explicitly
+set to English. In plural alarm lists, the spoken request and separators belong
+to the alarm rows in source order, with a trailing shared day on the final row;
+otherwise the coverage ledger correctly reports them as orphaned source and
+creates a phantom review item. Focused iOS tests cover these repairs and
+numbered and unnumbered 25-action captures. The September 24 full iOS suite
+still had 25 failing tests before the latest alarm repair. None of this turns
+the development gate into release evidence.
 
-**A repair rule and the rule that reads its residue are a matched pair, and
-both comments now say so.** The lookahead keeps stripping when nothing follows
-"about", because the lone "about" it leaves is what
-`ThoughtCompletion.unfinished` reads as a trailing function word — its
-one-token branch accepts `.preposition` where the multi-token switch accepts
-only `.determiner`. That coupling is now executed by
-`SpeechRepairTests.testTheRepairAndTheFragmentRuleAreOneChain` rather than
-asserted by two people reading it, which is also the guard on the trailing
-`\S`.
+Further September 24 iOS work made source ownership explicit across a spoken
+sentence break: a standalone forward time scopes the next action only, and its
+original punctuation remains in that row's quote. Visit/purpose merging keeps
+the exact connector in the quote while analysis can supply a missing spoken
+"and" for a readable title. Repeated "and then also" is one boundary. A new
+first-person obligation or volition after a coordinator opens its own
+intention; a pure object list does not. A shared "needs" with separate result
+states gives each result an accessible row, while a coordinated noun phrase
+stays whole. A narrative "anyway" pivot opens a new explicit intention for
+consolidation to judge without discarding earlier substantive clauses. These
+mechanisms have opposite controls in iOS tests and the source quotes remain
+traceable to the capture.
 
-**No cost-ledger row is owed, and the reason is worth writing down rather than
-inferred from its absence.** #96 also fixed `Tools/LanguageMutations/compare.py`
-truncating every date to its weekday (`due:\s+(\S+)` against
-`due:        Fri Aug 7 (day only)` kept `Fri`). That had been weakening the
-strict invariant families since before the divergent ones existed, so it is the
-kind of fix that usually restates a published figure. It restates none:
-`Docs/LANGUAGE_BASELINE.md` states twice that `invariance.sh` has never run
-against the real engine, so no recorded number rested on the old behaviour.
-Somebody auditing the ledger for a missing row should find this paragraph
-rather than a silence.
+The latest complete iOS run after the visit and temporal changes passed 888
+tests, failed 15, and skipped 1. Subsequent focused fixes passed for the
+filler-collapse, ordinary imperative, comparative, list-command, and pivot
+families, but a new complete run is still required. The old 40-capture long
+set remains development evidence. Durable operation receipts, raw-source
+coverage through repair and operation partitioning, remaining iOS failures,
+and a new independent unseen gate are unresolved. V1 remains blocked.
 
-## 2026-09-16 — A test that cannot answer must abstain, not pass
+Further source-ownership controls treat a request about how to file existing
+captured thoughts as discourse attached to a neighbouring row, with the exact
+spoken separator retained in the row quote. Standalone section markers attach
+forward to the next action. A counted instruction that dictation splits into
+two fragments is joined before attachment; a concrete "put this in the
+report" errand remains a task. When a correction uniquely withdraws an
+action, its directly preceding bare time is withdrawn with it; an independent
+dated fact survives. A later sentence that explicitly calls its clock
+"context for those steps" attaches to the immediately preceding action group
+without creating an event or changing the actions' dates. Ambiguous ownership
+remains reviewable. The old long-capture set continues to be development
+evidence, and these mechanisms still require a full simulator rerun and a new
+independently authored unseen gate before any release decision.
 
-`ThoughtCompletion.unfinished` reads `last.lexicalClass`. On a GitHub-hosted
-`macos-26` runner's simulator `NLTagger` has no lexical-class model, so it
-returns `OtherWord` for every token of every sentence — recorded in
-`Docs/KNOWN_ISSUES.md` on 2026-09-11 and re-verified on 2026-09-16 in run
-35126863033, which printed the tagging as its failure message:
-`pay:OtherWord the:OtherWord rent:OtherWord`.
+The next full iOS run passed 906 tests, failed 7, and skipped 1 before a newly
+found repair safety defect was fixed. A punctuated "actually" followed by an
+additive second action discarded the first action before the source ledger
+could see it. Correction fallback now requires an explicit reversal or a
+restated action frame; an additive marker keeps both intentions. A different
+action verb with a different object remains two intentions, while a restated
+object with a new verb replaces the local action. The clause splitter recognizes
+the resulting second first-person commitment. Focused iOS tests pass and the
+1,403-case corpus remains clean. This closes one reproduced silent-loss path,
+not the raw-source coverage invariant; V1 remains blocked.
 
-**The visible half of that is the reds; the expensive half is the greens.**
-With no model the function returns nil for everything it does not decide on the
-word "to", so every assertion expecting nil passes without exercising the rule
-it names. On that image the two failures in `ThoughtCompletionTests` were the
-only assertions in the class carrying information about the tagger-dependent
-rules, and `SpeechRepairTests.testThePreservedHedgeIsNotReadAsUnfinished`
-passed for a reason with nothing to do with the hedge. A guard that cannot fire
-looks exactly like a guard that holds, which is the recurring bug here, and in
-this run the green tick was the more dangerous of the two results.
+Another temporal ownership failure exposed the same gap in a different slot:
+"call Sarah Monday, actually Tuesday call Maya" previously moved Sarah to
+Tuesday and left Maya undated. A fronted date followed by a complete action
+now forms its own intention unless the action and object restate the local
+target. The clause boundary and juxtaposition reader keep the fronted day
+with the action it precedes. Opposite controls cover a bare date correction,
+a repeated action with the corrected day, a different recipient, and a
+different action verb. This is a local identity rule, not a capture-wide date
+rewrite.
 
-So the dependent assertions call `LexicalTagging.skipIfBlind` and land in the
-Skipped column that `Tools/CI/xcresult-failures.py` already prints. The
-decision is taken as a pure function of a tagging rather than of the machine,
-so both its answers can be injected rather than trusted. Blindness means *no*
-token carried a usable class: a tagger that classes some words and not others
-can be wrong, and an assertion that can be wrong should run.
+A later independent report-ownership review found that a reported instruction
+containing filing words could be absorbed as capture metadata: "Maya said keep
+the consent form for review" disappeared as a Memory row when followed by an
+unrelated call. The existing matrix speech-act reading now vetoes capture-output
+attachment for reported speech; a direct speaker instruction still attaches.
+Local action correction also binds a final pronoun to one uniquely mentioned
+antecedent: "call Sarah, actually email her" produces the email action rather
+than leaving the call active. A multiple-target antecedent remains unresolved.
+These focused fixes do not supply a general directive target-set representation
+or complete raw-source coverage; both remain release blockers.
 
-**Abstaining does not measure the claim, so the row that measures it goes in
-the development set.** `Tools/PipelineProbe/build.sh` compiles
-`ClauseStructure.swift` and `SpeechRepair.swift` into a *host* binary, and the
-host is not blind — the corpus gate scores 1,434 cases in the same job where
-those four assertions fail. `unfinished-score.sh` already drives that binary
-from `Tools/CI/language-metrics.sh`, and INC45 is the same utterance as
-`testADanglingDeterminerIsUnfinished`. So the determiner rule is measured on CI
-every language run and only the XCTest copy of it is blind; saying it had
-"never been measured on CI" was wider than the evidence and wrong in the
-direction that flatters the finding. What no row reached is the *one-token*
-branch, which is what the #96 claim is about: all nine `abandoned-midthought`
-rows end on "to" or a filler and resolve through the infinitive path. INC58 is
-that row.
+## 2026-09-24 — Long-capture work is source-bound representation work
 
-**No cost-ledger row is owed.** Nothing here changes an executable line of the
-engine — the skips are test-side, and INC58 is a development row whose answer
-the next language dispatch reports — so no sealed measure can move.
+The remaining long-capture failures share an information-loss point: the raw
+transcript is repaired into a new string, operations remove clauses, and only
+then do the row and source-coverage readers assign ownership. A repaired
+creation-text word ID cannot account for a meaningful raw span removed before
+that point. Adding another phrase-specific split or suppression can improve one
+gate case while hiding another; the September 24 gate remains development
+evidence only.
 
-## 2026-09-29 — Settings, not an account
+The next semantic mechanism is a transient, source-bound record, with no
+SwiftData schema change: every raw word occurrence has a stable ordinal ID;
+each clause has an intention or discourse identity; edits and operations name
+their source span and the unique intention they revise; temporal and shared
+context name their owners; quote/report scope is established before any
+executable reading; each meaningful span ends as a visible row, owned context,
+an explicitly licensed withdrawal/replacement, or Needs Review. Unresolved
+ownership may not execute or silently vanish. The count of intention records
+is bounded only by actual source structure, never by a fixed row limit.
 
-The top-right button on Today and Memory opened "Account & Settings", whose
-first row was an optional profile: a name and an email kept in `UserDefaults`.
-Nothing read them. They did not sign in, sync, unlock Pro or appear anywhere
-else, and the form said so itself. A privacy-first app asking for an email and
-giving nothing back is a cost with no return, so the profile is removed.
+The five open families follow from that record: date attachment requires an
+owner edge; correction and withdrawal require a target intention ID; reported
+speech requires a speaker/quote owner before operation interpretation;
+commitment versus idea requires an asserted speech-act role; and long lists
+require one independently accessible identity per intention. The current
+`SelfCorrectionResolver` change scopes a repair to its final local clause in a
+compound prefix, preserving prior clauses. It is one guard within this plan,
+not proof of the full invariant.
 
-Launch clears the three keys earlier builds wrote
-(`RetiredAccountProfile.clearStoredDetails`). Leaving them would keep an email
-address on the phone that the person can no longer see or delete. Thoughts,
-the subscription and every other setting are untouched. The `profile_created`
-analytics event is retired with it; the founder dashboard's count keeps its
-history and stops growing.
+The first iOS control showed that a fronted bare date travels with its action,
+so local repair includes contiguous forward-time adjuncts. A later control
+showed that an explicit completed-action report can uniquely name a nonadjacent
+prior action; it keeps the existing unique-target resolution rather than being
+forced onto the most recent clause. Reported coordinated actions are now read
+under the matrix reporter before the action splitter runs. These are structural
+ownership rules with opposite short-capture controls, not gates for particular
+spoken sentences.
 
-The top-right button keeps its person icon (with the Pro checkmark badge).
-A gear was tried and screenshotted; Calvin preferred the person icon as the
-familiar way into the app's own settings, even with no account behind it. Its
-accessibility label now says "Settings".
+External research informed this representation, not a new segmentation model.
+[Switchboard disfluency work](https://www.sri.com/publication/speech-natural-language-pubs/disfluencies-in-switchboard/)
+and the [open-source deep_disfluency annotations](https://github.com/clp-research/deep_disfluency)
+keep reparandum, interruption/interregnum, and repair distinct; this supports
+recording a correction's *source and target* instead of just its rewritten
+string. [TOPv2's semantic parsing task](https://github.com/facebookresearch/spoken_task_oriented_parsing/blob/main/icassp_2023_grand_challenge/semantic_parsing.md)
+scores exact intent/slot structures, and
+[TreeDST](https://arxiv.org/abs/2010.12770) represents compositional state and
+coreference; both support whole-capture, ownership-aware evaluation rather
+than counting plausible rows. These are design references, not components to
+copy into the iOS app. [Apple's Foundation Models guidance](https://developer.apple.com/documentation/FoundationModels/generating-content-and-performing-tasks-with-foundation-models)
+requires an unavailable-model fallback, so optional adjudication cannot be the
+V1 safety foundation on iOS 17+ devices. [Todoist Ramble's product flow](https://www.todoist.com/es/help/todoist/product-updates/capture-tasks-at-the-speed-of-thought-ramble-beta-nov-19-2025-r6701hY0t)
+exposes suggested tasks for spoken edits and preview; that is useful review
+interaction inspiration, but preview alone does not prove Speak It's zero
+silent-loss contract.
 
-The screen is regrouped by what a person reaches for: Plan, Capture, Reminders,
-Appearance, Privacy, History, Help. "Capture & reminders" had grown to seven
-rows mixing links with inline controls, and "Learn Speak It" sat alone near the
-top. Completed and Capture history are the person's own things, so they sit
-together under History rather than among preferences.
+The operation partition now records exact word-occurrence IDs for every
+operation, the earlier intention it uniquely withdraws, and each surviving
+creation clause. Repeated words in the withdrawal and the target have
+different IDs. This is transient evidence over the operation detector's input;
+it does not change SwiftData or claim that raw words removed by an earlier
+speech repair are covered. The next audit must classify any remaining source
+occurrence as an owned discourse connector or a visible review hold rather
+than treating an unmatched gap as harmless punctuation.
 
-Not changed here: most rows still open a sheet while Learn Speak It and the
-referral row push, though every row shows the same chevron. Converting the
-sheets means checking each child view's own navigation stack and Done button
-on a simulator, so it is left for a change that can be run.
+That operation audit is now active in the production extractor. Closed
+connector and emphasis cues removed while slicing are linked to the exact
+following clause. An unexpected meaningful occurrence triggers one Needs
+Review row containing the full immutable original and suppresses every
+operation in that capture. The existing 1,403-case corpus has 72 captures with
+operations and zero post-partition gaps under this audit; an intentionally
+incomplete partition test proves the fail-closed path. This establishes the
+post-repair operation boundary only. Raw words removed before that boundary
+remain the next release-blocking coverage step.
 
-## 2026-09-29 — No week dots on Today
+A read-only raw-to-repaired occurrence diagnostic now exposes the next gap:
+135 of the 1,403 established corpus captures have at least one raw word with
+no repaired-word origin. Most inspected cases are fillers, explicit
+replacements, or joined compounds; this count is not a silent-loss rate.
+It also found a provenance error independent of semantic routing: a replacement
+word moved across a matched suffix could be treated as absent from the raw
+source. Alignment now reclaims a unique exact raw occurrence before assigning
+substitutions by adjacency, while repeated words remain distinct and
+unresolved. Focused content-drift iOS tests pass. A raw-source audit still has
+to give every genuinely removed meaningful span an explicit correction,
+withdrawal, discourse, or visible-review disposition before V1 can pass.
 
-The seven dots beside Today's date are removed. Calvin asked whether the app
-should have a streak at all, looked at three alternatives (the same dots with a
-caption and a "kept up" count, a lifetime count on Memory, a classic daily
-streak) and liked none of them, then chose removal over keeping the dots as
-they were.
+The production repair chain now records the exact input and output of each
+ordered repair stage, and the host probe can report raw words removed at each
+stage. This makes a missing raw occurrence attributable to the transformation
+that removed it instead of only to the final repaired string. The trace is
+transient and does not alter persistence. The corpus diagnostic counts captures
+with removed words by stage, not semantic defects: disfluency 64, self-correction
+54, split-compound 10, dictation homophone 3, spoken shorthand 2, clock digit 1,
+and grocery homophone 1. Each removed span still needs a licensed disposition.
 
-The reason is that the row did little. At seven points wide with no words, a
-person had no way to learn what a filled dot meant, so it was neither a
-motivator nor information. It was also the one thing on Today that was not
-something to do, and Today is for action. A classic streak stays refused for
-the reasons in `Docs/GAMIFICATION_PROPOSAL.md`: it turns a missed day into a
-loss, and ten lifetime free captures cannot sustain one.
+One speech-act ownership defect surfaced in that trace: a finite proposal
+beginning “I was thinking it might make sense to …” lost its thinking frame
+before routing. A thinking frame is now stripped as preamble only when a marked
+pause precedes an independent imperative; consolidation also defers a complete
+idea proposal to the shared proposal reader. The proposal stays in Memory, a
+paused direct imperative stays on Today, and an unpunctuated ambiguous form
+remains reviewable. Focused iOS repair tests, the 1,403-case corpus gate, and
+the unsigned release build pass. This is an invariant-level repair, not fresh
+long-capture release evidence.
 
-Nothing is lost: the dots were derived from `CaptureSession.createdAt` and
-`CapturedItem.completedAt` every time and stored nothing but the day they were
-last reported to analytics. `WeekRowView`, `ActivityLedger` and their tests are
-gone; `HabitDefaults` keeps the morning brief's settings in its own file. The
-`week_row_shown` event and its `active_days` property leave the analytics
-vocabulary. Earlier builds may leave one stale date under
-`SpeakIt.habit.lastWeekRowAnalyticsDay` in the app-group defaults; it is not
-user content and nothing reads it.
+The trace now composes candidate raw occurrence IDs through all nine repair
+stages. A stage records which original IDs appear to disappear there, even when
+the same word appears more than once. Alignment around substitutions and moved
+words remains heuristic, so the trace is a diagnostic rather than a coverage
+proof. The probe reports 134 of 1,403 existing
+captures with at least one raw word lacking a surviving origin after the
+thinking-frame fix. Those occurrences are not yet classified as filler,
+replacement, context, or review; this is provenance instrumentation, not a
+release pass. Stage-by-stage origin alignment is opt-in for diagnostics; the
+shipping repair path does not run those additional alignments on a long capture.
 
-The morning brief and the "All clear for today" line are unchanged.
+Shopping-store context is now owned locally. A folded “go to <store>” trip
+belongs only to an adjacent shopping phrase whose intervening raw words are
+discourse connectors; the folded row retains the exact contiguous original
+span, including the trip and its connector. Product rows from the same spoken
+list share that store. A store trip separated from products by another
+intention remains its own Today task, and the products use their local or
+default group. This prevents a capture-wide store name from silently claiming
+unrelated products or a raw quote from swallowing an intervening action.
+Opposite-direction controls cover adjacent folding, an intervening call, two
+dated trips, and a longer mixed capture.
 
-## 2026-09-29 — A seven-step tutorial that says practice is free up front
+Raw provenance now gives one repaired word a *span* of raw word occurrences.
+The previous one-to-one alignment could not represent recognizer-split words
+such as “to morrow” → “tomorrow”: a long mixed capture carried the day in its
+parsed due date but omitted both original words from every row's raw quote.
+Exact, unique adjacent concatenations now own all their raw occurrences, and
+the quote reports a repair even when the concatenated letters match. Focused
+content-drift and repair tests pass. The 1,403-case diagnostic now finds 124
+captures with at least one unaligned raw word, down from 134; no
+split-compound removal remains in that diagnostic. The 124 require explicit
+dispositions before release and are not a silent-loss rate.
 
-Calvin asked for an honest look at the first-run tutorial. The first answer
-proposed replacing it with one real, unscripted capture; he disagreed. A new
-user should be guided on what to say and see how the product works, practice
-must never count toward the ten free captures, and the free captures start once
-the tutorial ends, which the person should be told. Within that, five changes:
+The exact-join alignment is now local to neighboring aligned occurrences.
+Repeated split compounds in separate intentions, such as two occurrences of
+“to morrow,” therefore retain two distinct raw spans rather than both
+competing for one capture-wide match. The raw quote and repaired flag on each
+row survive the full content-drift suite; the 1,403-case corpus gate and
+unsigned release compile also pass. This does not resolve the remaining
+unclassified repair removals or substitute for fresh long-capture validation.
 
-- The practice card says "Practice is free. Your N free captures start after
-  the tutorial." before the person speaks. It used to be said only on the
-  receipt afterwards. N is the remaining count, not the plan's ten, because the
-  ledger survives a reinstall.
-- The task step's hint said "or use your own words", but it only continues on
-  words that name a person, so following the card could be answered with "one
-  more go". Each mission now has its own hint.
-- People and the person's page share step 3, "Find the person", because they
-  are one lesson across two screens. The idea step ("Where ideas go") shows the
-  row in Ideas and continues on its button; changing a stage is left for later
-  use, and the stage picker no longer carries tutorial guidance. Seven steps.
-- The finish screen said the allowance twice; it now says "Your N free captures
-  start now." once.
-- `FirstCaptureGuideView` and its private step enum were referenced only by
-  their own preview and are removed.
+Correction identity is bounded by the next independent clause. A replacement
+action followed by another action is first read on its own; its unique direct
+object can replace the preceding action, and the later action retains its
+separate source and row. A direct-object pronoun may carry an adjunct (“email
+her about the invoice” or “email her at five”); the adjunct does not turn the
+recipient into a new object. Possessive “her boss” and a genuinely different
+object do not withdraw the earlier call. The replacement row's raw provenance
+now includes the complete bounded correction hunk, including the withdrawn
+verb and spoken pronoun, while excluding the following intention. Focused
+repair and content-drift iOS tests, the 1,403-case corpus gate, and the
+unsigned release build pass. This addresses one general replacement-identity
+failure; it is not whole-capture validation of every correction form.
 
-He also floated a walkthrough that drives itself, where the app does each part
-for the person. Not taken: the two practice recordings and a handful of taps are
-what make the person trust where things land, and the trimmed tutorial is
-already shorter. A self-driving tour over the real Today and Memory screens
-would also depend on scripted scrolling and presentation timing that has broken
-the spotlight steps before.
+Unpunctuated clause ownership now uses complete command structure ahead of
+device-dependent lexical tagging. A fronted day or time phrase remains attached
+to its first command, but a second command after that completed action can
+start a separate intention even when iOS labels the earlier verb as a noun.
+The guard requires an explicit action head with an object; a bare “tomorrow
+morning” still attaches forward. Coordinated companions under one “with” own
+a following pronoun aside before any finite-predicate split is considered.
+Independent action conjuncts still split. Focused iOS controls pass in both
+directions, and the corpus's comma-free and unpunctuated rendering gate now
+passes. These are development regressions; they cannot serve as the fresh
+long-capture release gate.
+
+Independent review exposed the opposite ownership cases. A standalone spoken
+time scopes forward only when the following sentence has no explicit time of
+its own; otherwise the fragment stays visible in Needs Review and the later
+action keeps its own clock. An independent personal proposition after two
+companions splits *after* the companion list, preserving both people on the
+first task. An impersonal “it's” arrangement aside remains with that task.
+This boundary is deterministic on iOS and vetoed inside reported speech.
+
+## 2026-09-25 — Audit raw repair occurrences on the shipping rules path
+
+The production repair path carries raw word occurrence IDs through changed
+stages. Independent review found the first audit unsafe: a full original quote
+could license a silently deleted action, and a detected gap could leave a
+separate executable row active. The audit now treats quotes only as recovery
+aid. Unclassified upstream loss returns one full-source Needs Review hold and
+no operation or active row. Discourse, surface normalization, and bounded
+correction licences verify the exact typed transform and scope of the removed
+occurrences; modal and negation words are not generic filler. Synthetic controls
+include a deleted independent action whose surviving row displays the entire
+original, an uncertainty cue mislabeled as disfluency, and a correction that
+would erase an earlier independent action.
+
+The source alignment is still heuristic for substitutions, and verifying a
+deterministic transform does not prove that its semantic rule is correct. The
+licences and their opposite controls need independent review and integrated
+tests before a semantic freeze. A visible original quote never proves that
+every intention in it was interpreted correctly. The new independent long
+capture set must judge whole-capture meaning, ownership, and retention after
+the candidate is frozen; the September 24 set remains development evidence.
+
+On iOS, NaturalLanguage does not consistently tag ordinary given names in a
+transport frame. A local school, care, practice, or transit venue now supports
+the transported-person reading without relying on a specific name spelling;
+parcel and store controls remain shopping. A bare pair of capitalized objects
+after “pick up” remains underdetermined between people and products without
+world knowledge. That case still fails the iOS corpus count contract, so V1
+remains blocked while its safe disposition is designed and verified.
+
+## 2026-09-25 — Keep operation ownership and correction identity through edits
+
+Independent review found that a comma could separate a reporting owner from
+its imperative complement before capture-operation detection. “The doctor
+said, cancel my appointment” could execute a cancellation. Operation
+partitioning now carries the report owner across pieces of the same sentence;
+the next sentence starts a new operation scope. Reported cancel/reschedule
+controls and a later direct-cancel control pass in focused iOS tests.
+
+Consecutive correction cues are applied in spoken order, so each replacement
+inherits the same local intention identity. The raw-source audit licenses
+only the bounded target, cue, and a uniquely grounded direct-object pronoun;
+an independent following action remains outside that edit. Quantity repair
+retains spacing and the counted object. The 1,403-case corpus gate, focused
+repair iOS tests, and unsigned release compile pass after these changes.
+
+A weekday possessive inside a noun phrase describes an event or object, not
+the action's execution date. “Text Leo the address for Saturday's dinner” now
+retains Saturday in its source wording without scheduling the text for
+Saturday; the direct “Text Leo Saturday” control still receives a date.
+Focused iOS tests, the corpus gate, and the release compile pass. These are
+development regressions only. The full iOS suite and a newly authored unseen
+whole-capture gate remain required before a V1 release decision.
+
+## 2026-09-25 — Bind long-capture edits and context to their owners
+
+Independent review found three ways an apparently safe row could be wrong.
+A local "I already called" report matched a prior action by verb alone, so a
+report about another person silently withdrew the earlier call. Local
+completion now requires action and target identity; an omitted target can
+resolve only a unique same-verb local action, while a mismatched target leaves
+the complete source in Needs Review with no operation. A grounded single
+person pronoun can refer back to that action's recipient. Opposite controls
+cover matched and mismatched targets, plus a standalone completion operation.
+
+A spoken list heading such as "Tomorrow ... number one" establishes one
+temporal scope across its actionable list, even when dictation supplies or
+omits sentence punctuation. A later item with its own explicit time overrides
+that scope; a following Memory closes it. The scope is represented before
+per-row time conversion, rather than inferred from each fragment's text.
+
+A reported proposition keeps its operation owner through punctuation and
+coordination. An explicit causal ", so" followed by the speaker's direct
+imperative opens a new operation scope; a reported imperative without that
+boundary remains non-executable. Proposal and knowledge sentences now keep a
+typed Memory owner when splitting would otherwise detach an action-shaped
+complement from "might", "idea", "learned that", or "remember that". An
+explicit later speaker commitment opens a new scope. These changes are
+development fixes, not long-capture qualification evidence.
+
+A bounded prepositional context may precede an imperative with or without a
+dictated comma. The action reader now recognizes either punctuation form when
+a known command head follows; `test` is an ordinary command head. Clause
+juxtaposition also checks whether a verb-shaped word is followed by a finite
+copula before proposing a new instruction. This preserves a dated event such
+as a fire alarm test as one proposition instead of inventing a second task.
+Focused iOS controls, the 1,403-case corpus gate, and the unsigned release
+build pass. The full iOS suite ran before this last edit and had two failures
+from the same bare pickup people-versus-products ambiguity; it must be rerun
+after that ambiguity is resolved.
+
+Deictic retention language now receives an owner before row organization.
+An instruction to remember/keep/save *that* as a fact or for later attaches
+its exact source span to the immediately preceding resolved Memory; it does
+not create a second retrieval identity. A new proposition after “remember
+that” remains independent. A knowledge frame also cannot override an explicit
+outstanding obligation whose actor is the speaker: “I learned that I need to
+call” stays on Today, while a report that someone else needs to call stays in
+Memory. Focused iOS opposite-direction controls pass, the 1,403-case corpus
+gate remains clean, and the unsigned release build passes. This is one bounded
+source-ownership role, not a complete discourse owner graph: retrospective
+shared context, cross-intention event deadlines, and Memory detail after an
+intervening task still fail development captures and block the long-capture
+freeze.
+
+Independent review of this candidate found two scope counterexamples. A
+plain coordinated speaker commitment (“and I need to…”) now ends an earlier
+idea/possibility owner even without “but” or “then”; an action-shaped noun
+followed by a finite predicate (“call button is broken”, “print quality is
+poor”) vetoes fronted-adjunct command promotion. Genuine fronted commands
+remain Today. Focused iOS controls, the 1,403-case corpus gate, and the
+unsigned release build pass after these changes. They still do not establish
+whole-capture correctness on the exposed development set or on fresh speech.
+
+A later factual Memory detail may return across an intervening action when
+its definite subject names exactly one earlier resolved Memory and the speech
+explicitly marks the return. An adjacent definite-subject continuation can
+attach without that marker. Proposals, new recording leads, contrasting new
+referents, actions, and ambiguous multiple owners do not receive that edge.
+The row shows the two exact source fragments separated by an ellipsis and
+unions only their source occurrence IDs; the immutable full transcript remains
+the canonical source. This is a bounded ownership edge, not a general entity
+resolver. An explicit first-person current-obligation frame also transfers
+the following actionable complement out of an enclosing Memory sentence,
+even when iOS sentence tokenization keeps them together. A reported or past
+obligation retains Memory ownership. The focused iOS consolidation suite
+passes both mechanisms and their opposite-direction controls. The full
+corpus and release checks on the combined candidate are still in progress.
+
+The owner lookup now checks every earlier resolved Memory for the same
+referent, including when one candidate is adjacent. A repeated identical
+proposition remains a separate occurrence: a later deictic save request can
+target the second copy without the first disappearing. A report followed by
+an explicitly separate first-person current commitment likewise opens a new
+action scope at the local speech-act boundary; an unseparated first-person
+phrase inside another speaker's report stays Memory. The focused iOS tests
+for these opposite directions pass. These constraints preserve stable
+identity while leaving ambiguous ownership visible for review.
+
+On the combined code, the production-rule corpus gate is clean at
+1,403/1,403, the focused iOS consolidation and repeated-fact regressions
+pass, and the unsigned release target compiles. A serial full iOS unit run is
+required after the three-shard run hit an Xcode diagnostics importer crash;
+the serial retry then stalled behind a crashed test worker and was stopped
+with an incomplete result bundle. That check remains unverified.
+None of these checks measures whole-capture correctness on a fresh unseen
+long-capture set or a real microphone session.
+
+Counted group deadlines now receive a typed source-owner plan before segment
+rows are created. A deadline edge names its exact source segments and every
+distinct target action. It applies only when the spoken count matches the
+entire unambiguous action set in that capture; a mismatch or competing later
+group remains visible in Needs Review. An explicit same-referent link can
+carry a date from an earlier context fact. Each action keeps its own earlier
+date when it is compatible with the group deadline, while a later conflicting
+date blocks automatic attachment. Source fragments and occurrence IDs are
+copied to every target without merging those actions. A deictic request to
+keep a preceding fact as reference for later use is owned by that Memory
+before the action count is resolved. The exposed grant application capture
+now has three individually accessible dated actions and one PDF reference
+Memory in the rules path. Focused iOS controls pass; the corpus and release
+checks on that change were pending at the time. The later edge types below
+address shared-event and explanatory context separately.
+
+The same pre-row plan now has bounded shared-event and explanation edges.
+An event edge requires an explicit dated event, a directive tying a group of
+distinct jobs to it, and a closing statement naming the event/date as shared
+context. An explanation edge requires unique earlier fact and action owners
+for its two named referents plus an unquoted request to retain the fact. Each
+edge copies exact source occurrence IDs to its owners without merging their
+identities. Competing owners remain reviewable. A separate reported retention
+request cannot become the speaker's instruction or attach to an action.
+The exposed school-fair and allergy captures now match their expected row
+counts and destinations on the rules path; this remains development evidence.
+
+A completed-action report may withdraw only a uniquely matching local action.
+The identity matcher now treats a fronted bare time as part of that action
+and strips trailing dash punctuation from its object. An explicit different
+object, two same-verb candidate actions, or an unparsed clause after the
+completion report still vetoes withdrawal. The exposed plumber capture
+therefore remains in visible review: its completed-call report does not
+identify the object unambiguously enough to license source deletion. The
+fronted-time short control resolves when the report ends at "already called".
+The raw-source audit also reserves every "I already …" replacement for this
+typed completion receipt; its generic correction receipt cannot license the
+deletion after the completion matcher rejects an ambiguous or different owner.
+
+## 2026-09-26 — Quoted source has an owner before capture directives attach
+
+A request to keep quoted or scene words in the recording attaches to the
+unique earlier quoted Memory, including across an intervening task. If there
+is no quoted owner or several, the directive stays visible in Needs Review;
+it cannot attach to a nearby actionable row. Only speech outside quotation
+marks can disclaim execution or request retention. A quoted imperative such
+as “keep the bridge clear” never counts as the user's filing instruction.
+
+When a quoted command is explicitly disclaimed as a current action and a
+following Memory request directly cites distinctive words in that quotation
+as a line, scene, or staging detail, the quotation becomes source evidence for
+that Memory. The exact fragments and occurrence IDs remain on the surviving
+row. A quote requested as its own Memory, an unrelated later fact, and
+multiple plausible quotes remain separate. The exposed rehearsal capture now
+has one staging Memory and one key-return task in the rules path. This is
+development regression evidence, not a fresh long-capture qualification pass.
+
+A first-person request to retain a quoted fact and its possessive detail is
+one Memory request when both objects share the same retention participle.
+A following direct action remains a separate intention. A later statement
+that quoted commands are proverb or script text rather than errands attaches
+to its unique quoted Memory; without a quoted owner it stays in Needs Review.
+The exposed family-saying capture now has one saying/origin Memory and one
+album task in the rules path. An unrelated reported-interview context still
+has no proven owner and remains a separate Memory.
+
+## 2026-09-26 — Selective reported evidence and propositional retention
+
+When a reported command is explicitly disclaimed as a present action, a
+following selective request to retain a fact about that same reporter can own
+the report as source evidence. This requires a unique prior reporter; an
+additive request, a different reporter, or a quote explicitly requested for
+its own sake remains separate. The quoted command is never promoted to an
+operation or Today action. The source quote and occurrence IDs stay on the
+retained Memory. This is a narrow ownership rule, not a general license to
+merge adjacent reported speech and facts.
+
+The recording-frame reader now treats “what I also/really/actually want to
+keep is that …” as a proposition for Memory. Title polishing shares that
+frame and displays the retained proposition rather than the request wrapper.
+A physical “keep a file” action still belongs on Today. These controls and
+the exposed interview regression pass focused iOS tests. The September
+long-capture set remains development
+evidence; neither this rule nor the corpus gate is release qualification.
+
+## 2026-09-26 — Uncertain completion scope is local to its source span
+
+An ambiguous “I already…” report may fail to identify the just-spoken action
+uniquely. It must not complete a saved task or erase its source. When a sentence
+boundary follows the report and the next sentence explicitly opens an
+independent action or fact-recording request, the ambiguous prefix remains a
+visible Needs Review row while the later sentences are interpreted separately.
+The later pass has no permission to perform capture operations. A later
+pronoun task with no resolvable referent remains in review; a following plain
+fact without an explicit new intention does not justify cutting the capture.
+This keeps independent later tasks accessible without claiming the ambiguous
+correction was understood. The exposed plumber capture is still safe
+incomplete, not whole-capture correct.
+
+## 2026-09-26 — Spoken section frames are source context, not intentions
+
+A section label or explicit self-narration before a colon scopes the following
+content. Segmentation reads that content through the ordinary sentence and
+clause path before row organization; independently stated actions and facts
+remain separate. The source prefix stays on the first row's exact quote. A
+sequencing word before an independently actionable clause likewise preserves
+the original quote while the action is classified from its body. A bare quoted
+command after a section label has no identified speaker and remains visible in
+Needs Review with no operation. Direct commands after the same label remain
+actions, and reported commands retain their reporter. These are bounded
+source-role rules, not a complete discourse-owner graph or long-capture pass.
+
+An indefinite negated action (“don't make an outing”, “don't buy a car”) does
+not identify an existing saved item. The operation detector leaves that clause
+in the capture remainder for ordinary extraction or visible review; it cannot
+silently cancel a similar saved row. A negation with a bare identified action
+(“don't call Maya”) remains a cancellation request. This represents local
+noncommitment separately from saved-item management. It removes the unsafe
+cancel interpretation from the exposed rambling case, whose other ownership
+and routing errors still block whole-capture correctness.
+
+## 2026-09-26 — Capture commentary receives an owner before row creation
+
+Explicit source statements about preserving an ordinal action, repeating a
+singular Memory, or assigning mixed outputs have a source role before intent
+consolidation. The same role reader prevents consolidation from swallowing the
+antecedent and its later recap as one opaque row. An ordinal reference selects
+the named action by source order; a singular deictic reference attaches only
+when exactly one resolved Memory can own it and no independent intention has
+intervened; a mixed-output recap attaches to
+the preceding resolved Today and Memory rows only when the group is complete.
+Otherwise the recap stays visible in Needs Review. Source quotes and word
+occurrence ownership are carried to each selected row, without creating an
+extra action or Memory from the commentary itself.
+
+Within an explicit spoken section frame, a factual matrix proposition stays
+Memory when a later conditional describes merely a possible action. A direct
+action before the condition stays Today. This is a clause-scope rule for the
+proposition's owner; it does not infer a task from the conditional's verb.
+The exposed park-path, cinema, and paper-statement captures are retained as
+development regressions for these submechanisms. They remain below the whole
+capture release gate because other independent ownership and routing defects
+remain.
+
+The conditional matrix rule now lives in the shared actionability reader,
+where it applies to ordinary speech as well as spoken section frames. A finite
+factual matrix is classified without letting a subordinate “if I have to…”
+promote it to Today. A directly committed matrix action, a speaker promise, a
+learned first-person obligation, and a later independent commitment keep
+their actionable reading. The frame-specific override was removed so there
+is one owner rule rather than a special interpretation for the exposed gate
+sentence.
+
+## 2026-09-26 — A task's visible event condition differs from an event reminder
+
+A trailing event condition on an already actionable task remains on its title.
+Without an explicit request for a notification, it is a usable Today action;
+the condition is not an unsupported reminder trigger. A request to be reminded
+when that event happens remains in Needs Review because Speak It cannot monitor
+it. A fronted condition remains in review when the action title drops the
+condition; the parser uses the original source order because analysis can
+reorder a fronted clause. This prevents the source condition from silently
+disappearing behind a concise title. Fact statements remain Memory. The
+apartment capture is development regression evidence, not release evidence.
+
+A bare calendar week on an ordinary task is stored as a `calendarWindow` with
+its first and last calendar days. Today places it in Coming Up, Today, or
+Overdue according to the actual span and displays both endpoints. It stores no
+due instant and arms no notification. An explicit reminder request for that
+week remains in Needs Review until the person chooses a firing time. A named
+weekday inside the week still resolves as a date-only task. The interval lives
+inside the existing encoded `TemporalIntent` with optional end day, so no
+SwiftData model shape or migration changes; older intents decode with no end
+day. A clock inside that week with no chosen day remains in review with no
+scheduled alert; an ordinal day must fall inside the stated week. A named time
+zone fixes the calendar in which the week is read and displayed. This
+replaces the earlier policy of reviewing every “next week” task.
+
+## 2026-09-26 — Clause boundaries require a complete left side and a direct action
+
+A coordinator or spoken ordinal cannot end a clause after an unfinished
+determiner. This keeps “a second call-the-plumber job” together as one noun
+phrase while a real “second, call Mom” still opens another intention. A direct
+coordinated action uses the shared action-verb vocabulary when the lexical
+tagger calls its head a noun; reported speech does not get this promotion.
+The common action “leave” now reaches that shared vocabulary. A first-person
+activity with a stated day remains a Today calendar commitment, while a past
+report, another speaker's report, and an ordinary “leave policy” fact stay
+Memory. These are structural and speech-act controls around the exposed train
+and plumber captures, not claims that either full capture is correct. The
+plumber withdrawal is still held for review, and the old train timetable is
+still shown as a separate fact; both require stable replacement identity.
+
+## 2026-09-26 — Explicitly obsolete timed facts share the replacement's identity
+
+When a speaker explicitly marks a timed fact as obsolete and the immediately
+following fact explicitly claims to be current, the two source spans can name
+one Memory identity. Both readings must be resolved Memory with different
+clock values, neither may be quoted or reported, and the replacement cannot
+offer competing or hedged values. The current fact supplies the title and
+time; the obsolete statement remains in its source quote with occurrence IDs.
+If the replacement is absent or unsettled, the obsolete assertion stays
+visible in Needs Review. A merely older historical fact, an unrelated fact
+introduced as separate, and reported speech do not create this edge.
+
+Later instructions to retain the corrected fact or avoid using the superseded
+value attach to one uniquely identified replacement Memory across intervening
+actions. Competing corrected Memories leave those instructions in review. The
+exposed train capture now has the current ticket Memory and two separate
+preparation actions without a bogus “keep this as reference” task. At this
+stage it still lacked temporal ownership for “that train”; the following
+decision addresses that link. This is development regression evidence only.
+
+## 2026-09-26 — A named timed event owns deictic action context, not its alarm
+
+An action phrased as “in time for that ferry”, “early enough for that train”,
+or “before that meeting” refers to a prior event. The extractor now adds a
+typed source edge only when exactly one earlier resolved timed Memory or Event
+names that referent. A corrected fact can supply the name from its retained
+obsolete source while the current fact supplies the live time. The original
+event row remains individually accessible; the action retains its own row and
+includes the event source in its visible quote. A different action between the
+event and the reference receives no borrowed timing. Competing named owners
+leave the action in Needs Review. A missing named owner leaves the action as
+spoken, without adding context or a clock.
+
+The event clock is not a safe action time: departure time does not establish
+travel or preparation duration. The edge therefore never copies that clock to
+`dueDate` or `reminderDate`. If the action's own explicit instant contradicts
+the event order, the action is held for review and its executable date is
+cleared. This mechanism preserves explicit context without
+pretending an executable reminder was spoken. It is development evidence,
+not a long-capture release decision.
+
+## 2026-09-26 — Offline first-name corroboration for transport objects
+
+The iOS simulator's Natural Language name tagger returned no personal-name
+tag for several ordinary names, including in clear subject sentences. That
+made a shared pickup of two people split into two Shopping products, while the
+host corpus passed. A transport verb now accepts an independently sourced,
+offline common-first-name signal when the object is capitalized. The signal is
+the 2020 U.S. Census top 1,000 first names, used only in the transport frame;
+it never changes arbitrary Memory facts or communication objects. Two such
+direct objects under one transport verb remain one trip. Separate place or
+time phrases still delimit separate intentions, and brand/product controls
+stay Shopping. This is a portability fallback, not proof that the full range
+of names or ambiguous noun/name pairs is resolved. The official data and
+its methodology are at
+https://www.census.gov/topics/population/genealogy/data/2020_names.html.
+
+## 2026-09-26 — Bare anaphoric retention belongs to the prior Memory
+
+A request to “remember that about her” contains no new proposition. The
+pre-row deictic retention pass now treats its optional “about” phrase as part
+of the reference and attaches the exact source span to the immediately prior
+resolved Memory. Without that owner, the complete request stays in visible
+Needs Review instead of becoming a resolved, contextless note. It does not
+cross another independent intention. A request
+that actually states a new fact after “remember that”, or a later committed
+action, retains its own row. This removes one class of excess Memory rows in
+mixed long speech without using a sentence-specific match. Broader recap,
+unresolved-choice and output-commentary ownership still needs further source
+role and target-set work before row creation.
+
+## 2026-09-26 — A choice edge needs the speaker's ownership
+
+An earlier choice-context merge treated a third party's deliberation and
+selection as if the user had made them, merely because a later user action
+repeated the selected noun. A choice may now suppress the proposal and
+selection rows only when both are explicitly first-person, direct speaker
+content. A third-party or reported choice remains Memory beside an unrelated
+or matching user action. When a first-person choice legitimately attaches to
+an action, its raw quote includes every source clause used by the edge, not
+only the final action. This guards the source-coverage and quote/report-owner
+invariants; it does not yet resolve every proposed, rejected or embedded
+selection form in long speech.
+
+## 2026-09-26 — Resolved alternatives have a typed source-to-action edge
+
+A first-person proposal with alternatives and an explicit later selection
+are source context for an action only when one subsequent committed action
+uniquely names the selected option. The edge is planned before rows are
+organized, using segment identities and source occurrence IDs. Proposal and
+selection words remain visible in that action's source and raw quotes; they
+do not become separate Memory rows. An explicit first-person decision with
+an actionable complement after a colon can supply that action directly,
+while independently coordinated actions remain separate. A reported or
+third-party choice, an unresolved option, no matching action, and competing
+matching actions cannot silently create or own a commitment. Competing
+matches leave the choice source in Needs Review.
+
+This is a bounded local choice relation over the existing source ledger. It
+does not infer a choice from topical similarity, and it does not resolve all
+output commentary or travel-goal versus itinerary ownership. The September
+24 alternatives cases are development regressions only; fresh whole-capture
+qualification is still required.
+
+## 2026-09-26 — Unresolved selection is a state, not an overdue action
+
+The broad negative-perfect obligation rule was routing an unchosen option to
+Today as though the speaker had committed to perform it. A selection-state
+read now runs before that rule: explicit first-person nonselection remains
+knowledge, while unpaid, unbooked, and uncollected work remains outstanding.
+The coordinator after “between” completes its paired option complement
+before any independent-intention split. A separate command after the pair
+still opens its own row; a direct contrastive command after an unresolved
+choice also retains its commitment. This represents the speech act rather
+than deciding from an option noun or a specific gate sentence.
+
+## 2026-09-26 — Rejected-option commentary retains its choice owner
+
+A later sentence explicitly describing an alternative as rejected,
+abandoned, or only considered is source context for a prior selection, not
+another saved plan. The choice planner now links such commentary to the
+selected action only when content words identify exactly one existing
+first-person choice edge. Both the original and raw quotes retain the
+commentary. New factual content, quoted or reported speech, and unrelated
+actions stay independently accessible. An explicit option-role comment with
+no unique choice owner remains visible in Needs Review. This is a source-role
+edge over the existing occurrence ledger; it does not infer a selection from
+similar nouns alone.
+
+The full iOS repository suite exposed two integration constraints that the
+focused rule tests missed. A choice can be proposed and resolved in the same
+sentence with finite-past “I considered … but I decided to …”; the pre-row
+edge now reads that form as one first-person choice and still requires one
+matching action. A third-party chooser remains Memory. When two identical
+facts precede a deictic save request, the second fact and the save request
+are one exact contiguous raw span; the regression now asserts that stronger
+source fidelity instead of discarding the spoken request from `rawQuote`.
+
+An explicit “I don't want competing plans” output constraint is normally a
+safe review hold because a standalone negation must not execute anything.
+When its topic words uniquely identify an existing first-person choice edge,
+the planner now uses a separate `choiceCommentary` edge that may consume that
+review source only onto the selected action. With no unique owner, the hold
+remains visible. This narrows the safety override to an already grounded
+choice instead of weakening negation handling in general.
+
+## 2026-09-26 — Deictic findability requests retain a Memory owner
+
+“Keep that fact findable” and equivalent demonstrative fact or note storage
+requests name an earlier proposition; they do not state a new one. The
+pre-row retention pass now gives their exact source span to the immediately
+adjacent resolved Memory. Without that owner, the request stays visible in
+Needs Review. The request cannot cross an action or another intention, and
+physical file handling or a request to put facts into a report remains an
+action. This extends the existing deictic-source invariant to explicit
+findability language without adding a new output row.
+
+## 2026-09-26 — A retrospective event clock can own a group without dating its steps
+
+When a later statement explicitly calls its event time “context for those
+steps,” its source belongs to the immediately preceding contiguous action
+group. The group edge is established before rows are created, and the event
+clock is retained as source context rather than copied into each action's due
+date. A Memory or independent event closes the group. A plural reference with
+fewer than two eligible steps stays in Needs Review, while a standalone event
+statement keeps its ordinary calendar or Memory interpretation. The rule
+depends on an explicitly spoken context relation and a parsed clock, not on
+an event-name list or topical similarity. Both each action's repaired source
+quote and raw quote retain the event statement. The older post-row context
+helper now inspects only the row's own analysis text, so it cannot mistake a
+pre-row owned context span on an action for another context row and demote the
+action to review.
+
+## 2026-09-26 — A destination day scopes clock-only actions at that place
+
+A first-person dated goal to reach a place can supply the day for later
+clock-only actions explicitly at that same place. The pre-row edge binds the
+goal's source occurrences to every eligible action at that destination and
+combines its calendar day with each action's own clock. Intervening actions
+keep their own dates. A Memory, reported clause, explicit new day at the
+destination, a second dated trip goal, or separately timed arrival closes or
+vetoes this ownership.
+The broad goal is suppressed only after at least one resolved action at the
+destination receives it. Different-place or different-day actions retain
+independent rows. This is source and time ownership, not a general inference
+that every later task shares the trip date. The previously exposed museum
+capture is a regression only; fresh independent validation is still required.
+
+## 2026-09-26 — Filler removal preserves an independent factual sentence
+
+When a filler follows sentence punctuation, removing its word can leave a
+stray comma and turn a new fact into the preceding task's object. The
+disfluency pass now restores the sentence boundary. The clause splitter
+also recognizes a lowercase finite fact after an explicit sentence stop,
+because the recognizer's casing should not determine whether an independent
+fact becomes part of an action. The short command and abbreviation controls,
+focused speech-repair class, corpus gate, and Release compile pass. This
+structural repair does not settle the remaining rambling discourse-role and
+Memory identity questions.
+
+## 2026-09-26 — Explicit reference routing owns a unique Memory
+
+A negative scheduling statement followed immediately by an explicit
+reference-information classification is an output constraint on an earlier
+fact. The pre-row planner binds both source clauses only when the named
+referent identifies one resolved Memory. It may consume the negative clause's
+review hold for that grounded owner; without the classification or unique
+owner, the source remains visible in Needs Review. Positive reminders retain
+their Today route. The formerly exposed cafe capture now avoids phantom alarm
+and clarification rows, but its two cafe-related facts remain separate because
+the reported “its” has two plausible place antecedents. This is development
+regression evidence, not whole-capture qualification.
+
+## 2026-09-26 — The speaker's explicit idea label outranks generic knowledge
+
+An explicitly labeled idea with hypothetical action content belongs in
+Memory's Ideas category even when actionability correctly rejects Today.
+The organizer previously returned a plain note at the knowledge verdict
+before checking that explicit type. A narrow first-person or demonstrative
+idea frame now wins there. A third party's having an idea remains a fact
+about that person; “I have no idea” remains a knowledge gap; a direct short
+command stays actionable. The formerly exposed garden capture is retained as
+development regression evidence only.
+
+## 2026-09-26 — Coordinated fact objects keep one Memory identity
+
+A recorded fact's single finite predicate may take a coordinated noun or
+modifier object. The clause splitter now keeps that object together unless
+the right side has a new finite subject or is a direct actionable command.
+It does not collapse an actionable obligation frame, and a same-subject
+pronoun continuing a fact stays inside that fact. These controls remove
+dependence on the simulator's lexical tag for a new named finite subject.
+The formerly exposed cake preference stays one Memory with its contrast
+intact. Separate facts and a short direct task remain separate in generic
+controls. The old rambling capture still has surplus narration rows and does
+not pass whole-capture correctness; this regression asserts only the fact
+identity invariant.
+
+## 2026-09-27 — Communication content does not schedule the communication
+
+`ClauseScope` now carries the matrix speech act into temporal organization.
+For a direct or first-person committed message, a clock inside the clausal
+message body describes what to say; only matrix timing can schedule the act of
+messaging. A fronted circumstance followed by an explicit first-person
+commitment opens an independent clause after a list, independent of the iOS
+lexical tagger. Recipient parsing stops before complementizers and temporal
+adjuncts. Direct scheduled calls and reminder requests keep their full timing;
+reported message content stays under its speaker. The exposed milk/Jo capture
+is a regression for one wrong temporal owner, not a whole-capture pass: its
+extra explanation rows remain unresolved.
+
+## 2026-09-27 — Local completion receipt keeps independent tail operations
+
+A local completed-action receipt withdraws only its uniquely identified
+just-spoken intention. A separately spoken tail operation is still passed to
+saved-item resolution, while a reported tail command remains nonexecutable.
+For a replacement group, repaired tail word identities are mapped through the
+repair stage's raw occurrence ancestry before prefix and group ownership are
+combined. A failed mapping leaves the receipt in visible review rather than
+claiming the wrong source occurrence. The source audit is still incomplete
+across every extraction path; this change does not qualify long capture.
+
+## 2026-09-27 — One source role and compatible owners before row suppression
+
+The group-context planner now projects each segmented source as independent,
+owned context, retained context, or unresolved before it rewrites rows. Two
+incompatible suppression claims for the same source cannot silently choose an
+owner by planner order; the source stays visible in Needs Review. Conflicting
+temporal claims likewise hold their target for review rather than letting the
+last edge overwrite the first. A retained event fact may still own context on
+another row, and an explicit shared explanation may have multiple owners.
+This is a safety invariant over existing planner evidence, not a new broad
+segmentation architecture or a claim that the remaining rambling cases pass.
+
+A uniquely resolved person from a withdrawn clause is now written into the
+surviving action's stand-alone title when the pronoun is the direct matrix
+action's recipient. A named fronted purpose can carry a person through its
+coordinated action group to a later pronoun fact only while every intervening
+action visibly carries that same purpose. The original words remain in the
+source quote. New topics and competing named people close that scope.
+
+An explicit statement that a named detail is Memory rather than an
+instruction is source about an earlier proposition. The bounded output
+routing planner attaches that statement only when one prior resolved Memory
+has the distinctive named subject and no action or second Memory competes.
+The tempting broader “I don't need tasks for ...” form was rejected after it
+prematurely claimed a Porto story before its later bookshop detail could be
+joined; that source remains visible. Explicit action, fact, and idea clauses
+still create their own rows. This improves one exposed recap family but does
+not settle general rambling-role classification.
+
+## 2026-09-27 — Event time is context until the action itself is timed
+
+A uniquely identified event may explain an action's timing without setting
+that action's due date or reminder. `GroupContextPlan` carries an ephemeral
+event anchor to the affected action title and source quote; direct action
+timing keeps its own `TemporalIntent`. Competing event anchors remain in
+review. The corrected train and booked appointment are development controls.
+The later visit and mixed screening cases remain unresolved, and no fresh
+qualification has run.
+
+## 2026-09-27 — Explicit long capture keeps recording until the user finishes
+
+The default short voice flow retains automatic 1.9/4/8-second endpointing.
+The user can choose Long capture before or during speech; its pulse is the
+finish control, and a pause alone does not stop the microphone. An iOS 26
+analyzer uses Apple's progressive long-dictation preset. On the legacy path,
+an early recognizer end no longer saves a partial transcript as complete:
+the protected recording continues until the user finishes, then strict local
+sub-minute chunks are transcribed and joined only when their overlap is
+verifiable. Any missing audio frame, chunk result, or uncertain join retains
+the recording as a failed draft for recovery. This is a safety mechanism,
+not evidence that five-minute microphone capture is accurate or pleasant;
+that needs physical-device qualification and a measured review rate.
+
+## 2026-09-27 — Source role precedes Today/Memory row creation
+
+The source-role planner now distinguishes independent propositions, uniquely
+owned context, explicit capture commentary, and unresolved source before the
+organizer creates rows. It may focus a title without changing the immutable
+source quote. It does not discard a standalone fact merely because an
+"anyway" action follows, or drop a tentative idea merely because it is not
+an action today. Ambiguous ownership remains reviewable. This bounded pass
+improves some exposed rambling cases, but several still fail whole-capture
+correctness; it is not an unseen release result.
+
+## 2026-09-27 — Exact focus spans and event assertions across long speech
+
+Within an existing segment, an overt idea frame or resolved first-person
+selection may identify a smaller focus span. That span carries exact source
+occurrence IDs. A whole segment can become context for another row only when
+the remainder is dependent framing, including a single causal reason, and one
+later intention owns it. An independent coordinated fact, competing owner, or
+mixed idea preface stays visible in Needs Review. This prevents a clean-looking
+row count from hiding wrong source ownership. The host and iOS language
+tokenizers differed on one mixed preface, so a grammatical coordinator and
+finite-predicate check now guards that boundary on both platforms.
+
+An already checked or confirmed event is represented as capture-local status,
+not a new Today appointment. A confirmed event can supply its day and clock as
+context to uniquely linked follow-up actions, including across a local
+completion receipt, without changing those actions' due dates or reminders.
+Direct requests to add an appointment or set a reminder remain actionable;
+competing events do not donate their time. A complete question that introduces
+a contiguous action group is owned by those actions, while an isolated question
+remains reviewable. A definite idea continuation can cross intervening actions
+only when one earlier idea matches. Independent facts and tentative ideas stay
+accessible unless an explicit, uniquely owned withdrawal removes them.
+
+These are development mechanisms, not long-capture release evidence. The
+September exposed captures remain regression material. Fresh independently
+authored whole-capture scoring and live microphone qualification are required
+before V1 can be called ready.
+
+## 2026-09-27 — Failed fresh gate: root identity before clause routing
+
+The independently sealed 240-case gate failed with 3 whole captures correct,
+2 safe incomplete, and 235 unsafe or silently incomplete. The source ledger's
+word coverage alone cannot prove that autonomous intentions remain separately
+accessible. Explicit numbered slots now establish identities before later
+Memory linking. Bare and comma-rendered digit markers can define a list when
+the bodies predominantly read as actions; uncertain bodies keep their own
+visible review slots instead of invalidating the whole list. A homophone repair
+from “by” to “buy” now requires an instruction boundary, so a location phrase
+cannot invent a purchase merely because it names a product.
+
+An overt request to retain one learned historical account now establishes one
+Memory root before individual past-tense clauses are routed. A later direct
+commitment or separate recording request closes that scope. Exact exposed
+30-job and single-Memory failures are retained as regression tests, alongside
+opposite controls for numeric quantities, a task after a Memory, and short
+captures. These changes are development work on a **failed** gate. They do not
+qualify V1; broad context ownership, correction/withdrawal identity, and
+quote/report safety still require general fixes, a new unseen set, and live
+microphone evidence.
+
+## 2026-09-27 — Carry list commitment and saved-row operation identity
+
+An explicitly declared numbered list of jobs, tasks, actions, or errands gives
+each ordinal its own source identity. A subjectless body can inherit the
+speaker's action commitment from that frame when a platform's language tagger
+does not recognize its first word as a verb. Declarative subjects, quoted or
+reported speech, and modal or past statements do not inherit it. The derived
+"I need to" analysis frame never replaces the source quote or the concise
+body title. Bare numbers without an action frame still need an actionable
+majority, so quantities cannot masquerade as tasks. This addresses the iOS
+versus host difference in the 30-job regression without adding its verbs to a
+dictionary. It does not solve unnumbered long speech or prove whole-capture
+correctness.
+
+A request to change an existing saved item now has a typed `.revise` operation
+identity. The app preserves its complete capture in visible Needs Review and
+leaves seeded items untouched because a field-complete replacement and a
+unique saved-row target have not yet been established. An explicit saved-row
+completion is read before generic clause splitting, which otherwise mistakes
+an action-shaped noun in the saved row's name for a second intention. This
+early reading applies only to speech that names a saved row; juxtaposed cancel
+and new-action requests still split. The safe review fallback is not the
+product goal: correction cases still need a grounded in-place amendment.
+
+An attempted narrow automatic amendment used complete quoted old/new action
+titles in a direct saved-row edit command. The transient `SavedItemRevision`
+records disjoint source-occurrence IDs for both titles, and exact active-row
+matching can name one candidate ID. That is still insufficient for mutation:
+`CapturedItem` belongs to one `CaptureSession`, and the amendment session has
+no durable relationship to the older row it would change. A transient
+`.performed` receipt would vanish after restart or sync, leaving the new
+immutable amendment transcript disconnected from the altered item. The
+automatic mutation was withdrawn. Exact quoted pairs, like deictic, partial,
+date-changing, ambiguous-target, reported, and mixed edits, now remain in
+visible Needs Review with no saved-row mutation. Focused iOS controls verify
+that old title, person, time, temporal intent, and original words survive.
+The occurrence-linked request remains groundwork, not a release claim.
+
+For general corrections, the next representation must carry: (1) one uniquely
+resolved existing item ID,
+grounded by an occurrence-linked reference in the capture; (2) each changed
+field as an explicit replace, preserve, or clear instruction with its source
+occurrence span; (3) the complete resulting action, including inherited
+unchanged fields and any conditions or prerequisites attached elsewhere in
+the capture; and (4) a durable link from the amendment capture to the updated
+item, while both captures' original wording remains immutable. A target such
+as “that same item” needs a unique prior mention-to-item edge before it can
+become a saved ID. A destination such as “to thirty” changes one quantity;
+it does not license a new task called “thirty” or clearing the old task's
+person, place, schedule, and constraints. The 20 exposed correction cases
+include changes to quantity, person, address, date window, recipient consent,
+and action conditions; the current request cannot express those field patches
+or their provenance, so broader automatic mutation would claim certainty the
+representation does not have.
+
+Opposite controls for this mechanism must prove that a world errand such as
+changing a physical filter creates a task, reported instructions to edit a
+saved row do not execute, two plausible saved targets remain in review, a
+direct edit preserves unrelated fields, explicit clearing removes only the
+named field, and a mixed capture retains independent new intentions. Existing
+short direct cancel, complete, and reschedule flows must remain correct. Until
+the occurrence-based target, field ownership, and durable amendment link are
+represented, every revision holds the full transcript for review and changes
+no saved item.
+
+The failed 240-case set remains development evidence. After these mechanisms
+and the remaining temporal, quote/report, and unnumbered intention ownership
+work freeze, a different independently authored set and live device captures
+must determine release readiness.
+
+## 2026-09-27 — Quote owner precedes imperative interpretation
+
+An explicit third-person `read`, `quoted`, or `recited` frame with a balanced
+quotation owns the quoted words before any action-verb splitter runs. The
+reporter's subject and the quotation remain one Memory source; an explicit
+speaker commitment after the closing quote becomes its own Today intention.
+An explicit “I agree: <action>” adopts a reported request as one action and
+keeps the report in that action's source quote; a statement of agreement
+without an actionable complement remains Memory. The owner is established
+before a report is allowed to supply context to an action. The adoption marker
+must occur in the speaker's own-voice range; the same words inside a second
+quotation cannot adopt an action.
+Direct requests to read a note or send quoted words stay executable. The
+source and quote ranges are occurrence based, so repeating the same quotation
+does not merge its owners. An unclosed quotation has no proven return to the
+speaker's voice and remains reviewable. This is a narrow grammatical owner,
+not a license to treat every action-shaped phrase near quotation marks as a
+task. Exact exposed archive and food-bank quote excerpts are regression
+evidence, not new qualification evidence.
+
+An attempted general action-parameter attachment was rejected: a unique
+shared noun can identify *which entity* a clause concerns without proving
+that its predicate is merely detail for an earlier task. Attaching “the
+handrail needs professional inspection” to “email a photograph of the
+handrail” would hide a separate obligation. Similar counterexamples include
+a notice that should be removed and a registrar who can decide. Such clauses
+must remain independently visible or reviewable until a typed relation proves
+whether they elaborate, create, or qualify an intention.
+
+Numbered "steps" alone now preserves separate visible review slots when its
+frame does not identify the speaker as the actor or declare another action-list
+noun. A recipe or manual may contain imperatives as knowledge; numbering does
+not make them Today commitments. A speaker-owned list such as "my steps today"
+continues to create independent actions. This is a safe fallback for an
+ambiguous procedural frame, not whole-capture correctness for a clear Memory.
+
+A coordinator joining two clauses that each state their own explicit time now
+opens a boundary before assigning either time. This also applies when the
+second verb is unfamiliar to the closed action vocabulary. A single fronted
+time shared by coordinated actions still scopes both. Cross-sentence references
+such as “then” after several plausible events remain unresolved: a date may
+only move to an action through a unique, typed event-to-action edge, and the
+current representation does not yet supply that edge for ordinary references.
+
+Ordinal day parsing now checks the lexical boundary after an ordinal. A
+hyphenated modifier such as “first-aid”, “second-hand”, or “third-party” is one
+word and supplies no date; “on the first” remains an explicit day of month.
+This addresses a general false temporal owner exposed in several long-list
+captures, with opposite full-path iOS controls. It was added after the
+September 27 development trace, so that trace does not measure its effect.
+
+## 2026-09-27 — Continuous capture is the in-app voice default
+
+The ordinary in-app voice screen now starts in continuous mode. A complete
+sentence, thinking pause, delayed transcript, or recognizer segment final
+cannot invoke the automatic pause timer in this mode. The person taps the
+pulse to Finish; short captures therefore finish as soon as requested. The
+visible mode control can still select automatic pause saving deliberately.
+Switching modes during one recording does not remove its sticky whole-recording
+verification requirement. Continuous capture requires protected audio storage
+before the microphone starts, and a storage failure stays visible rather than
+silently falling back to automatic mode.
+
+The 1.9-second timer remains an intentional behavior of explicitly selected
+automatic mode, not a limit imposed by the microphone or a proof that someone
+is done thinking. Background Shortcut capture and the internal speech benchmark
+retain their existing separate endpoint policies. Physical microphone
+continuity, backend duration boundaries, and source fidelity still require
+device qualification.
+
+## 2026-09-27 — Explicit single accounts own historical reported actions
+
+When the speaker overtly asks to keep one story or account, a historical
+instruction inside that account belongs to the Memory source. Its different
+speaker does not downgrade the whole account to unclear. A later first-person
+commitment or new direct action closes the account scope and remains a separate
+Today item. This also repairs two short declared-account regressions left by
+the latest source-voice change.
+
+The exposed pilot's garden-gate story and walk reflection now each save as one
+Memory with the full source accessible; they previously produced 19 and 17
+rows. The 25-case development score moves from 0 to 2 whole-capture correct
+according to the audited source meanings. The other 23 remain wrong or
+incomplete. A broader reference-instructions rule was rejected after its
+opposite control swallowed a later independent email task. This decision is
+limited to explicit story/account frames and does not claim a general
+long-speech solution or release qualification.
+
+## 2026-09-27 — A speaker's past idea remains an Idea
+
+“I just thought of an idea to simplify setup” is a first-person idea even
+though “thought” is past tense. The organizer recognizes the explicit idea
+frame, and the extractor does not recast that speaker-owned frame as a
+reported fact. “Alex just thought of an idea” and Alex's quotation containing
+“I just thought of an idea” remain Memory facts about Alex. The bounded
+repository class and opposite controls pass. This repairs an existing unit
+failure; it does not alter the 25-case pilot's persisted semantic results.
+
+## 2026-09-27 — Review opens a specific saved item for local repair
+
+An uncertain capture's receipt leads to the original transcript and its
+saved rows. Each row can open the existing item editor, so correcting one
+title, type, person, or time does not require repeating the entire capture
+or rewriting clear siblings. The repository remains the owner of edits and
+the immutable original stays accessible. A whole-capture voice retry remains
+available for cases that cannot be repaired in the editor. This interaction
+does not imply that every wrong interpretation was detected or that an
+unresolved spoken reply is implemented.
+
+## 2026-09-28 — Reconcile embedded named clocks and adjacent reminder replies
+
+A later explicit correction such as “actually, seven tonight for the photos”
+can be embedded in the same extracted row as the earlier photo reminder when
+long lowercase speech defeats sentence ownership. A unique source-level
+reminder command naming that object may supply the corrected clock to that
+row. Repeated matching commands are not guessed. When the same oversized row
+also swallowed a direct “I also need oat milk and eggs” sentence between the
+command and correction, the separately actionable shopping intention is
+restored. Quoted shopping words do not create a purchase. The immutable
+capture transcript remains the source of truth; the changed row keeps the
+spoken material visible. This mechanism corrected the photo clock and
+shopping access in one of five S001 renderings. It does not solve the
+lightly punctuated rendering or the other false extra rows.
+
+An adjacent direct “set a reminder for that” adds notification delivery to
+the preceding actionable task only when that task already has an exact
+resolved time. The deictic request does not become a duplicate task. A
+request naming a different object or reported by someone else does not borrow
+the preceding task's time. Three of five long S010 renderings gained the
+correct parsley reminder; a fourth already had it, and the lightly
+punctuated rendering remains incomplete. These are bounded local repairs,
+not evidence of general long-speech correctness or physical notification
+delivery.
+
+## 2026-09-28 — Ground a saved cancellation's spoken day and explanation
+
+A trailing `today` or `tomorrow` in an explicit saved-item target is checked
+against the stored item's due/reminder day at the capture's reference instant.
+It is not treated as a title word and is never simply discarded. If the date
+does not match, the repository does not act on that row. The target matcher
+still requires every remaining identifying word and a unique active Today
+item. This lets a named saved reminder be cancelled without allowing a
+same-titled task on another day to become the target.
+
+Explanatory sentences after an explicit named saved cancellation belong to
+that operation only under a closed local ownership rule. Neutral fillers and
+requests to preserve the operation's source can be included; a new affirmative
+action remains a separate intention. A conditional imperative containing
+`make that` retains its words and condition instead of being mistaken for a
+self-correction. Five S063 renderings now perform the named cancellation with
+no new row on first application; punctuation-loss speech still enters review.
+At this checkpoint, the ordinary cancel path did not yet store a performed
+receipt or retain the saved target's session on deletion, so these five were
+not complete automatic passes. The next decision below repairs that gap.
+These are exposed text checks with notification delivery disabled, not
+microphone evidence.
+
+## 2026-09-28 — Keep cancellation provenance and isolate recognition generations
+
+A uniquely grounded saved cancellation now commits its performed V5 operation
+receipt with the target-row deletion. It retains the target's original
+CaptureSession even when that was its only item. An immediate repeat can read
+the same receipt after a store reopen; a genuinely new request after the
+existing 15-second retry window finds no target and stays reviewable. This
+preserves both speakers' original words and prevents a retry from creating a
+new cancellation task. Notification and alarm teardown still targets only the
+deleted row's ID after persistence succeeds.
+
+Speech recognition callbacks carry the ID of the capture that started their
+backend. The ID remains active through listening and finalizing, unlike the
+startup-only ID that clears on first audio readiness. Delayed transcript,
+voice, error, integrity and audio-level UI callbacks from an older backend
+are ignored once another capture is active. This protects a later recording
+from old callback state while keeping the existing Continuous default and
+explicit Finish behavior.
+
+## 2026-09-28 — Ground a saved purchase quantity amendment
+
+An explicit `update/change/correct/revise the saved <object> purchase from
+<old quantity> <object plural> to <new quantity> <same plural>` request is a
+typed saved-item revision. A closed explanation/constraint tail stays attached
+to the amendment only when it has no independent affirmative action. The
+repository requires one active Today title with the old quantity, object and
+stated existing quality before replacing the quantity and adding the spoken
+constraint. The saved ID, original item wording, other fields and distractors
+remain unchanged. The new capture keeps the full transcript and a V5 receipt
+with old/new titles in the same save as the title change. An ambiguous second
+matching row stays in review; a new purchase without a saved-row command is
+not a revision. The rule is intentionally limited to this supported grammar
+instead of replacing numbers in arbitrary speech.
+
+## 2026-09-28 — Remove a named saved notification without cancelling its task
+
+An explicit request to remove the old spoken-hour notification from a named
+saved task while keeping that task on a named day is a typed revision. The
+repository requires a unique active Today target and verifies the existing
+reminder's hour before changing anything. It commits the capture-owned V5
+receipt, a date-only due field and a nil reminder field together, then cancels
+only that target's notification identifier. The task's identity, title,
+original words and active status remain; another reminder at the same hour
+does not change. A stale hour or two same-title candidates stay in review.
+The exposed development adapter now seeds supplied exact due and reminder
+clocks instead of replacing every seeded date with local noon. Simulated
+notification removal is evidence of identity and request handling; physical
+delivery still requires the founder iPhone session.
+
+## 2026-09-29 — Bind saved completion and confirmed broad cancellation to their source
+
+A named saved-task completion with a completed-action report and an explicit
+negative guard for another task is one operation when the remaining audit
+language has a closed, non-actionable shape. This protects the same speech
+when punctuation is lost. A new affirmative action still follows ordinary
+mixed-capture extraction. The completed target, deletion of the temporary
+review row and V5 performed receipt save together; the original transcripts
+of both captures remain. A retry reads that receipt, while a new request
+outside the deduplication window cannot complete an already completed row.
+
+Confirmed broad cancellation revalidates the entire captured candidate set
+before changing any row. It deletes the selected rows and review row in one
+save with a capture-owned performed receipt, preserving every original
+CaptureSession. A file-backed retry reports the already performed group
+operation. Reminder and metadata cleanup follows the save. Broad completion
+has not been moved onto this transaction path and requires separate evidence.
+
+## 2026-09-29 — Scope fronted spoken clocks before assigning reminders
+
+The speech repair pass preserves a complete fronted clock phrase before
+`remind me`; it inserts its pause comma only after a completed statement.
+When two reminders share a stated day but each has its own spoken hour, the
+second inherits the day without inheriting the first hour. A lowercase
+finite-fact sentence beginning `both are` closes the preceding reminder's
+scope at an explicit sentence stop. Reported instructions and a clock inside
+message content keep their existing ownership. This bounded change fixes
+four S011 main-rendering clock assignments, while punctuation-loss ownership
+and explanatory-source routing remain open product failures.
+
+## 2026-09-29 — Attach explicit constraints only to a unique saved intention
+
+The capture discourse planner may own a review-marked prohibition such as
+`Do not change the appointment itself` as context for one uniquely identified
+appointment-call task. It uses the existing review-safe source-role edge, so
+the prohibition no longer becomes an extra task and it does not mutate the
+calendar appointment. Two plausible appointment calls leave the statement
+unresolved. Explicit photo clarification, its immediately following old-set
+counterfactual, and a uniquely scoped availability explanation can likewise
+attach to their named tasks. Independent remembered facts and later actions
+remain independent. The complete original capture and attached source quote
+remain immutable. This decision is provisional until final UI, persistence,
+corpus and independent qualification gates complete; the exact pilot and
+1,403-case short corpus are the current evidence.
+
+A generic unpunctuated paired-reminder annotation was rejected after C026 and
+C041 compositions showed wrong-day and extra-row regressions. Its source diff
+and traces remain in the Understanding work record. No production fallback
+silently adopts that behavior.
+
+## 2026-09-29 — Keep unresolved time and place setup speech with one named task
+
+Instructions about holding an unresolved notification hour or explaining an
+unconfigured saved place are source context for the one matching task, not
+additional Today or Memory items. The owner must be unique. The time owner is
+identified from its bare spoken hour before the later ambiguity pass marks it
+unarmed; the place owner must already carry a parsed location intent. A later
+independent purchase remains separate. This bounded behavior reduces the
+punctuated S069 and S079 pilot captures to their intended saved items, while
+several lower-punctuation and filler renderings remain failures. Original
+transcripts and source quotes are retained. The change is provisional pending
+the remaining family, UI, persistent-store and release gates.
+
+For punctuation-loss speech, a completed arrival reminder followed by an
+explicit missing Home/Work setup statement is segmented at that statement.
+This keeps the reminder in Today with its place intent; a standalone saved-place
+fact remains Memory. The source remains intact, and actual place monitoring
+still requires configured location and permission.
+
+## 2026-09-29 — Own elapsed-interval explanations by the unique recurrence
+
+When a capture already has one actionable elapsed-duration recurrence,
+explanations that explicitly distinguish that interval from a daily local
+clock belong to the existing task's source. They do not create a second
+calendar recurrence, an equipment-control task, or separate output-policy
+rows. Two possible interval owners leave the explanation unresolved. The
+four main S072 renderings now preserve one 24-hour recurrence across the
+Toronto clock change; filler and concise renderings still fail and remain
+visible in the Understanding handoff. This is a provisional development fix.
+
+The concise spoken form `every 24 elapsed hours` also means a fixed elapsed
+interval. The local recurrence parser accepts that modifier while preserving
+the daily calendar-clock opposite; the S072 concise repository rendering now
+has the correct first instant. Filler artifacts remain unresolved.
 
 
-## 2026-09-29 — Show what a capture became before asking, and say the count only when it is low
+## 2026-09-30 — Resolve output references against consolidated intentions
 
-Calvin asked for a review of the app as a first-week user deciding whether to
-pay, setting aside whether the engine works. Of eight findings he kept the
-tutorial's ending as it is and the running-low and wall paywall as they are, and
-asked for the rest, with one change: the allowance is not shown from the start,
-only once it is low, on Today.
+An explicit ordinal detail attaches to its established task. Consecutive
+pronoun explanations can continue that source-role edge without selecting a
+new owner. Output-state and retention references resolve after consolidated
+intention roots exist: raw date instructions and fact explanations must not
+be counted as separate task or Memory owners. Contradictory dates and missing
+or competing owners remain reviewable. Source and occurrence identities are
+retained when references are attached.
 
-- **The first-capture sheet opens on the capture.** The moment itself is kept
-  (see "Pro is offered twice before the wall"). What it showed was a stat block
-  reading "1 organized · 0 completed" above two plans, which is the weakest
-  number the app will ever show. It now shows the person's own words, the items
-  they became with where each went and when it will remind, and one line on
-  the allowance, with "Keep going" and a quieter "See Pro plans" that opens the
-  ordinary Pro screen in place. Nothing leaves the phone to build it: the newest
-  capture's `originalTranscription` and its items.
-- **Today says how many free captures remain only below three.** A light row
-  under the header, "2 free captures left · One capture can hold a whole list.
-  Pro removes the limit." It opens Pro. Above two the count stays where it was,
-  in Settings and on the last receipts. Nothing before this told a person that
-  one capture can hold several things, which is what the allowance is worth.
-- **Today shows at most one suggestion card, after the person's own work.**
-  Capture Anywhere first, Pro only when that is set up or dismissed and never
-  beside the low-captures row. The Capture Anywhere card is drawn with the
-  surface tokens rather than as a black block.
-- **The welcome screen shows the payoff.** One run-on sentence and the two
-  items it becomes replace the slogan, the three-beat black pill (fixed black
-  and white, so it vanished in dark mode) and the "NO ACCOUNT" label. "Explore
-  first" is "Skip the tutorial", because it opened an empty app.
-- **No season on the launch price.** The window runs to October 22, so
-  "SUMMER LAUNCH SALE" was read in autumn. It is "Launch price · half off
-  annual". A failed plan load said the App Store products were not yet
-  "connected", which is our wording for our problem; it now says the plans did
-  not load and to try again.
-- **Smaller wording.** Memory's eyebrow is a count instead of "Find · Recognize
-  · Reuse"; the Pro screen from Settings is titled "Capture without counting."
-  and uses the waveform instead of sparkles; the Settings plan row says the
-  count once; "Make Speak It ready" is "Setup checklist"; the example sentences
-  on Today, Memory and Capture are one set.
+Recording-only narration and brief standalone hesitations use shared grammar
+in source-role classification and lowercase written-boundary detection.
+Independent commitments, quoted words, ordinary facts and physical actions
+remain accessible. These are semantic repairs; physical microphone continuity
+has not been verified. Development checkpoint source3d6888 passes affected284
+and protectedcorpus1403; S086 four of seven supplied forms are whole-correct.
+Remaining forms and release gates stay open in the existing handoff.
 
-Not changed: the practice idea sentence reads awkwardly, but routing tests pin
-it, so rewording it is its own change.
+
+## 2026-09-30 — Share task-entry and explicit fact-object interpretation
+
+Task-entry wording uses the same action-body reader in ownership and
+organization. Complete calendar dates expose the command after the year,
+while completed history and compound-noun predicates retain factual meaning.
+A finite message complement must not become part of a two-word recipient; a
+fact followed by an anaphoric command retains that action. Explicit fact-object
+and destination frames preserve the recorded content as Memory, with physical
+actions and independent commitments protected by opposite controls.
+
+Candidate f4376e passes affected276 and corpus1403; fixed10-root diagnostic
+cohort improves18 to20 whole-correct among30 correlated forms. The fresh25
+pilot semantic states remain unchanged. This is development evidence, not
+release qualification; failed challengers and remaining gates are retained in
+the Understanding handoff.
+
+
+## 2026-09-30 — Preserve known action metadata during object clarification
+
+An unresolved physical object is a distinct semantic gap from uncertainty about
+whose task it is. New captures in this path retain the known task kind, date,
+clock and trigger metadata, with the immutable transcript unchanged. The existing
+editor asks which item the action refers to; naming it resolves that gap through
+repository update, without repeating the other captured thoughts. Adding enum
+raw vocabulary changes no persisted model fields or frozen schema shape.
+
+Held thoughts cannot generate timed delivery requests. Place resolution remains
+available to explain the retained trigger, while the repository excludes review
+items from monitoring and rechecks review state before and after asynchronous
+delivery. Software tests cover actual pending notification withdrawal/restoration
+and duplicate prevention on relaunch, plus local title editing and original-source
+retention. Physical microphone, geofence and notification delivery remain separate
+qualification requirements. The candidate remains provisional: the long mixed
+semantic failures and final release gates are still open.
+
+
+## 2026-09-30 — Recipient reversals retain their communication and source
+
+An explicit recipient reversal applies only to an established own communication
+with matching recipient and source occurrences. It preserves the object,
+condition and known schedule, including when recognizer punctuation leaves the
+reversal embedded in that communication. The complete original remains
+immutable; corrected analysis removes the superseded recipient instruction.
+A repair cue immediately preceding an established instruction boundary belongs
+to the following instruction, so its source identity is not stranded on another
+communication. Quotes and reports keep their established scope.
+
+Competing communications wait together for a local edit rather than choosing
+by recency. The existing Split editor can restore the explicit parts while
+unrelated intentions remain available. Held schedules remain in the complete
+source wording; delivery is unarmed until resolved. Repeating the same saved
+split after relaunch reuses its existing reviewed parts in that capture session,
+while different explicit edits still apply. No stored model fields or schemas
+changed. Focused actual persistence and UI checks are recorded in the existing
+Understanding handoff; broader qualification remains open.
+
+A historical reason is read within its governing command rather than used as
+evidence that the command was completed. Initial tentative conditional outcomes
+remain knowledge unless an explicit commitment or reminder supplies the action.
+Completed, negative and reported histories remain distinct. Development traces
+still show whole-capture grouping and invented-intention failures; these bounded
+repairs are not release qualification.
+
+### Development decision — explicit retained-content classification (2026-09-30)
+
+A command to keep/save/record content **as an idea, fact, note, memory, reference, context, information or reflection** declares its Memory destination. It does not become a physical retention task merely because its first word can also introduce an action. Nominal coordination stays within that classified content; attached descriptive modifiers are allowed, but an independently commanded or finite right-hand conjunct ends the frame. Physical saving/keeping and explicitly requested tasks remain actionable.
+
+A local prohibition on creating that just-classified content as a task attaches to the explicit content owner. It does not authorize changes to any saved item. The original CaptureSession transcript remains immutable. These changes are provisionally measured development work; final release qualification remains open. The rejected candidate that invented a reflection task and its failed modifier-boundary experiments are preserved in the Understanding development artifacts.
+
+
+## 2026-09-30 — Consume accepted Memory ownership; preserve timing on unrelated edits (development)
+
+Actual iOS S107 tracing found that pronoun resolution precedes a successful Memory continuation merge. The merge retains the named owner but the following purchase previously stayed unresolved. The coalescer now passes that established owner to the existing pronoun resolver for only the immediately contiguous actionable occurrence, with one person, direct scope and no quotation. Shopping displays the resolved beneficiary while immutable source still says the original pronoun. This consumes existing occurrence-backed evidence rather than reinterpreting an entire capture or introducing another representation.
+
+The actual repository recovery test for original long S105 demonstrated that a person-only correction rebuilt unrelated TemporalIntent. Generic ItemEdits now preserves the typed temporal value unless dates, recurrence or date-versus-clock precision changed. Explicit temporal answers still create authoritative user-edited timing. The next derived clarification question may change after the person is supplied; it does not justify clearing an unresolved gap. The long capture remains semantically incorrect after this one-field recovery.
+
+Current development candidate666321ec has eight exact simulator checks passing, including complete saved states, local repeated correction/relaunch, unchanged notification contents/triggers and explicit date/answer controls. Affected families and existing fixed cohort/renderings/pilot are under measurement. No release, physical microphone or independent qualification claim.
+
+
+## 2026-10-01 — Consume reported-account scope and independent returned clauses (development)
+
+A negative statement about adopting a quoted message stays with its unique attributed account; it does not create a send task. A request to retain what the identified speaker said in notes or Memory belongs to that account. Multiple competing speakers or a mismatched named speaker remain unresolved. An independent fact remains separate even when the later retention reference still identifies one speaker. Positive adoption and physical file/notebook retention remain actions.
+
+When the quotation reader establishes a return to the current speaker, the segment consumer must consume the validated independent clauses in that tail. It must not flatten an independent email into the report's Memory row. A completed quotation also must not absorb an independently tokenized finite fact merely because the noun phrase has multiple words or platform lexical tags are unavailable.
+
+The new negative-adoption routing branch requires the existing classifier's proof. A compound uncommitted project/idea-retention statement rejected by that classifier cannot enter quotation routing and gain spurious review. Existing occurrence ownership, typed edges and repository mutations remain authoritative; the original transcript is immutable. This bounded development repair does not qualify the remaining whole-capture failures or physical recording behavior for release.
+
+## 2026-10-01 — Isolated product readiness: visible share failures and private diagnostics
+
+The product workstream preserves unreadable shared payloads and reports read/save failures with retry rather than presenting an empty inbox or silently stopping. Valid shares can still import beside malformed files. This is an inbox/status change only; original capture content, semantic mechanisms, schema and reminder behavior are unchanged. Notification diagnostics now output only closed trigger kinds and delivery time/count/status, excluding reminder bodies, request identifiers and region coordinates. Synthetic directory/notification tests and a largest-text light/dark UI fault journey cover these changes. See `PRODUCT_READINESS_2026-10-01.md` for exact candidate evidence and remaining blockers. These changes remain isolated pending approved integration.
+
+Shortcut saves must honor `CaptureCreationResult.consumesFreeCapture`, like the app and share paths. Cancellation, withdrawal and missing-target operation sessions do not spend the allowance; ordinary new captures do, and duplicate delivery does not spend twice. This uses the repository's existing result without changing operation interpretation or pricing.
+
+
+## 2026-10-01 — Preserve unreadable capture checkpoints beside new drafts (isolated)
+
+A malformed or wrong-typed checkpoint is a failed read, never permission to overwrite the user's words with an empty draft list. Keep that original UserDefaults value verbatim. New captures use a healthy supplemental checkpoint slot when the original cannot be decoded; all healthy slots carry the same current draft set so retirement does not resurrect stale copies. Known drafts remain usable, and RootView shows the incomplete recovery read persistently at launch, foreground and recovery-state changes. Do not prune deletion tombstones while a checkpoint is unreadable. Only the existing explicit all-draft discard clears unreadable slots. Existing single-draft/array encodings and recording APIs remain supported; no SwiftData model/schema, interpreter, repository or scheduling mutation changes. Raw-value preservation, new-draft reads/updates/retirement, multiple failed slots, healthy mirrors, tombstone retention and file-backed UI relaunch are regression targets in the readiness report.
+
+## 2026-10-02 — Exact scanner findings, source-stack warning dependency
+
+The isolated readiness closure independently checked all 23 directory and 28
+historical scanner findings against their source/history lines. Synthetic saved
+IDs, paired UUID row identities and source SHA-256 digests receive only exact
+path + rule + full-line AND allowances in `.gitleaks.toml`; no directory is
+excluded, and changes to those lines require another review. Default rules stay
+extended. All 40 credential-shaped controls at the ten handled paths are
+detected, including changed `saved_key` values and GitHub PAT patterns. Raw
+redacted reports and per-finding source checks remain in the readiness evidence.
+The configuration uses the [pinned Gitleaks 8.30.1 format](https://github.com/gitleaks/gitleaks/blob/v8.30.1/README.md), matching CI.
+
+Two exact frame-validator stacks identify SwiftUI's generated keyboard
+`InputAccessoryBar.body` on the iOS 26.5 simulator. Keep the existing CaptureView
+keyboard controls and the warning visible until an independently demonstrated
+fix exists; a passing rendered screen is insufficient evidence. The app and UI
+harness were restored byte-for-byte before the three predetermined closure runs.
+
+## 2026-10-03 — Isolate local worked-example interpretation until measured qualification
+
+Combine the preserved Claude semantic checkpoint and product-readiness fixes in a separate candidate. Keep one semantic implementation owner and an independent input-first reference reviewer. Publish only exact reviewed records; the full generated source remains proposed. Preserve current quotations and role anchors instead of accepting example identities as facts. Reject incomplete or ungrounded generated proposals into recoverable review, and preserve the fast ordinary family-call path.
+
+This is a development decision, not a shipping approval. The exposed development comparison, historical 240 difficult captures, account failures and unrun physical session remain separate evidence. No fresh release holdout is warranted before these blockers are resolved. Shipping selection, device resource costs and supported-device behavior remain open; do not infer a safe shipping subset from desktop index size alone.
+
+
+## 2026-10-04 — isolated runtime continuation measurements
+
+The runtime candidate retains the full verified 510,000 source records and complete SQLite index for explicit proposed-reference experiments. The shipping candidate uses a measured, checksum-bound selection of 59 exact AI-reviewed records with an approval/coverage manifest; no universal or human approval is inferred. Both candidate build configurations enable runtime assistance so a feature-inactive Release build cannot count as qualification. Main, Claude's checkpoint and product readiness checkouts remain preserved.
+
+Independent source correctness and retrieval benefit are separate evidence. A bounded source certificate is being checked in an isolated prototype; a successful source-only fast path cannot count as consumption of examples. OFF/ON harnesses must preserve complete proposals, actual context and exclusion state. Failed comparisons and guard/UI reproductions remain immutable, and final criteria remain those in `Docs/Understanding/LONG_CAPTURE_RELEASE_CRITERIA.md`.
+
+The UI candidate measures the real dock height for scroll clearance at accessibility sizes. It retains this clearance while the dock is temporarily hidden. The Capture keyboard's redundant toolbar Done was removed while the existing inline Finish typing action retains a 44-point target. On the same iOS 26.5 synthetic simulator, a normal public LLDB warning breakpoint captured two SwiftUI InputAccessoryBar warnings before this change and none during the passing typed-capture/save diagnostic afterward. This bounded evidence does not close physical-device keyboard qualification.
+
+
+### Runtime example candidate: downstream correctness and per-call budget investigation (unreleased, 2026-10-06)
+
+Source24 isolates model generation from complete source reconciliation and repository validation. A compact whole-account decision is permitted only for explicitly connected Memory captures; the app preserves every original word and rejects independent current actions, adoption, unresolved ownership and saved operations. Other captures retain the complete indexed interpretation contract. Actual per-call context capacity, independent component token costs, fitted references, response-bearing conditioned references, output limit and completion/cancellation are observed only by the synthetic developer harness; none is analytics.
+
+SQL channels now acquire up to160 eligible distinct blueprint representatives before reciprocal rank fusion and final independent composition diversity. Equal-score buckets choose eligible IDs deterministically. Exact aliases and both approval gates are checked before admission. The rank-only weighted cursor retains metadata, not every decoded packet, and an8-second selection budget/caller cancellation fails the entire retrieval rather than accepting a truncated pool. Proposed records remain isolated prototype inputs; the shipping eligible resource still contains the exact59 independently AI-reviewed records. No new approval, schema, cloud processing or release threshold is implied.
+
+Checked-proposal injection is a downstream diagnostic, never model evaluation. The four retained failures now pass actual validation, file-backed saving, idempotent retry, reopening and shared presentation checks. Pixel UI and notification delivery require their separate existing checks.
+
+
+### Runtime revision repair (unreleased isolated Source26, 2026-10-06)
+
+The per-call Source25 run recorded 4,096-token capacity on each of 78 actual calls; 40 no-call outcomes have unknown capacity. Nineteen completed revision responses failed the completion contract and three revision calls were cancelled at the outer deadline. Aggregate token totals do not describe any call's capacity. Component costs are independently tokenized and nonadditive; selected, fitted and response-conditioned references remain distinct.
+
+Before new model evaluation, independently checked CO01, BE03 and AL04 proposals were injected after generation through actual staged completion, indexed validation, disposable persistent storage, retry/reopen and shared ItemPresentation. The original validator rejected valid recipient inheritance and an adopted joint call. A later diagnostic also found that a recipient replacement was treated as a second independent clock, removing the inherited tomorrow date and forcing review. These are downstream defects, not retrieval failures or model evaluation successes.
+
+Source26 reads complete current-source correction proofs, retaining literal relatives, participant roles, the current object and clock, distinct allocation beneficiaries and no-alert scope. New proofs reject unbound third-person relatives, quotations, conditions and additional acts outside their complete grammar. Final ownership, current-state and complete meaning checks still apply. Fixed required current-row keys replace generated indices. Nonshared rows have no generated anchor; shared rows still need complete, disjoint current literal anchors. A row with a complete independently derived current correction can return a compact reconciliation decision; otherwise the model must produce its full effective meaning. All current units and actual context remain in both stages and the final plan is reconciled before saving. Source-only lowering is not counted as worked-example benefit.
+
+Source25 remains the best measured broad candidate until a comparable Source26 measurement is sealed. Its exposed development48 result is OFF22/48 and ON26/48 complete, with zero unsafe outcomes observed. Four Memory improvements occur in both modes; four ON-only gains use prior compiled approved references. This is below the existing release criteria. The full 510,000 proposed bank stays usable only in explicit isolated experiments; the production-eligible 59-record asset, approval distinctions, physical-device/account requirements and thresholds remain unchanged.
+
+
+## Unreleased Source27: correct-proposal downstream partition repair
+
+Four independently checked complete proposals were injected after generation on Source26 semantics. MD02 saved three independent current role/date tasks; CO03, BE01 and BE04 were rejected at guards10,16,2 respectively. Source27 adds strict whole-plan current replacement/clock proof, conditional contact reading that retains the full condition and pending facts, and exact-cardinality declared-task routing. Shared anchors must still partition every current action; wrong objects, changed contacts/dates, impossible dates, quotes and extra actions fail separate guards. Source-only reconciliation is not claimed as analogy consumption. Source26 model results and all failed native snapshots remain frozen. No persisted schema or release threshold changed.
+
+
+Source27 v2 reproduced secondary false rejections at guard19 (conditional contact), guard21 (declared infinitival predicate), and guard23 (exclusive final-task routing read as an omitted action condition). V3 keeps independent positive current-source predicate/partition/whole-replacement proofs for those paths. Replacement topics now require positive nominal lexical tags; missing/unknown tags decline, and extra imperative/conjunction controls are explicit. Exclusive routing is handled only by the closed one-final-task proof; ordinary conditions retain their guards. A foreign name present in prior instructions and rejected OFF outputs is removed from instruction/schema illustrations while preserving the intermediary/nested-relative rule; this is plausible contamination prevention, not a measured causal claim. V2's failures and static concern remain frozen.
+
+
+Source27 v3's native run finished 20/24 passed. The correct CO03 replacement and BE04 declared shared tasks still failed because the simulator has no lexical-class assets. V4 adds a complete positive physical nominal fallback scoped to these readers and a closed full predicate/object proof for declared partitions. It reuses existing noun grammar and ordinary object vocabulary; every literal recipient, object and clock still comes from the current source. Unknown suffixes, pronouns, punctuation and extra acts decline. Missing lexical assets are explicitly exercised without granting unknown tags permission. This is a downstream diagnostic repair, not a model correctness or release claim.
+
+
+V4 finished 23/25 passed. Whole-plan fallback still declined an ordinary physical compound head; shopping and a negative reminder carried a closed capture-position prefix into the old organizer. V5 extends ordinary physical noun compounds and normalizes only explicit position-routing immediately before a direct head, preserving complete original evidence and every continuation/negative clause. Nominal lexical fallback restricts determiners to a/an/the; no/neither controls decline. No saved mutation permission or model correctness is inferred.
+
+
+Source28 isolates the full-suite operation handoff regression. An optional item-only response can no longer erase the mature operation API when the exact immutable current source re-partitions to identical complete operation fields and identical independent creation remainder with no unowned meaningful words. Changed targets, missing creations, quoted or denied sources decline. This reuses the existing operation grammar, not an independent model semantic score. Saved matching, broad confirmation, stale versions, atomic deltas, retry receipts and actual repository saving remain authoritative. Runtime still runs before handoff; complex nonoperation captures do not gain a confidence bypass.
+
+
+Source28 v1 finished32/33 focused native methods passed, including five preexisting repository-operation protections that failed in Source26. Test-only v2 exposed the mixed-case first failure: separate rereading removes the closed Also cue and changes sourceQuote/repair/word-index metadata while all semantic fields match. V3 proves only that single whole-remainder cue difference and retains the complete original; unknown/multiple residual changes decline.
+
+V3 also replaces free outline-row enumeration with one required decision per app-created current ownership atom. Canonical purpose or direct owner links cover every current atom; foreign/missing keys, cycles, orphan links and duplication decline. Complete positively proved declared-task partitions supply exact disjoint current anchors locally; all existing final ownership, clock, condition, correction and saved-state validators remain. Unchanged declared current literal acts avoid generated echoes only after existing complete ownership/shared-clock checks pass. Whole Memory retains its compact account path. Output reservation follows actual current atom count with no arbitrary30-unit limit; full transcript/context and later reconciliation remain in every model phase. This is a candidate implementation, not a model improvement or qualification claim.
+
+
+V3 build stopped before tests because a provenance reconstruction attempted to mutate immutable fields; V4 reconstructs the value without changing the model contract. Static review also found that already proved shared literal rows still entered the second-stage shared-row set, which requires every shared row to be requested. V4 passes only remaining required shared rows consistently; full final ownership remains validated. A correct mixed declared-task plus nonadjacent correction control completes all three actions. Unproved coordinated/shared/collective-context syntax retains the previous expressive outline contract rather than forcing multiple meanings into one atom owner. This dispatch does not approve semantics; all complete-source validators still apply. Actual ownership mode and graph component costs are observed per call, with framing labels included.
+
+Source28v5 isolated prototype: unsupported shared-source dispatch now retains the expressive outline for detached each/every/all contexts and coordinated plus, +, then, slash and first-person commitments. These negative syntax checks select an output contract only. They do not approve actors, timing, meaning or saved mutations; final source/ownership/saved-state guards remain authoritative.
+
+Source29v2 isolated prototype: fixed ownership schema uses a shared finite enum containing only valid purpose codes/current-key links, rather than free String descriptions. Current complete quantity reconciliation independently compares every source/proposed allocation, literal owner/product, outer count and contents; only its exact package predicates avoid the detached-clock interpretation. An independently retained factual unit cannot be merged into an actionable row. Original full source/current context, final role/timing/quantity/state guards, atomic persistence and release thresholds remain required. No model improvement measured yet.
+
+
+### Source30 isolated typed saved-change handoff (unshipped)
+
+A closed saved-change runtime reader admitted cancel/remove commands but always constructed a generic positive revision. Reuse the complete current-source operation partition when it owns every word and has one typed request; preserve all existing specialized fields and repository identity/stale/atomic validation. Exact quoted notification-only edits remain amendment holds when snapshot verification fails. No saved IDs are authored by the interpreter. This candidate is unmeasured until focused actual-repository checks complete.
+
+
+### Source30 bounded ordinary current speech acts (unshipped)
+
+Preserve direct literal communication, explicit uncommitted ideas, whole location facts and closed physical reminders through complete current-source grammars. Every unit and original occurrence must be owned; quotations, unknown predicates, corrections, conditions, saved changes and later self-commitments decline and still use example-assisted reconciliation. This is a positive full-source contract, never an old-confidence bypass. The existing temporal resolver and durable repository remain authoritative. Full filler-only title display returns the original audible words instead of accepting a partially polished filler phrase. Native/model qualification is pending.
+
+
+### Source31 scheduler acknowledgment actor ownership (unshipped)
+
+A scoped XCTest crash attachment identifies a SwiftData trap from atomic reminder acknowledgment invoked on the scheduler's cooperative executor. Require both scheduler callbacks to be MainActor function types and await their actor hop before repository or UI state access. Delivery work remains asynchronous on its existing executor; ordering, stale snapshot checks, durable receipts and reminder acknowledgments are retained. Add a real serialized callback boundary control and full explicit-alert/deadline controls; runtime/native qualification is pending.
+
+### 2026-10-06 isolated Source31v3: complete unscheduled requests and literal clocks
+
+A whole positive ordinary-action frame may retain an untimed “remind me to” request as a resolved task without inventing an alert time. The action must independently resolve with no date, trigger, recurrence or missing person. Unknown conditional/location tails remain outside the certificate. A complete numeric clock is checked for legal hour/minute syntax and preserved clock precision; “25 AM” must not silently become a date-only default alert. This candidate is unshipped and requires the same focused and final integration gates.
+
+### 2026-10-06 isolated Source33: current source metadata and held-target boundary
+
+Seven independently checked seed proposals reveal that indexed lowering drops the named person on a valid Memory fact and the reminder wrapper blocks a valid direct communication recipient. Reuse the complete positive CURRENT frame only for a single unchanged compatible-purpose row; preserve the exact source and recipient-conflict checks, and never use it for generated rewrites, shared anchors or corrections. Untimed complete action requests keep no invented alert. Memory person metadata comes from the actual current source reading, not example/generated identity. Literal described endpoints and simple purchases may use the same complete-source certificate. Held/review knowledge is excluded from saved-action candidates; existing whole-name, date, unique identity and stale-state safeguards stay in force. Unshipped candidate; native and final qualification pending.
+
+### 2026-10-06 isolated Source34v2: contextual current nominal arguments
+
+The short positive speech-act certificate reads an otherwise unproven noun argument from its whole current sentence rather than retagging the detached phrase. The exact argument must occur once, occupy complete token boundaries and account for every token; its head must be a noun and every preceding token a noun, adjective or literal article. Unknown tags, clauses, conjunctions and incomplete endpoints still reconcile through the interpreter. Existing nominal readers elsewhere are unchanged. This repairs the reproduced oat-milk preference/purchase admission defect without adding a food vocabulary. This isolated candidate remains unshipped and needs the same safety and final qualification gates.
+
+### 2026-10-06 isolated Source34v4: complete positive phrases without lexical assets
+
+The native Source34v3 diagnostic recorded OtherWord for every full-source and detached token with the development override false. Contextual tags alone therefore cannot prove these ordinary arguments on this simulator. The short certificate now reuses existing product names/compound phrases through an exact one-product API that drops no connectors, quantities or extra words; adjacent known products remain outside this single-item certificate. A complete article plus one existing service-role seed may remain a literal described task without contact identity. The resolver must return exactly the whole description, and current timing/delivery/resolved-state checks still apply. No new food/role vocabulary or permissive unknown-tag rule was added. Production behavior, device asset availability, model benefit and final qualification remain separate evidence.
+
+### 2026-10-06 isolated Source34v5: shared purchase action/purpose
+
+The native positive purchase frame reached a resolved note because the shared action vocabulary omitted purchase and the explicit shopping-purpose reader only matched buy/order. The shared action and shopping frames now include purchase consistently. Original wording, temporal grounding, negation, ownership, list/correction reconciliation and saving rules remain intact. The change is isolated and unshipped, with focused safety and same-cohort native checks required.
+
+
+### 2026-10-07 isolated Source85: lossless saved-context object shapes (unshipped)
+
+The own Source84 post-save denial/purchase call observed a 4,096 context capacity. Its complete current prompt was 4,376 tokens before instructions, schema or output reserve, so no generation started. Correct independently checked semantics already pass current-context validation, durable saving, retry, reopening and shared presentation. Truncating snapshots or dropping saved items would not repair this safely.
+
+Offer an additional transport that stores repeated object field-name shapes once, preserving every field value and ordered array member alongside existing exact string aliases. Require reconstruction to equal the entire canonical original serialized context JSON. Compare the complete representations, including shape and string tables and the format explanation, using that call's local model tokenizer; choose only a strictly smaller representation. Full native snapshots, saved identifiers, fractional Date authority, transcript, validation, repository mutations and reminder behavior remain unchanged. Canonical roundtrip proves serialized representation equality, not model understanding or permission to change saved state. Model interpretation and full app results must be measured separately.
+
+This candidate also retains Source84's independently checked corrected communication restatement: the literal current recipient, verb and approval actor must match the complete prior correction; extra actions and changed timing or roles decline. Source84's six original native methods improved from two to three passes, with no previous passing method regressing. That source-only certificate used no examples; causal retrieval benefit is not established. Neither candidate is shipped or release-qualified.
+
+
+### Source86 unshipped lossless complete-context transport
+Source85 actual six remained 3P3F. Its full nine-item follow-up context measured4,121 tokens; complete admission4,813 exceeded the own4,096 capacity and generation did not start. Source86 replaces only optional transport syntax with fully tagged arrays and shared object field tables/exact repeated strings. Every original array/object is tagged, including empty/literal marker containers, and the whole canonical JSON must roundtrip before the own SDK accepts a strictly smaller candidate. No current field, item, permission or native snapshot is removed. Semantic output, validation, persistence, reminders and original generation assertions are unchanged; benefit is unmeasured until current calls execute.
+
+
+### Source87 unshipped readable exact Data transport
+Source86 focused10/10 and ownhost passed. Its exact synthetic9item context still consumed3,918 SDKtokens (shape4,087), without an inference or admission claim. Source87 adds a strictly lossless optional tag for base64 strings containing UTF8 JSON. It renders the exact decoded JSON text and reconstructs the same base64 bytes, preserving original key order/whitespace/values. The whole current JSON must roundtrip and the own SDK must prefer the COMPLETE representation. Native snapshots, all temporal/source/state authority and output/validator/repository contracts are unchanged. Additive own fullpreflight cost diagnostic generates nothing; no capture gain inferred.
+
+
+### Source88 unshipped complete denied-agreement speech act
+Source87 actualsix remained3P3F. The formerly oversized followup outline now fit3,970/4,096 and completed, but returned u0=T/u1=S for “I have not agreed to cancel that appointment. Also buy bread.” This wrongly labelled the denied agreement an active task; the existing cancel keyword then requested a revision whose complete preflight4,796 exceeded4,096. Source88 positively proves only a complete, unquoted first-person negative agreement/consent to cancel/delete/remove a literal appointment/meeting/booking/task/reminder/event. It supplies the existing N current-purpose singleton, retaining the exact denial and independent purchase. It resolves no saved target and grants no operation/alert authority; quoted, coordinated, conditional, timed or positive consent expressions remain outside this bounded proof. Whole-current reconciliation and repository/state protections remain unchanged. Currentbenefit is unmeasured.
+
+
+Source88v1 focused12P2F retained: new standalone helper was not reached by the two-atom constructor, and the existing complete-capture purpose gate still vetoed cancel in the denied agreement. Source88v2 binds only an exact owned negative-agreement status at any capture size after the same whole-capture correction/adoption veto. It exempts only the proved own negative status occurrence, retains the generic>5 gate unchanged, and leaves all other source words/atoms/roles/permissions intact. The new88v1 later-adoption assertion is corrected to expect no early binding, with extra complete-capture veto/quoted-scope controls; all pre88methods/assertions are unchanged. No actual generation gain yet.
+
+
+Source88v3 closes a source-review gap before actual generation: the existing complete-capture adoption veto is extended to consent/consented/consenting and explicit delete, matching the new negative-status vocabulary. A complete owned negative denial still exempts only its own occurrence; later positive adoption or deletion vetoes early purpose binding. The new regression covers perfect/progressive/contraction consent and bare deletion plus a valid denial-only control. Source88v2 focused14PASS and ownhostPASS remain preserved; v3 actual capture benefit is unmeasured and its separate host build is not run.
+
+
+Source89 experiment: Source88v3 actual same-six generation is4PASS2FAIL (Garden/Train remain); independently checked complete proposals continue through actual validation/save/retry/reopen/display. Garden repeatedly emitted integer slot indices as if they were encoded meanings. Larger eligible fixed ownership graphs now request two exact-cardinality arrays: natural-language purpose and direct current owner position. This removes purpose/link arithmetic without allowing names, new facts, source omission or free rows. Homogeneous array generation guides cannot express per-slot singleton constraints, so the decoder re-proves every unchanged compactAllowedDecisions bound, exact canonical self-ownership, direct links, role ownership, forced Memory/shopping/declared acts and complete graph before unchanged validation. Small fixed and legacy expressive contracts, revision, full source/context/state and durable saving stay unchanged. New tests cover independently checked nested roles/dates, nonadjacent correction, complete26-unit Garden ownership,31-unit cardinality, types and forced-purpose rejection. No generated improvement claimed before measurement. DEBUG synthetic observers now record exact public-API schema Codable bytes and assembled prompt/instruction/reference inputs per admitted call; SDK internal schema rendering remains unexposed and is not inferred.
+
+
+Source89v1 focused17PASS1FAIL is retained. The new Garden assertion incorrectly asked the contiguous literal-quotation guard to find concatenated nonadjacent source groups. The checked decoder, seven exact evidence groups/purposes and staged plan already passed. Source89v2 changes only that new coverage assertion to check every exact literal current unit flattened across the unchanged groups, and marks that new test MainActor for its existing actor-isolated fixture. All pre89methods/assertions and production bytes remain exact89v1. This is a test-boundary correction, not a production repair or model improvement.
+
+
+Source90 integration experiment follows89v2 actual6 4PASS2FAIL with no gain: Garden used a cheaper202token schema but emitted separate wrong-purpose owners and Train emitted one26-unit task; both current validators rejected atindexed-guard19. Correct complete proposals still pass downstream. The interpreter now receives optional FALLIBLE current parser grouping discovery pointers, grounded only in complete current unit occurrence membership under identity repair lineage. No parser titles/facts/names/clocks/savedIDs/confidence are copied. Overlapping/partial/unassigned units remain explicitly unassigned; all source units stay in the authoritative prompt. Stored kinds are explicitly tentative and do not replace purpose distinctions. References are still retrieved independently of parser confidence. A whole hint packet is omitted if required source/context/instructions/schema/output leave insufficient capacity; source/state/whole-plan validation and durable saving remain unchanged. Current model gain is UNMEASURED. Three new tests check pointer-only output, unknown membership/brokenlineage rejection, and attach actual Garden/Train source/parser discovery; all prior376 methods/assertions are preserved.
+
+
+Source90v1 pre-build Swift parser found one whitespace syntax error in a new test assignment. V1 remains frozen with the failed parse retained; no simulator/native/model execution occurred. Source90v2 changes only that assignment spacing and this append-only note; production and all assertions remain exactv1.
+
+
+### Runtime candidate Source90v3: optional discovery admission and original occurrence mapping
+
+Source90v2 is preserved with 19/21 focused tests passing and its own successful host compile. Two new discovery tests failed: one prohibited the legitimate personFollowUp stored kind by substring; Train's original opening filler removal declined all suggestions under an identity-only mapping. All 18 prior focused methods passed. This is diagnostic evidence, not model evaluation.
+
+The optional grouping packet and its caution instruction are now measured and admitted together against this call's SDK capacity. When they do not fit, both are omitted and exact base instructions are restored. The counted instructions are the actual session instructions and the exact debug input record. Required current source, actual context, schema, output reserve and downstream guards remain complete. Hints are fitted before references, so they may reduce fitted references; per-call selection/fitting/conditioning evidence must measure this tradeoff, with no static quality claim.
+
+Creation-coordinate grouping pointers may map to original occurrences only through a bounded, singleton, unique, increasing, word-equal map, with creating/corrected words equal and changed repair stages confined to disfluency. Every original unit containing deleted words stays explicitly unassigned. Mapping supplies fallible discovery only, no approval of the repair, parser kind, saved operation or reminder. The complete original transcript remains authoritative. New controls exercise corrupt occurrence maps and exact SDK boundary admission without generation. The invalid substring test is corrected to prohibit the identity field personName, while still requiring only the declared grouping schema and no copied facts.
+
+
+### Runtime Source91: qualification evidence and account boundary diagnostics
+
+Production source is byte-identical to Source90v3. Existing pilot and sealed-240 repository runners now retain per-case, per-phase evidence on returns, held results and throws, using UUID-named disk stores and separate value-only save/retry and reopen/recovery function scopes. All sessions and operation state, complete item snapshots, exact date values, shared ItemPresentation values and scoped typed notification requests are retained. Notification observations use the machine zone and an empty scheduler drain; captures remain unscheduled, with no delivery, pixel or physical-device credit. A failed trace write attaches its current packet before marking an infrastructure failure; no successful grade is fabricated. Existing exact240/12strata/20 validator and independent scoring remain required.
+
+Declared INPUT key names and known seed values are audited without decoding unknown or expected values. Current pilot typed temporal intent is unrepresented by its historical seed mapper, so such input fails before model execution instead of silently replacing actual context. Saved places and the raw date-only alert preference are isolated/restored; fixtures use an explicit recorded fallback setting. Existing checked Garden/Train diagnostic assertions and semantic proposals remain unchanged, while their live result/model objects now leave lexical scope before the disk reopen.
+
+The local StoreKit monthly expiration test retains every original assertion and its order. Immediate store values are copied at the original post-refresh assertion boundary, and local-session/SDK receipt observations occur afterward. No observer sleep, refresh, finish, renew, purchase or account mutation is added. Receipt details are emitted only for Xcode transactions with known synthetic product IDs; subsequent SDK queries cannot prove the prior refresh's internal sequence or a daemon/race root cause. This is diagnostic evidence, not a production entitlement repair or release qualification.
+
+
+## 2026-10-07 — Isolated Source92 admission priority and held recovery repair
+
+The current Source90 six-capture run retained four complete passes and two failures. Its Train outline admitted zero references, versus one in Source89, after optional parser hints were fitted first. Source92 fits complete required source/context/schema/output, then whole worked examples, then the whole optional parser-hint packet and caution instruction. Actual final instruction/prompt/schema costs and selected/fitted/response-conditioned IDs remain observable per call; no required meaning or safety threshold is removed. A real-SDK accounting test exercises this priority with an explicitly synthetic saturating reserve, without generation.
+
+The Source91 disk diagnostic also found recovery added a date-only temporal intent and time-trigger kind to an unresolved missing-target operation. Source92 excludes unclear rows from temporal backfill; their current held metadata remains unchanged across reopen/recovery. Existing legacy task backfill remains covered. Correct-proposal injections are downstream diagnostics only and never qualify model accuracy or the fresh 240 gate.
+
+Source92v2 is a test-harness-only follow-up: pilot seed IDs must be distinct/nonempty before any model call. A regression also confirms missing reminder.kind was already rejected by the required typed field inside retained preflight. Production is byte-identical to Source92v1; its focused38 result is retained, not rebound as a new execution.
+
+Source92v3 changes test evidence only: the existing native pilot captures both library-selection/compiled-analogy events and Foundation-model call events, plus observed locale and exact active index/exclusion/mode configuration. This distinguishes no-model calls from no-example consumption. Production is exact92v1/v2; no new interpretation algorithm or grades.
+
+
+### Source93v2 isolated unresolved-only decision transport
+Source92 actualsix remained4PASS2FAIL; both failing calls completed own4096-context generation and were rejected by semantic validation. Source93v1's proposed local-component extension is preserved ABORTED before native execution: existing whole-capture adoption/retraction vetoes must remain, and local window proof alone does not prove external reconciliation. No original assertion or guard is waived.
+Source93v2 retains all existing source proof, contract-eligibility and full-validation bytes. For larger eligible graphs with singleton app-proved dispositions it generates only unresolved dispositions in declared order. Owners still identify original full graph positions. Every forced slot is restored before unchanged complete keyed decoding, staged-plan/source/context/state validation and durable saving. Exact counts/types/ranges/purpose/direct-link/cycle/orphan protections remain. Small contracts, wholly unresolved graphs and unproved expressive source keep existing paths. A shorter response reserve follows only actual unresolved response cardinality; no current source/context meaning is removed. Native gain, regressions and release qualification remain UNMEASURED.
+
+Source93v2 focused40PASS0FAIL is retained. Independent readonly review found its new prompt omitted exact roleContextOwnerKey/retainedKnowledge/allocationPurchase singleton decisions even though the decoder restored them. Source93v3 explicitly renders EVERY singleton code and ORIGINAL FULL owner position, with every unresolved slot marked. This is current source proof metadata only; no example facts, identities or generated approval. Legacy prompt text stays byte-identical when the new branch is inactive. A new regression checks all existing singleton forms. Production validators/proofs/eligibility/persistence and every prior assertion remain unchanged; actual model benefit remains UNMEASURED.
+
+
+### Source94 isolated local StoreKit canary boundary diagnostic
+Production source is exact Source93v3. Source91 monthly setup returned a raw local SKTestSession lifetime transaction, but the initial global SDK entitlement sequence was empty. This does not prove verification or a nonlocal server; the subscription store and monthly body had not started. Freeze that original matching boolean/counts/query times, local-only raw canary fields, app/test bundle identifiers and exact configuration hash BEFORE additional awaits. Only when the original guard fails, observe latest/targeted entitlement SDK results with separate timestamps, then throw using the immutable original boolean. No refresh/sync/finish/new purchase/credential/account action is added. Existing local canary purchase and all original monthly assertions/ordering remain. Diagnostic results and root cause remain UNMEASURED; later receipts can never convert the original failure into a pass.
+
+
+### Source95 isolated keyed unresolved address repair
+Source93 same12 native captures stayed9C3S0U in each mode, identical to92; all19 own4096-capacity calls completed without cancellation. Output/schema costs fell while prompt/graph/instruction costs rose; no complete capture or causal retrieval benefit is claimed. Exact own BE01 free positions[0,5,7,9] emitted task at fullslot0 with owner1; BE04 free[1,2,3] emitted task at fullslot1 with owner4. The unchanged decoder safely rejected these redundant canonical-self errors. Wrong purposes and unresolved other meaning remain separate defects.
+For this partial-free branch, each required unresolved CURRENT key now carries a constrained natural-language purpose or an explicit context:/correction: CURRENT-key link. A canonical purpose owns its property key by construction, eliminating a redundant numeric address decision. Every singleton source proof is still explicit in the full graph and restored before the unchanged full decoder/staged/source/context/state validators. Unknown/extra/missing keys, facts, links/cycles/roles/ownership constraints still decline. Small/wholly-unresolved/legacy contracts and original assertions stay unchanged. Output fit/token costs, whole-capture correctness and regressions require own measurement; no generated benefit or production approval inferred.
+
+The keyed branch renders the full current graph directly as current-key/unit/action plus exact APP-PROVED natural decision or UNRESOLVED label. Numeric full-position/self-address metadata is redundant for this contract and is removed only from its transport; literal source ownership keys, every declared action and every forced role/Memory/shopping/purpose/context decision remain explicit. The complete indexed transcript and actual context remain authoritative and unchanged. This targets Source93's measured extra graph/instruction cost without omitting meaning; own SDK counts remain required.
+
+
+### Source96: targeted local monthly receipt observation
+
+Test-only follow-up to closed Source94's original expiration failure. The original monthly purchase/replay/restore/expiration method and assertions stay byte-exact. After its original assertions and existing global/latest observations, a separate timestamped `currentEntitlements(for: monthlyID)` query records filtered known-local verification data, availability and count. Empty observations and unsupported APIs are distinct. No sleeps, refreshes, sync, finishes, extra purchases, receipt overrides or production entitlement changes are added. Later receipt reads cannot prove what the immediate refresh consumed or establish daemon causation. Production runtime is exact Source95v1; model quality is unchanged by this account-only diagnostic. Native execution and outcome are UNRUN when written.
+
+
+### Source97: retain admitted references across follow-up decisions
+
+Closed Source95's ON corrected-list capture hit the explicit outer20-second deadline during its revision call. Own4096 capacity was observed for both calls: outline prompt1808/instructions226/schema307/output768 admitted4 references; revision prompt3053/instructions415/schema147/output128 admitted5. Revision had no response; SDK awaited8.09973025s and threw CancellationError after the outer deadline event. The fifth1142-token reference was added only because the revision schema/output reserve was smaller. This is an observed admission expansion and cancellation, not proof of model capacity exhaustion or a causal quality diagnosis.
+
+Follow-up candidate selection now retains only reference IDs admitted for the successful outline, in original retrieved order. The follow-up still independently fits those complete examples against its own measured budget; it may admit fewer but cannot add previously unadmitted examples. Every current source unit, actual context and complete reconciliation stays unchanged; source/owner/timing/saved-state validation, output limits and20-second deadline are unchanged. Per-call diagnostics distinguish retrieved, outline-admitted, candidate, fitted and response-conditioned references. Checked current BE01/completeBE04 downstream diagnostics passed on95 before this implementation. OwnSDK synthetic admission regression controls and same-cohort OFF/ON evaluation are UNRUN when written; no retrieval gain or release claim.
+
+
+### Isolated Source98: close qualified joint-call correction before a second model call
+
+The successful model outline still accounts for every current unit. Only the existing closed joint-call grammar, additionally qualified by the existing complete positive nominal-topic proof, whole original-owned contiguous evidence and no shared or held row, can supply every requested correction locally. The complete capture then passes the existing indexed validator with its actual clock, rules and saved context. Only the exact literal Actually correction marker is exempt; every other current adoption/correction, including inside a topic, still vetoes the optimization. Generic communication/allocation proofs remain proposals for model review; no output, deadline, saved-state, reminder or ownership guard changes. Checked boundary diagnostics cover the literal participants/date, independent idea, save/retry/cold reopen and shared display. Native/model evaluation remains UNRUN until recorded.
+
+
+Source98v2 adds only declined-stage DEBUG observations and an actual simulator topic-token attachment after v1 failed three new success cases (58 passes/3 failures). No model evaluation has run. It preserves the same qualification, full validators, schema, source and saved-state behavior.
+
+
+### Isolated Source98v3: model reconciliation decision in the first complete outline
+
+The v2 actual simulator diagnostic found all topic tokens OtherWord, so no lexical noun certificate existed. No vocabulary or lexical authority was fabricated. For structurally closed own joint-call candidates only, the legacy first response now chooses none or an exact current source-proposed reconciliation key together with all current purpose/ownership rows. Approval is bound only to that exact complete unheld nonshared Task evidence. Known topic acts/conditions and whole-capture changes decline even forced approval. Every requested correction must close together and the complete actual-context validator remains required. none or any unqualified row retains the ordinary second-model revision. Empty-candidate and fixed contracts remain unchanged; current proposal, instruction, schema and output budgets are measured at each own SDK call.
+
+
+### Isolated Source99: retain existing Memory constraints in legacy model input
+
+The expressive legacy outline previously omitted all ownership atoms, including already proved complete own retained-knowledge units, then rejected their burial in actionable rows downstream. The required current packet now carries those exact checked unit IDs and preserves their uncertainty, annotations, coherent grouping and later correction context. It supplies no new owner, row count, literal fact, purpose proof or eligibility rule. Fixed contracts, complete source/context, model output/reserve, validators, saving and reminders stay unchanged. The per-call ownershipGraph/current/framing costs include this required packet. The diagnostic’s optional lexical tag is now rendered explicitly without an optional-interpolation warning. Focused/native evaluation remains UNRUN.
+
+
+### Isolated Source100: make other-person work explicit in free-current-key model instructions
+
+The actual final first-outline selector now tells the model that others’ reported plans and jobs remain Memory unless the user adopts responsibility. It also retains own communication, delegation, reminders, literal roles, conditions and later corrections/reassignments. Only the measured free-current-key branch gains this generic instruction; legacy, small keyed and full-separated strings retain their prior bytes. Extracting the selector allows own-SDK admission to exercise the exact runtime instruction. No new proof, purpose binding, noun vocabulary, owner/cardinality default, schema, output reserve, deadline or downstream authority is introduced. The full current source/context and unchanged validator still decide whether a model proposal is accepted. Focused/native/model Source100 work is UNRUN.
+
+
+### Isolated Source101: preserve declared independent Memory membership
+
+Source99 OFF silently accepted one Note owning two complete retained factual roots despite a later explicit ordinal note declaration. The actual validator now rejects that merge using original whole own-voice units and existing retained-knowledge/ordinal-label readers. Optional generated currentMeaning and review flags cannot bypass the membership check. Coherent details without a separate retained root declaration remain groupable. Required legacy source guidance distinguishes independent Memory access from coherent details without inventing row counts or facts. No source-reader eligibility, schema, deadlines or output limits change. Existing full validation/save/display diagnostics remain required. Explicit later Memory-combination has no existing complete reconciliation proof; it remains visible recoverable review, with full source retained, rather than claiming the old independent grouping is final. That unsupported case is a retained limitation, not model correctness credit. Focused/model Source101 work is UNRUN.
+
+
+Source101v2 scope repair: exact complete original retained-root anchors can retain separate accessible intentions while sharing broad evidence. The membership guard exempts only an exact whole retained-unit anchor; all existing disjoint-ownership and full meaning checks still apply. Partial anchors, raw generated wording, generic correction words and review flags do not waive the boundary. Source101v1 is preserved, with its native focus separately recorded and model UNRUN. The complete-anchor diagnostic is native UNRUN on this new source.
+
+
+Source101v3 plan-level scope repair: a full retained-unit anchor alone did not prove the other root had a separately accessible owner. The complete plan now requires exactly one distinct complete literal Note owner per affected retained root, and every row crossing that boundary must be one of those owners. Existing ownership/meaning checks remain independent. Missing, duplicated, partial or merged owners fail; raw wording and review flags do not waive membership. Source101v2 is preserved and model UNRUN. The one-owner counterexample and complete two-owner positive control are native UNRUN here.
+
+
+Source101v5 downstream repair: sharedUnitTiming formerly required every shared row anchor to occur inside every cited original unit, rejecting correct distinct Notes with broad shared provenance before the membership check. The timing layer now recognizes only exact complete distinct original retained-Memory owners over wholly retained own roots. It verifies full ownership and complete membership, rejects missing/duplicate/wrong-purpose/partial/foreign-contact/extra-action owners, and supplies no shared clock string. Per-row complete source, meaning, temporal, state, save and reminder checks still run. Two new native diagnostics exercise inverse controls and real validation/save/retry/cold-open/shared-display. Native/model source101v5 remains UNRUN.
+
+
+Source101v6 downstream knowledge repair: after shared timing admission, the runtime observer showed indexed-guard-22 rejecting exact factual anchored Notes because knowledge was recognized only for unanchored whole rows. The existing complete original retained-root proof is now shared by timing and final knowledge lowering. Only a Note with exact full original retained-unit anchor/meaning, no review/contact and wholly original own retained evidence qualifies; full plan membership/ownership checks remain required before lowering. Current actions, partial anchors and dropped annotations cannot become factual certificates. No reminders, due dates or contacts are granted. The singleton literal identifier control and full prior diagnostics remain native/model UNRUN on this source.
+
+
+### Isolated Source103: later own finite roles veto early other-job binding
+
+The corrected native102v2 diagnostic reproduced premature Memory/ownership binding after contracted own future adoption. The other-actor optimization now declines for later contracted present/perfect/future own forms and ordinary finite commitments with existing affirmative adverbs. This is a conservative veto only: every original unit remains available for complete interpretation; no negative or uncertain statement gains adoption, saved-target or reminder permission. The strict positive object/actor proof is unchanged, including the opaque shade-cloth decline. Native/model/release Source103 work remains unrun until its own evidence closes.
+
+
+### Isolated Source104: source observations, conservative role veto, measured best baseline
+
+Required legacy retained-Memory hint data introduced in99 is removed from runtime assembly after99/101 failed to recover complete captures and lost a formerly correct OFF result. All complete current source, actual context, retained-knowledge guards and downstream independent-owner repairs remain. The free-current-key prompt may additionally carry a small exact same-actor future/job-declaration observation. It is explicitly unapproved discovery data, including an opaque literal predicate; it grants no noun proof, canonical purpose, contact, saved identity, action or reminder authority. Every unresolved key is still generated by the supported interpreter and the same complete source/state validator runs. Later first-person source conservatively vetoes early other-job bonding, including full/contracted perfect forms, negation and unknown finite predicates; this leaves the entire graph unresolved rather than asserting adoption. Short-capture gates, schema/output/deadline and durable saving/review/reminder contracts are unchanged. Focused/native/model Source104 UNRUN.
+
+
+Source105v1 is a TEST-ONLY own-SDK whole-contract diagnostic. Production source is byte-exact104v2. Existing Garden/Train inputs, full freshly seeded disposable saved context, current clocks, original units and complete fitter compare separated/all-free-keyed/expressive costs before generation. Train fixed eligibility remains false and cannot be changed by a cheaper representation. No inference result or model quality credit.
+
+
+Source105v2 implements ordered current decision arrays for large eligible ALL-UNRESOLVED graphs only. Own105v1 SDK diagnostic measured the existing keyed enum schema10078tokens against own4096capacity, so merely enabling all-free keyed is rejected. A single shared array element guide avoids per-property enum expansion. One explicit natural decision remains required for every original free position; canonical self ownership is implicit only after generating a purpose, while continuation/correction names exact original current keys. The decoder restores all proofs and delegates unchanged to the existing complete keyed/fixed/whole-source/state validators. Partial, short and expressive/shared-action selection remain unchanged; Train's unproved inner predicates retain expressive revision/anchors. Source/context, applicable output reserve, timeouts and effects remain unchanged. OwnSDK costs, native model accuracy and regressions are UNRUN until recorded.
+
+Source106v1 TEST ONLY measures exact-original-keyed string regex guidance under the full current graph/context and existing decoder. The actual105v2 Garden response enumerated schema choices instead of interpreting source. This diagnostic must establish own SDK schema cost before changing runtime. A separate canary reproduces later imperative/let-me transfers missing from the current optimization veto. No production change, generation or model accuracy claim.
+
+Source106v2 repairs the reproduced Take-over/Let-me later-role veto without granting adoption: complete ownership remains unresolved for model/whole-source validation. Source106v1 actual canary had eight assertions fail across both forms. The exact-key string response replaces the105v2 ordered enum array only for eligible large ALL-FREE graphs; partial keyed, short and expressive Train contracts remain unchanged. The actual105v2 Garden response copied the enum menu;106v1 regex schema1523tokens crowded out every worked reference despite fitting, so it is rejected. Literal-key strings carry no reference facts; the unchanged closed decoder rejects every foreign/invalid value, missing key, cycle or source-proof conflict before any effect. Full source/context, corrections, per-call budgets/deadlines, anchors/revision/full-state validator and durable effects remain unchanged. Own SDK preflight with at least one whole example is mandatory before model evaluation. No model improvement claimed until measured.
+
+Source106v3 repairs106v2's measured veto overreach: bare me/us in independent communication/reminder text no longer removes current other-job discovery data. The original Take-over/Let-me controls remain unchanged and two additional explicit transfer forms receive coverage. Full first-person reconciliation remains conservative; no transfer is treated as affirmative adoption.106v2 ownSDK plain-string schema432tokens preserved three whole references, while its93-method run91P2F exposed the discovery overreach. Failed candidate/results remain immutable. The literal-key transport and complete downstream/source/state checks are byte-identical106v2.
+
+Source108v1 repairs a reproduced worked-example/output-contract mismatch:106v3 Garden consumes complete library solutions while generating original-current-key strings; Train consumes the same representation while generating an expressive outline. Two already-reviewed59 records503251/456352 receive an independently input-first checked exact digest-gated first-response adaptation. Complete original input/context/lifecycle/solution remain unchanged. A conservative adapter requires disjoint complete whole-unit evidence and no operations/saved targets/corrections, roundtrips the unchanged fixed decoder, and emits the requested outline format. Ambiguous/shared/partial/unknown examples stay unchanged. Selection/exclusions/reference continuity, complete current source/context, schemas/reserves/deadline, semantics/validators/durable effects stay unchanged. The actual expanded text is used consistently for fitting, per-call token counts and recorded fitted inputs. Focused negative/ownSDK/downstream checks must pass, with at least one adapted record actually fitted, before original native evaluation. No model/capture gain is claimed until measured; latest whole105 ties best98 and106 original6 stays4P2F.
+
+Source108v2 corrects108v1 TEST-only async acquisition outside the XCTest autoclosure.108v1 build failed exit65/37.469248s before any test or inference; source/results preserved. Production runtime and every test assertion remain byte-identical108v1.
+
+Source108v3 isolates the admission diagnostic from automatic full-bank search using the exact previously observed six IDs per original capture.108v2 13P1F/14 failed only in admission selection with resource-deadline before generation; immutable evidence retained. Production selector and its8-second bound remain identical. Actual native6 still uses ordinary automatic selection and must report any retrieval failure. This is not a manual model evaluation or a resource fix; it determines whether the exact adapted prior examples can fit complete current data before inference.
+
+Source108v4 reuses keyedOwnershipPrompt for the keyed reference graph, eliminating a potential code/numeric-position notation mismatch for future forced slots. The only two digest-qualified records are all-free, and focused equality asserts their exact already-reviewed packet bytes remain unchanged.108v3 actual14P0F/87.146340s includes full prior-selection admission and checked durable downstream; this consistency edit receives focused integrity/admission checks before original6 native inference. No new record/semantic approval or model gain follows.
+
+Source109v1 repairs the measured108v4 literal-key contract failure: Garden copied foreign worked-example clauses, omitted3keys and was rejected; Train hit the unchanged20-second deadline. Only existing fixed-eligible ALL-FREE ordinary17–26key graphs receive two required bounded responses of at most13originalkeys, with a current-key bounded regex decision guide. Every part receives identical complete original source/context/clock/fullgraph, no earlier generated output as proof, and only the commonly fitted references. Every key is joined once before the unchanged complete decoder, stagedplan, revisions and source/state validation. No part commits. Cross-part cycles/orphans/partial/foreign output reject as a whole. Small/partial/forced/expressive(includingTrain)/largergraphs retain their existing path. One outer20-second cancellation budget stays unchanged. Both part schemas+wholecurrent+outputreserves+at least one common checked adapted example must fit ownSDK before model evaluation. More calls may hurt latency; no benefit presumed. Regex constrains form, not semantic correctness (Apple WWDC25 session301).
+
+Source109v2 retains v1's independently checked joined-graph and downstream diagnostics. It restores terminal per-call events on the ordinary outline path and gives both zero-generation preliminary admissions distinct phases with their own actual SDK inputs/costs. A cross-part correction control requires revision after the complete join; a partial or missing revision never authorizes a result. Source109v1's 18 focused checks passed in 93.585831 seconds, with zero generation calls; this is not interpretation or launch qualification.
+
+Source109v3 checks cancellation after each awaited preliminary admission and renders the actual flag on its terminal event. No model contract, admission budget, source/semantic guard or deadline changes from v2.
+
+Source110v1 replaces only the bounded regex-keyed transport with a bounded exact-length ordered array of closed current decisions. Source109v3 actual Garden first generation failed before output; its cause was unclassified by that native SDK wrapper. A separate own-host controlled diagnostic reproduced UnsupportedGuide for the identical 13-key regex schema, measured a closed keyed enum at5047schema tokens (unfit own4096), and generated the bounded enum array at445schema tokens. This host evidence is not a simulator/app correctness grade. The runtime therefore uses the supported array shape with explicit ORIGINAL key order, per-position closed decoder and complete cross-part reconciliation. Both exact previously reviewed examples gain reference-local ordered responses; original full input/context/solution/lifecycle stay untouched. Whole current source/context, reference admission, saved-state checks,20-second deadline and no-partial-effect behavior remain unchanged. Earlier full26 ordered output failures remain historical; bounding and actual matched worked formats must demonstrate benefit before broad evaluation.
+
+Source111v1 follows the closed110 same-six run (4P2F/101.112921s, no whole saved-assertion gain).110Garden's first13-decision array completed but walked the schema's current-target choices, including known link-to-link errors; the second call then cancelled at20s.111uses bounded literal current-key String properties without the unsupported regex or shared enum menu, retaining the exact reviewed keyed examples. Every value still passes the unchanged closed decoder. It also rejects already-known same-part link-to-link targets before another SDK call. Cross-part targets are never guessed: they remain provisional until both parts join and all existing correction/ownership/saved-state guards pass. Complete source/context/example admission and20-second deadline are unchanged. This is an implementation hypothesis, not a correctness gain.
+
+Source114v1 follows Source113v2 original-six4P2F: Train covered all26 IDs but proposed two wrong purpose/groups and failed indexed-guard-15; Garden's second13-key generation was cancelled by the unchanged20-second outer deadline. Source113's smaller schema/complete ID coverage was a component improvement without a saved-result gain. Existing complete current idea/conditional/event readers were available only after generation guessed their correct envelopes. Source114 exposes their exact original source occurrences and generic own matrix/explicit routing observations before generation, as discovery-only component candidates. They create no approved rows, purposes, recipients, clocks or saved changes; later adoption/withdrawal can overturn them. Every original source unit and actual context remains required. Large wholly free fixed graphs with a discovered complete multi-unit component use the existing single expressive compact partition instead of two partial purpose lists. Existing shared-anchor revision, complete graph/source/saved-state validation, durable saving and20-second cancellation remain. This is a new source-grounded partition hypothesis, not a correctness or retrieval-benefit claim; own-call resource evidence and same-scope saved outcomes must decide it.
+
+Source114v3 retains the114v2 component algorithm and30passing focused checks; its only runtime change clarifies that provisional component candidates do not override APP-PROVED decisions in existing fixed ownership graphs. The previous all-units-undecided wording conflicted with those current graph decisions. Decoders/semantic permissions remain unchanged.114v2 original-six and paired12 were not run; no generation-quality claim.
+
+
+### 2026-10-08 isolated candidate115: validate source membership before effects
+
+The exact observed wrong Train proposal passed indexed validation and saved a booked event plus one large review task. The complete checked seven-part proposal already passes validation, durable saving, retry, cold reopening and shared presentation. Candidate115 adds negative checks at indexed validation: an unheld packing row needs its own affirmative packing matrix; a complete original retained-project component cannot disappear inside an unrelated unheld action row without an existing complete current-source reconciliation. Components do not force a partition or freeze an earlier idea after later adoption. Unsupported adoption can preserve all current text for review. Shared anchors still need existing complete disjoint ownership/meaning validation. No schema, saved-data, reminder-permission or reference-approval change. This is an unpromoted repair, not model evaluation or release qualification.
+
+
+### 2026-10-08 isolated candidate115: validate source membership before effects
+
+The exact observed wrong Train proposal passed indexed validation and saved a booked event plus one large review task. The complete checked seven-part proposal already passes validation, durable saving, retry, cold reopening and shared presentation. Candidate115 adds negative checks at indexed validation: an unheld packing row needs its own affirmative packing matrix; a complete original retained-project component cannot disappear inside an unrelated unheld action row without an existing complete current-source reconciliation. Components do not force a partition or freeze an earlier idea after later adoption. Unsupported adoption can preserve all current text for review. Shared anchors still need existing complete disjoint ownership/meaning validation. No schema, saved-data, reminder-permission or reference-approval change. This is an unpromoted repair, not model evaluation or release qualification. Version3 focused execution found the packing guard wrongly required a quotation-only voice classifier on unquoted speech (32P2F); version4 accepts unquoted affirmative packing and closes the outside-anchor bypass. The failed version3 is retained, not qualification evidence.
+
+
+### 2026-10-08 isolated candidate115: validate source membership before effects
+
+The exact observed wrong Train proposal passed indexed validation and saved a booked event plus one large review task. The complete checked seven-part proposal already passes validation, durable saving, retry, cold reopening and shared presentation. Candidate115 adds negative checks at indexed validation: an unheld packing row needs its own affirmative packing matrix; a complete original retained-project component cannot disappear inside an unrelated unheld action row without an existing complete current-source reconciliation. Components do not force a partition or freeze an earlier idea after later adoption. Unsupported adoption can preserve all current text for review. Shared anchors still need existing complete disjoint ownership/meaning validation. No schema, saved-data, reminder-permission or reference-approval change. This is an unpromoted repair, not model evaluation or release qualification. Version3 focused execution found the packing guard wrongly required a quotation-only voice classifier on unquoted speech (32P2F); version4 accepts unquoted affirmative packing and closes the outside-anchor bypass. The failed version3 is retained, not qualification evidence. Version4 passed34/35 with the checked Train control restored; its new outside-anchor negative reached an earlier contact guard, so version5 removes the optional generated contact from that negative fixture to exercise membership independently. Runtime bytes remain identical to version4; no failed assertion was removed.
+
+
+### 2026-10-08 isolated candidate115: validate source membership before effects
+
+The exact observed wrong Train proposal passed indexed validation and saved a booked event plus one large review task. The complete checked seven-part proposal already passes validation, durable saving, retry, cold reopening and shared presentation. Candidate115 adds negative checks at indexed validation: an unheld packing row needs its own affirmative packing matrix; a complete original retained-project component cannot disappear inside an unrelated unheld action row without an existing complete current-source reconciliation. Components do not force a partition or freeze an earlier idea after later adoption. Unsupported adoption can preserve all current text for review. Shared anchors still need existing complete disjoint ownership/meaning validation. No schema, saved-data, reminder-permission or reference-approval change. This is an unpromoted repair, not model evaluation or release qualification. Version3 focused execution found the packing guard wrongly required a quotation-only voice classifier on unquoted speech (32P2F); version4 accepts unquoted affirmative packing and closes the outside-anchor bypass. The failed version3 is retained, not qualification evidence. Version4 passed34/35 with the checked Train control restored; its new outside-anchor negative reached an earlier contact guard, so version5 removes the optional generated contact from that negative fixture to exercise membership independently. Runtime bytes remain identical to version4; no failed assertion was removed. Version5 reached the intended negative guard but its correct outside Call-Mom anchor failed an earlier contact check. Version6 lets the existing complete ordinary current-source personFollowUp proof establish that literal recipient before guard11, retaining conflicting-name/source/ownership guards. This is a demonstrated downstream repair, not contact lookup or model evaluation.
+
+
+### 2026-10-08 isolated candidate115: validate source membership before effects
+
+The exact observed wrong Train proposal passed indexed validation and saved a booked event plus one large review task. The complete checked seven-part proposal already passes validation, durable saving, retry, cold reopening and shared presentation. Candidate115 adds negative checks at indexed validation: an unheld packing row needs its own affirmative packing matrix; a complete original retained-project component cannot disappear inside an unrelated unheld action row without an existing complete current-source reconciliation. Components do not force a partition or freeze an earlier idea after later adoption. Unsupported adoption can preserve all current text for review. Shared anchors still need existing complete disjoint ownership/meaning validation. No schema, saved-data, reminder-permission or reference-approval change. This is an unpromoted repair, not model evaluation or release qualification. Version3 focused execution found the packing guard wrongly required a quotation-only voice classifier on unquoted speech (32P2F); version4 accepts unquoted affirmative packing and closes the outside-anchor bypass. The failed version3 is retained, not qualification evidence. Version4 passed34/35 with the checked Train control restored; its new outside-anchor negative reached an earlier contact guard, so version5 removes the optional generated contact from that negative fixture to exercise membership independently. Runtime bytes remain identical to version4; no failed assertion was removed. Version5 reached the intended negative guard but its correct outside Call-Mom anchor failed an earlier contact check. Version6 lets the existing complete ordinary current-source personFollowUp proof establish that literal recipient before guard11, retaining conflicting-name/source/ownership guards. This is a demonstrated downstream repair, not contact lookup or model evaluation. Version6 still cannot reach ordinaryOrganization for an anchor. Version7 adds an exact whole-original-unit unchanged recipient-only certificate for that boundary; parsed dates/state are not consumed. Existing complete source/quote/meaning/clock and saved-state checks still apply.
+
+
+### 2026-10-08 isolated candidate116: reference-local outline identifiers
+
+Closed115v7 calls prove a reference/current bare-uN namespace collision, but do not prove that model copying caused the wrong partition. The exact digest-gated complete original example input, context, lifecycle and solution stay unchanged. The adapter independently validates its original reference-local graph, then namespaces only derived structural labels, owner pointers, order and evidence with the reference record ID. It never replaces text inside an utterance. CURRENT source keys, schema and decoders stay unchanged and never strip a foreign prefix. The two existing exact reviewed adaptations remain the only eligible adapters; no new reference approvals or semantic answers. Full-current-source and actual-context SDK admission and downstream controls remain required. This is an unpromoted protocol repair, not evidence of a whole-capture improvement.
+
+
+Candidate116v1 static review caught a protocol defect while focused checks were running: separated owners had changed from declared integer positions to strings. Candidate116v2 retains numeric positions and adds a namespaced reference-slot order table instead. The frozen v1 and its actual checks remain as a failed protocol candidate even if those checks pass. Namespace isolation protects explicit structural IDs; a canonical purpose-only positional answer has no foreign ID to reject and still requires complete unchanged CURRENT semantic validation. No universal copying prevention or model-causality claim is made.
+
+
+Candidate116v1 own SDK focus was35P1F/116.8533s: a protected full-current two-part admission lost adapted503251 (schema822/842, instructions462/472, output246, capacity4096), even though other contracts and downstream controls passed. Version2 numeric-owner protocol correction is frozen but unexecuted. Version3 removes only redundant derived ownership-ID repetition (all admitted atoms already proved whole-unit key==unit) and the duplicate inner reference_id; the complete outer reference_id and every original input/solution/context/lifecycle field remain. This is a measured admission repair, not removal of meaning or weakening of the protected expectation. Full-source admission is rechecked before generation.
+
+
+Candidate116v3 focus remained35P1F/115.3368s (same protected admission). Version4 considers exact digest-gated adapted output-contract examples first during whole-reference admission, then the remaining already selected references. Final prompt references remain in original selection order. The current source/context/schema/output reserve still win, every whole packet is measured by this call's SDK, and an adapted example too large to fit alone is still omitted. This addresses demonstrated greedy budget crowding, not semantic relevance, correctness or new approval. The unchanged protected expectation plus per-part trial costs and displaced IDs are retained.
+
+
+Candidate116v5 also preserves per-reference telemetry across invocation-local admission reuse: accepted fit trials are rejoined by original selection index before compacting to the admitted reference array, with exact index agreement required. Considering a format packet first must not associate its token cost with another reference. The existing identity test now uses out-of-order accepted trials and checks exact cost order. No request bytes, capacity, current evidence or semantic guard are donated or relaxed.
+
+
+### 2026-10-08 isolated candidate118: typed compact current-source decisions
+
+Source116 Train returned actual current saved-item UUIDs and dates in free-string source-unit positions and omitted a current unit. Source117 ordinary context presentation did not improve the original six assertions; both long calls cancelled before returning an outline. Candidate118 therefore starts from116v5, retaining its complete verified lossless context presentation. It adds a compact typed row transport with exact current-ID and purpose enums, Boolean rewrite/review flags and short field names; strict decoding maps to the unchanged dynamic outline decoder, complete source-ownership plan, full revision and validation. Shared units and arbitrary complete grouping remain expressible; there is no row cap, semantic gold binding or safety bypass. Output reserve uses24tokens per unit plus128, minimum768/maximum3072; the26-unit captures still reserve768. Existing free-string helpers remain as comparison controls. Two unchanged exact digest-gated reviewed reference adapters teach the new spelling with reference-only derived IDs; entire original input/solution/context/lifecycle and approval policies remain unchanged. Zero-generation tests compare the existing checked complete Train and shared-correction plans, reject foreign/saved/date IDs and bad types, and measure exact ownSDK source/state/schema/reference/output fit. This is an unpromoted implementation repair hypothesis; typed IDs cannot prove complete meaning or retrieval benefit.
+
+
+### 2026-10-08 isolated candidate119: reconcile the complete current partition in one response
+
+Candidate118 typed current-source IDs removed one observed identifier failure but did not improve whole-capture correctness: its fixed12 OFF9C3S and ON10C2S matched116. The closed current Train diagnostic still proposed the wrong packing/task grouping; Garden's overlapping partition requested a later revision that cancelled at the unchanged20-second outer deadline. The existing later revision schema cannot change evidence, purpose or row membership. Candidate119 tests co-located partition and complete required current reconciliation in the same typed response. It adds x=[] for unchanged whole rows or exactly [literal anchor, complete effective current meaning, literal direct contact]. The unchanged source/shared/correction computation decides mandatory revisions independently of x and r=false. Missing, partial and unrequested tuples reject. Ordinary revision decoding (without silently substituting an unapproved source proof), complete ownership and full current-source/state validation remain required before saving. Fixed/keyed/joint-call paths remain unchanged. The exact two digest-gated reviewed worked answers gain only an empty x format field; complete original input/solution/context/lifecycle and foreign reference IDs remain intact. No new semantic approval, source binding, contact lookup, schema/storage change, saved-state permission, product scope or deadline change. Output reserve for26 units remains768 and actual own SDK schema/prompt/output and reference admission must be measured before model evaluation. This is an unpromoted implementation hypothesis; its focused tests and model effects are not yet known.
+
+
+Candidate119 version1 closed44 focused checks with0 failures in135.55 seconds. Own SDK: capacity4096, schema469, instructions395, complete context989, indexed source486, prompt2306, reserve768,26 unchanged-row output566, one complete reviewed teacher456352 fitted. This only measured unchanged tuple serialization. Version2 adds exact complete nonempty correction/shared outputs already validated in the focused controls and the checked seven-part Garden/Train outputs to the zero-generation SDK cost record. These measurements are examples, not a bound on all possible outputs. It also clarifies that structural labels must not be added while literal spoken labels remain source. No control-flow/guard/deadline change; version1 source/results remain frozen. No model generation has run on either version yet.
+
+
+### 2026-10-08 isolated candidate120: complete current discovery before worked-reference admission
+
+Source119v2 did not improve the unchanged fixed12 complete-capture rubric: OFF9C3S/ON10C2S, matching118/116/115 and retaining one OFF regression against wholebest98. In the original-six diagnostic all five SDK calls completed with their own4096 capacity, but Garden merged away an idea and Train emitted only10/26 unit IDs. The two assembled prompts had no parser grouping packet. Previous telemetry recorded admitted hints only, so discovery absence versus budget omission was unresolved; no missing-trace cause is claimed. Source120 records trace presence, complete pre-fit discovery and explicit admission reason in DEBUG call evidence. It losslessly round-trips the existing strict literal-occurrence grouping packet to arrays of [storedKind,currentUnitIndex...] plus explicit unassigned indexes. These remain fallible current-source observations, with a paired caution requiring exact schema evidence IDs, whole-capture regrouping/purpose/correction reconciliation, and no action/date/saved-change permission. Required full current source/context/schema/output reserve fit first; then the whole compact current packet with caution; then complete worked references, each trial including the exact chosen packet and instructions. Original selection order and exact invocation receipt identity remain. Invalid/empty/unfit discovery restores the exact base instructions and empty packet, with a reason. No synthetic trace, gold grouping, native purpose binding, card-count cap, saved-state privilege, schema/storage change, deadline relaxation, teacher truncation or contact lookup is introduced. The existing SDK priority test is intentionally amended to this changed policy; its prior assertion remains frozen in119. All other prior assertions remain, plus exact compact membership/malformed-pointer and operation-enabled current Garden/Train own-SDK input-fit controls. This is an unpromoted hypothesis; actual generation and same-cohort improvement remain unmeasured.
+
+
+### 2026-10-08 isolated candidate121: complete unit membership without fixing intention count
+
+Candidate120's original-rubric fixed12 result OFF9C3S/ON10C2S has zero gains/regressions versus119/118/116/115 and retains one OFF regression against wholebest98. In120's original-six diagnostic the current grouping packets were actually discovered and admitted, every own SDK call reported4096 capacity and completed without cancellation, yet Garden emitted only4/26 source IDs and Train23/26. Correct independently checked complete proposals still pass actual validation, saving, retry, reopen and shared display. Candidate121 repairs the output representation instead of changing retrieval again: rows retain p/r/v/x, while byUnit has exactly one nonempty entry for every current source unit in original order, listing all local row positions containing it. The generated number of intention rows remains uncapped; one unit can own several rows. The decoder rejects missing/empty/duplicate/foreign/fractional/negative/out-of-range pointers, unused rows and malformed fields before expanding to the original complete current e-ID decoder. All shared/corrected/rewrite requests are recomputed by the unchanged function and require the same full x triples, ordinary revision decoding, whole-plan validation and current-source/state safeguards. Coverage does not prove meaning or approve purpose. Full source/context, output reserve and deadline remain; no native parser binding or saved permission. The two exact digest-gated teachers retain their entire original input/solution/context/lifecycle and gain only a ninth format with explicit foreign reference slot order. Positional numeric responses can parse on equal-shaped captures and therefore still require full CURRENT semantic validation; no namespace guarantee is claimed for this contract. Focused controls cover checked whole/nonadjacent/shared meanings, uncapped shared rows, malformed ownership, copied foreign purpose/recipient, and own SDK schema/context/teacher/full required output costs. This is unpromoted; generation and same-cohort semantic effects remain unmeasured.
+
+
+### 2026-10-08 isolated candidate122: complete current declarations without a generated row table
+
+Source121 original-six still failed Garden/Train idea preservation. Garden completed with byUnit entries 0 through25 but only two rows, leaving24 out-of-range pointers; Train returned no output before the unchanged20-second runtime deadline cancelled generation. No output exhaustion or capacity cause is inferred. All five actual SDK calls read their own4096 capacity. Correct injected complete meanings continue through unchanged validation, durable save, retry, reopen and shared display. Source121 fixed12 OFF/ON are closed with independent whole grading pending; no gain is claimed.
+
+Source122 replaces cross-references to a separate generated row table with nonempty declarations for every current unit: {g:opaque nonnegative group label,p:purpose with optional review suffix}. Equal labels declare one complete intention and must repeat identical purpose/review metadata. Labels are equivalence tags, not array positions, source IDs, relatives, recipients, owners or saved targets. They disappear when first-occurrence group order and exact original evidence order expand to the existing complete decoder. No intention count cap exists; a shared unit can declare any number of distinct groups. Nonadjacent corrections can join the same group. Full literal-anchor/current-meaning/direct-contact edits are emitted once per declared group. Their presence sets the old requiresRewrite flag, normalizing the previously representable r=true+x form. Independently mandatory shared/corrected rewrites remain recomputed from complete source by stagedRewriteRows; missing edits still reject. Old r=false+x is valid for independently requested mandatory rows and is not a blanket contradiction. Required meaning is not removed.
+
+Strict decoding rejects incomplete/empty membership, boolean/fractional/negative/unrepresentable labels, duplicate unit labels, conflicting purpose/review metadata, invalid or foreign codes/fields, and duplicate/undeclared/malformed edits. All original decoders, inline revision checks, full current-source/ownership/state/clock guards, saved-change permissions, full actual context/source, reserve and deadline remain. A tenth teacher representation is confined to the same two independently reviewed digest-gated exact references; full original input, answer, context and lifecycle are retained and foreign slot order remains explicit. Equal-shaped numeric labels do not establish current meaning or namespace isolation; full validation remains essential. Four new focused controls cover checked whole/nonadjacent/shared meanings, arbitrary label renaming and no ordinal cap, review preservation, malformed/foreign/conflicting input, missing mandatory edits and exact own-SDK full input/output costs. Candidate is isolated/unpromoted, not release-qualified.
+
+
+### 2026-10-08 isolated candidate122v2: remove duplicate schema prose, preserve complete instructions
+
+Source122v1 built and passed53/54 focused controls; its only failure was the unchanged assertion that a complete adapted teacher fits Train alongside full current source/context/group packet and768 output reserve. Own SDK measured522 instruction tokens and470 schema tokens; no generated model calls ran. The measured complete26-independent declaration serialization was312tokens, while checked whole and required corrected/shared outputs all fit the unchanged reserve. These are exact proposed-output samples, not population bounds. Version1 remains sealed as failed.
+
+Version2 removes six schema-property descriptions duplicated by the full unchanged declaration instructions and shortens only ephemeral schema definition names. All fields,16 purpose/review codes, integer types, nonempty/exact-N membership constraints, uncapped group/edit arrays, exact3-string edit length and every strict decoder/mandatory/full validator remain byte-identical. Actual source, context, all teacher contents, current grouping priority, output reserve, deadline and saved permissions are unchanged. Tests and their failed fit assertion remain byte-identical to v1. No threshold, meaning or safety requirement is removed. Own SDK and complete focused verification are pending; model generation is unrun.
+
+
+### 2026-10-08 isolated candidate123: compact complete current-unit declarations
+
+Candidate122v2's full-context six-case diagnostic preserved4passes and2failures. Garden and Train both reached the unchanged20-second runtime deadline without a returned response; their own SDK capacities were4096, instructions522/schema297/output reserve768, final prompts2255/2445. This identifies cancellation, not its underlying cause. The closed fixed12 results remain independently ungraded while this source is prepared. Candidate123 tests a lossless syntax-cost repair: the exact-N, nonempty per-current-unit membership vector uses canonical group:purpose-code strings, with optional ? carrying review independently of purpose. Opaque nonnegative equivalence labels are not row ordinals, source IDs, people or saved identities. Shared memberships and group/intent counts remain uncapped. Required complete edit tuples are unchanged. Strict ASCII/canonical-integer/one-colon/16-code decoding expands into the unchanged122 object decoder, complete decoder, mandatory shared/correction reconciliation and full source/meaning/state/ownership validators before durable save. The SDK string schema no longer enforces each code; malformed values fail closed in decoding. No source/context/clock/teachers/output reserve/deadline, saved-state permission, storage schema or product behavior is removed or weakened. All464 prior test methods remain; new controls compare checked complete meanings and all16 code/review values, malformed/foreign structures, sparse labels and the own SDK full-input/output/teacher costs. The two existing digest-gated teachers retain complete original input, solution, context/lifecycle and foreign slot order; only derived format changes. Fixed/small/joint paths are unchanged. This is unpromoted; no latency/correctness improvement or release qualification is claimed before measurement.
+
+
+### 2026-10-08 isolated candidate123v2: preserve exact opaque labels across the SDK bridge
+
+Candidate123v1 compiled and passed56of57 focused checks; the new Int.max equivalence control failed. Direct SDK-only reproduction shows GeneratedContent re-encodes JSON numeric Int.max as9.223372036854776e+18. More seriously, numeric2^53+1 becomes2^53, which passes strict integral decoding and can alias a different label. The failed source/results remain preserved and no model ran on v1. Version2 keeps labels exact strings both in per-unit declarations and edits.g. Canonical ASCII nonnegative Int parsing and declared-label lookup reject malformed/foreign targets; first-occurrence equality-preserving small internal tags avoid large-number serialization before the unchanged122 numeric decoder. All duplicate/conflicting metadata, complete tuples, mandatory shared/correction reconciliation and full source/meaning/state/ownership validators remain. There is no source-ID authority, row-index contract or intention cap. Controls preserve the Int.max string requirement and compare all16 purposes/review values under opaque renaming against representable old labels; explicit legacy Int.max rejection and the2^53+1 numeric edit collision remain negative controls. Distinct exact large labels and string edits stay distinct. The prior no-generation SDK budget comparison now measures old instructions with the same full grouping caution, rather than comparing a bare instruction base to an admitted full packet. Full input/context/teachers/reserve/deadline remain. No model correctness or latency gain is claimed before measurement.
+
+
+### 2026-10-08 isolated candidate123v3: one coherent inline contract and explicit lexical guidance
+
+Candidate123v2 passed57focused checks and lowered exact no-generation schema/complete-output costs, but its six-case diagnostic remained4P2F. Garden returned26bare label strings, purpose words as edit labels and source identifiers as meaning tuples; Train cancelled at the unchanged20-second deadline. Garden reached strict decoding and was rejected; no semantic gain is claimed. The closed same12 OFF/ON results are being independently reviewed. Inspection found this branch inherited instructions requesting legacy requiresRewrite fields, named evidence and a next revision phase, conflicting with its positional per-unit and inline-edit contract. Version3 supplies one branch-specific instruction set retaining full current-source/context authority, purposes, complete lists/Memory, quantities/allocations, family/actor/recipient/owner distinctions, corrections/conditions/timing, material-review and missing-target/location safety. It explicitly identifies the existing full teacher's derived first_response as a shape example and requires literal meaning in edit tuples. Other branches' instructions are unchanged. SDK String pattern guides constrain canonical g:C and exact string edit-label syntax; the strict decoder and all whole validators remain independently required. Installed SDK-only construction/JSON encoding succeeded; host tokenCount failed with ModelManagerError1008 for both guided/plain schemas, so those token costs are UNKNOWN and generation support/enforcement remains unproven. The native own SDK measurements and first generation must check acceptance, costs and actual response. All467prior test methods remain; one additional control checks guides in the actual public schema, lexical examples, absence of the conflicting envelope and unchanged malformed-output rejection. Full source/context/teachers/output reserve/deadline, uncapped shared groups, exact coverage, precision-safe normalization and durable saving remain. No safety threshold, approval, storage schema or product scope change.
+
+
+Candidate123v4 is a test-only correction after123v3 focused57PASS1FAIL: the actual publicSDK encodes `[?]` as equivalent `[\?]`. The test now checks both emitted guides, all8purposecodes/optionalreview and exact decimal-label matching including precision boundaries and malformed controls. Runtime source is byte-identical123v3; decoder/safety/source/state/context/teachers/reserve/deadline unchanged. The failed assertion remains frozen in123v3. Ownv4focused scope is the corrected guide test plus ownSDK cost/admission test, not a donated58-test pass; all57previous v3controls passed including correct/wrong downstream diagnostics. Actual generation acceptance/enforcement and whole quality remain unmeasured until ownnative captures.
+
+
+Candidate123v5 follows actual123v4 six4PASS2FAIL: both guided compact long calls threw opaque nested FoundationModels NSError-1 in roughly1–2seconds without output or cancellation, while the three other observed SDK calls completed. This is a branch-specific failure observation, not proof of guide causality. V5 removes only the optional pattern guides, keeps the coherent complete inline instructions, exact precision-safe wire/strictdecoder/allmeaning-state-ownership guards, and repairs a residual generic grouping caution that incorrectly requested schema IDs on a positional contract. Grouping indexes now explicitly never identify generated group labels; the response schema controls spelling. DEBUG-only synthetic-harness error metadata now records a bounded nested NSError tree to reveal actual underlying metadata without interpreting opaque codes or exporting arbitrary userInfo values. Both previous guide versions/failures remain preserved. The corrected plain-schema test retains strict malformed-response rejection; all previous semantic test methods/assertions remain apart from the obsolete optional-guide-presence expectation, plus one nested-error evidence control. Current source/context/clock, full teachers, complete lists/roles/corrections, output reserve/deadline and durable behavior unchanged. Own focused controls and originalsix must precede the same12OFF/ON comparison. No new native purpose certificate, safety weakening or quality gain claimed.
+
+
+Candidate123v6 is a concise wording repair after123v5 focused58PASS1FAIL. The unchanged historical complete-membership admission control lost its complete Train teacher under the longer shared caution; current compact-contract, strict decoding, nested-error and all downstream controls passed. V6 shortens only the shared caution while explicitly preserving CURRENT source-index identity, separation from saved IDs/generated group labels, schema compliance, complete regrouping/purpose/correction review and denial of action/date/saved-change permission. Full current input/context/group packet/teacher bytes, schema, output reserve and every test method/assertion are unchanged. Own focused scope reruns the exact failing comparison plus current compact admission and grouping-priority controls;58previousv5passes are historical evidence, not an invented full59v6 pass. Actual native captures and same12OFF/ON remain required; all release thresholds and safety guards unchanged.
+
+
+### 2026-10-08 isolated candidate124: explicit group and enum-purpose fields
+
+Candidate123v6 remainedOFF9C3S0U/ON10C2S0U on the fixed12 cohort, no gain versus123v2 through115 and one retained OFF regression versus wholebest98. Its returned malformed declarations used bare purpose names, all8purpose letters or source IDs rather than g:C strings; BE04 wrong other-actor purpose still safely rejects separately. The original Train diagnostic also returned OTHER-example packing names/quantities absent from CURRENT, rejected by strict decoding. Correct independent whole proposals continue through the actual downstream validators/save/retry/reopen/shared display; those diagnostic passes are not model grades.
+
+Candidate124 replaces only the combined declaration string in the same compact branch with {g:exact decimal string,p:enum purpose/review code}. It losslessly translates into the unchanged string-label normalizer, complete declaration/outline/reconciliation decoders and whole source/state/ownership/meaning validation. Exact unit cardinality/nonempty entries, arbitrary sparse precision-safe labels, uncapped shared intentions and full inline corrections remain. The concise coherent branch instructions preserve authority, lists/Memory, quantities/packages/allocations, family/speaker/recipient/object-owner roles, conditions/corrections/withdrawals/reassignment/timing and no invented saved/contact/location identities. Other contracts, source/context/clock, source/group observations, reference selection/exclusions/approval and full original teacher records, output reserve, deadline, storage and durable saving stay unchanged. Only the two unchanged exact digest-gated teacher adapters derive the object spelling; no original example answers are replaced or newly approved. Public string-enum guidance uses the existing supported SDK family, with actual generation acceptance still requiring measurement.
+
+All469previous test methods/assertions remain byte-identical;4new tests cover complete independently checked Train/Garden/shared/nonadjacent corrections, all16purpose/review values and large-string precision/malformed metadata, rejection of observed teacher packing inserted into an otherwise checked whole Train graph, and matched ownSDK full-source/context/teacher/schema/output costs versus123v6. No cheaper-schema/output assertion is invented: measure the tradeoff and require complete admission/reserve, without truncation or count caps. Own focused63, originalsix and same12OFF/ON must decide behavior; no correctness/retrieval benefit or launch-readiness claim.
+
+
+Candidate124v1 build-for-testing stopped with exit65 after40.8055seconds before any tests or generation: two exhaustive test switches omitted the newly added objectUnitDeclarations enum case. Candidate124v2 retains the complete runtime byte-identically and extends the existing exact-reviewed teacher projection/namespace test loops and switches to exercise the new contract too. Existing assertions remain; an equal-shaped complete foreign format can decode structurally but never gains CURRENT meaning authority, and namespaced foreign group pointers must reject. No test threshold/expected semantic result or application behavior changed. Own focused63 and actual model measurements remain required.
+
+
+Candidate124v2 focused62PASS1FAIL/249.662s; all independently checked correct downstream and ownSDK admission controls passed. New foreign-packing test wrongly assumed every optional foreign rewrite must cause rejection. Actual unchanged whole-row semantics deliberately discard optional generated wording before using exact CURRENT evidence; returned packing retained current short-cable/camera-withdrawal facts, not teacher facts. Version3 preserves that production behavior and replaces the incorrect rejection assumption with stronger exact equality of the entire validated seven-item result against the no-edit checked CURRENT-only result, checks every user-visible textual/person field for foreign facts, and additionally requires the same copied meaning to reject when a current correction makes reconciliation mandatory. The original failed source/result stay frozen; this is not a model grade or permission to persist foreign meaning. A read-only reviewer also identified the new instruction had lost the existing literal-spoken-label exception. Wording now forbids generated bookkeeping IDs while explicitly preserving literal labels spoken in CURRENT, with an exact instruction control. Runtime otherwise byte-identicalv2; no validation/saving/safety threshold changes. Own focused3 covers both edited tests and ownSDK complete admission under the repaired wording; prior62v2 passes are retained separately, not an own63v3 claim. Model interpretation unrun until those checks close.
+
+
+### 2026-10-08 isolated candidate125: explicit model responsibility beside purpose
+
+Candidate124v3's originalsix remained4PASS2FAIL. Both long compact calls now completed: Garden returned conflicting per-group purposes and foreign reference pointers in an edit; Train returned complete object membership with two incorrect groups and failed full semantic validation. No original-six correctness gain is claimed. Fixed12OFF/ON are closed with own actual-first independent review pending; no new whole scores are assumed here. Best whole98 remains retained. Correct independent complete proposals pass actual downstream diagnostics; unused foreign optional wording is discarded in favor of exact current source, while required foreign meaning rejects.
+
+Reported other-actor work on BE04 is already representable: the existing checked free-key N/context graph reaches full validation and durable saving. This is a model decision failure, not a missing native object certificate. Candidate125 changes only the narrow unapproved same-actor job roots to a generated {responsibility:other/adopted/unknown,decision:ordinary current decision} object in the same complete free-key response. All other unresolved keys retain strings; every original purpose/context/correction option remains available in decision. Complete source/context/graph, explicit current continuation links, full teacher records, retrieval/exclusions/approval, output reserve/deadline, storage and downstream saving remain. Responsibility is generated metadata, never sourcePurposeCode, a saved identity/contact/date proof or persistent field. Exact typing/fields and consistency with the complete decoded owner's purpose are mandatory; contradictions reject without coercion. The unchanged whole source/state/ownership/meaning validators still follow; adopted task on the unchanged other-actor source must still fail guard19. Unknown must retain affected work as review. Existing general branches/compact object transport stay unchanged.
+
+Selection uses existing unapproved discovery, plus a conservative later mine/ours/job-responsibility veto; these captures retain the original full contract rather than freezing earlier ownership. Quotes, mixed actors, hidden acts, conditions and later I/we/takeover already decline that discovery. An owned object such as our cloth does not prove user adoption. Four additive tests retain all473 prior methods/assertions byte-identically: exact whole checked eight-row BE04 output equality and durable save/retry/reopen/presentation; metadata/contradiction/review and unchanged action-guard controls; complete old-contract fallback for later responsibility/quoted/conditional/hidden variations; and ownSDK full current-graph/schema/instruction/output admission with exact measured components. Ownfocused13 includes those4 plus9 existing relevant ownership/family/durable controls. No correctness/retrieval/latency gain or qualification is claimed until own native comparison is graded.
+
+
+### 2026-10-08 candidate125v2: preserve the actual literal response contract
+
+Readonly audit found125v1's ordinary response decoder recomputed responsibility discovery even when the same call selected the existing all-free literal String schema and instructions. A six-to-sixteen atom graph with a reported-job pair could reject a schema-valid String response. Candidate125v2 routes the free decoder with the exact usesResponsibilityOwnership decision already used by call instructions, schema priority and telemetry. Discovery alone cannot change the selected response type. The narrow role-object path keeps strict consistency; literal and sliced paths keep original closed String decoding/full reconciliation and validators. One additive transport regression covers complete6/16key graphs, exact old-plan parity and all current membership, selected-role objects, opposite-type rejection and missing-key rejection. All477 prior test methods/assertions are unchanged. Source125v1 originalsix closed4P2F112.812s with no improvement; all own diagnostics/results retained. No125v1paired experiment ran after the blocker was identified. No semantic/retrieval gain or qualification from static repair.
+
+
+### 2026-10-08 candidate126: use complete typed evidence for small expressive captures
+
+The closed124v3 same12 remains9OFF/10ON, with best98 OFFBE03 regression. In that five-unit current capture, object output used noncanonical u-prefixed group tags (and OFF omitted complete membership/edits); ON also returned an unapproved discovery anchor and a temporal word in directContact. Accepting/renaming those labels would not establish correct meaning. Existing compact decoding can represent the complete correct result; this is a generation/contract problem, not missing semantic capacity. Historical98 OFF used typed current-evidence rows plus a current-source-derived allocation reconciliation; historical98 ON merged independent Memory into an action and was held. These historical observations are not causal evidence or per-case best selection.
+
+Candidate126 chooses the already retained supported dynamic typed outline for all small nonfixed captures with at most five original current units and no joint-call branch, before generation. One flag controls schema, base instructions, decoder, expressive teacher adapter, telemetry and costs. Large compact graphs, fixed/partial/responsibility/literal/sliced and joint contracts retain existing routes. No source/context/example is truncated, no meaning/intention cap is introduced, and output reserve remains768 for these small captures; full membership/shared/correction/current-state/ownership validators and20second runtime deadline remain. Inline completions stay nil so the existing complete revision pipeline runs and can ask for current reconciliation without regenerating supplied facts.
+
+Three additive tests retain all478 prior methods/assertions byte-identically: route boundary1/5/6/16/26/30 withfixed/joint inverses; correct complete five-row typed proposal after generation through actual source-derived allocation proof, full validation exact-baseline equality, save/retry/reopen/sharedpresentation; and preserved rejection of action/Memory absorption, missing/merged notes, wrong allocation quantity/owner, foreign contact, evidence and purpose. This downstream diagnostic is not model evaluation. No gain/retrieval/release qualification is claimed before own same-cohort model comparison.
+
+
+### 2026-10-08 candidate126v2: correct only new diagnostic types
+
+126v1 failed to compile in42.158s before any native tests or model generation. The new typed downstream diagnostic passed an Array from stagedRewriteRows to Set-based revision APIs and reused local rows for decoded outline and reopened persisted items. Candidate126v2 adds the explicit Set conversion and renames the decoded-outline local. Production source, every assertion and all prior tests remain unchanged; failure result bundle/log/job/source pins are preserved. No test/model success is inferred from the type repair.
+
+Build 21 verification additionally preserves literal source ownership through
+spoken enumerators and in-capture cancellation, carries conditional dependencies
+through segment copies, and keeps outgoing-message complements non-executable.
+The normal notification clock remains the device clock; tests can scope a
+fixture clock so an October 9 fixture does not become expired on October 10.
+Foundation Models schema tests accept Apple's SDK representation of a closed
+string enum with an omitted redundant type field while retaining complete
+allowed-value assertions. SDK token accounting tests probe the actual service
+and report ModelManager 1008 as unavailable, not as a semantic pass.
+
+
+## 2026-10-10 — Build 21 interpretation contract reconciliation
+
+The integration preserves tentative proposal frames unless a marked pause
+opens an independent imperative. An older duplicate repair test expected the
+proposal preamble to disappear; it now asserts the newer retained-frame
+contract alongside the existing direct-imperative opposite.
+
+An unobservable event condition stays visible with Needs review and no armed
+notification, including a fronted event adjunct on an ordinary task. The older
+fronted-context test now asserts that state, no due/reminder date, and the
+unchanged original. The corpus's former notification expectation for an unknown
+closing instant is replaced by explicit no-alarm and review expectations: a
+calendar day does not identify an event's occurrence time.
+
+A unique corrected personal pronoun may use its explicit antecedent in analysis
+while the original transcript retains the literal pronoun. Its regression
+asserts the resolved person, complete condition and original wording.
+
+A shared date-slot correction may move a complete calendar frame across sibling
+actions only when all non-date words survive in order. Source ownership licenses
+only the exact old calendar frame, correction cue and new calendar frame;
+independent actions remain outside that licence. Simple delegated errands keep
+the established bare day of contact, while quoted message clocks, alarms,
+recurrences and conditions remain message content.
+
+Local cancellation source ranges are recovered by a unique contiguous sequence
+of literal original words, rather than by generated comma separators. A failed
+ownership proof retains the complete capture without a saved-row operation.
+English tagging assets are prepared in the background and caches are invalidated
+when missing assets become available. Framework environment diagnostics remain
+separate from actual app behavior tests.
+
+
+## 2026-10-11 — Qualify bounded local example retrieval before enabling it
+
+The development bank contains 510,000 synthetic records built from 212
+blueprints; none has production approval. Record count is not a measure of
+independent capability. The personal trial may consult proposed records under
+its existing source, ownership and saved-operation guards; this does not
+change their approval status.
+
+The candidate adds a pinned compact lexical index over 1,696 real
+representatives, eight per blueprint. It searches those representatives and
+loads final complete worked solutions by ID from the unchanged full bank.
+It does not search all 510,000 wordings for every capture. Missing, invalid or
+empty compact retrieval falls back to full-bank lexical search. Both searches
+share the original eight-second resource deadline. The complete bank and
+sidecar have separate SHA-256 pins, and final payload approval/rule exclusions
+still control admission.
+
+An optional native NaturalLanguage semantic channel ranks those same example
+families using a pinned English embedding revision and 512 dimensions.
+Schema 2 encodes every whitespace-delimited source token in ordered bounded
+chunks; unsupported encoders, invalid assets and oversized semantic input
+retain lexical search. Semantic limits never truncate the transcript used for
+interpretation or persistence. Similarity grants no current fact, destination,
+operation, target identity or permission. Both new routes remain disabled in
+the bundled configuration until paired qualification determines promotion.
+
+Local reference preparation now also runs on phones without Foundation Models,
+so iPhone 13 does not defer bank verification solely because generation is
+unavailable. This changes preparation, not device model eligibility.
+
+The actual extraction engine reproduced an unrelated cancellation defect on a
+cooking note ending in “the heat was off.” Bare “off” now requires the existing
+scheduled-noun vocabulary at the subject head; explicit “cancelled” and “called
+off” retain their established grammar. Physical states and compound subjects
+such as “meeting light” remain available for ordinary capture. Detector
+opposites and repository source/saved-item protection are regression tests.
+
+Qualification distinguishes retrieval integrity/proxies, component rules
+outputs, complete-engine model outputs, and physical microphone/persistence
+behavior. The component interpreter declined all 330 fresh captures, leaving
+rules fallback; identical compact/hybrid component outputs establish no model
+accuracy gain. Complete-engine evaluation uses the unchanged generation and
+source-validation budgets. No speed, accuracy or release-readiness gain is
+asserted by this decision entry alone.
+
+The complete-engine preflight also exposed source-purpose errors that example
+similarity cannot fix. A resolved Memory proposal must not absorb a separate
+own instruction or reminder merely because a later clause asks to retain an
+observation. An own terminal instruction not to create a task vetoes creation
+from that unresolved source unit; it does not identify or cancel a saved item.
+A bounded, complete calendar fact immediately followed by an explicit
+reference-only directive may be retained locally as Memory without a due date
+or notification. Unknown continuations and additional actions decline that
+certificate. Separate, independently owned actions remain eligible for their
+ordinary validation. These are source-authority checks, not new permissions
+from retrieved examples.
+
+Present first-person nominal task declarations share one bounded grammar for
+quantifiers, status and temporal adjuncts before the action complement. Past,
+other-person, hypothetical and denied frames grant no new action. Finite
+reported agreement about what something should contain stays reported content;
+an own adopted or explicitly assigned action retains its ordinary authority.
+When a present owned nominal task immediately reports matching completion or
+release of its single object, that local status is bound before saved-operation
+partitioning. The complete account becomes Memory without changing an older
+saved row; independent later tasks and explicitly named saved changes keep
+their own source and permissions. Unknown targets and continuations do not
+receive that local certificate.
+
+The local status receipt owns its exact original word occurrences. Following
+creations and operations are rebased through the actual suffix partition and
+speech-repair ancestry; saved edits carry the complete capture and independent
+creation ownership. A suffix whose ownership cannot be proved keeps the whole
+capture visible for review and performs no operation. This evidence does not
+fabricate a whole-capture model certificate. A scoped physical-object grammar
+keeps familiar objects usable when installed lexical assets are unavailable.
+A contrastive status on that present nominal task which does not pass the
+complete local proof remains an exact-span review hold. Negation, modality,
+quoted completion, an unproved owner or another object cannot silently close
+a current task through the broader historical-obligation reader. Independently
+framed later work keeps its separate ownership through the same suffix mapping;
+uncertain boundaries or ancestry retain the full capture for review.
+
+The optional interpreter consumes this bounded status plan before retrieval or
+generation. It reconstructs the actual rules process with the current source,
+clock and operation-permission alternatives, and requires exact item/operation
+equality with the supplied rules plan. It does not certify arbitrary caller
+results or invent a discourse trace. This protects both a proved completion
+and an unproved status hold from model reclassification. Independently owned
+actions also veto resolved Memory proposals tagged as either notes or ideas;
+changing the model's proposed Memory category cannot bypass action coverage.
+
+That veto reads original whole-capture quotation ownership and complete source
+units. Exact existing loan-account, custody, retained-report and reference
+proofs cover only their owned units. Complete nonadoption, negative decisions,
+retention pointers and embedded missing-interlocutor questions retain their
+context; every uncovered unit still faces the current-action check. Fragmenting
+a retention phrase or ignoring a negative decision must not invent a task.
+The proposed Memory category and the general knowledge heuristic never waive
+the check. Regression controls add separate and same-clause actions/reminders
+before and after retained context.
+
+Reused nonadoption/report classifiers are not sufficient exemptions on their
+own: bare commas and a report's reason can introduce a current command. The
+veto rereads the complete nonadoption clause, or the complete retained report
+after peeling only its optional cognitive wrapper. A cognitive reason is
+protected only by a complete proved descriptive possession proposition. An
+opaque bounded nominal topic supports the exact missing-interlocutor question
+when lexical assets are absent; actors, finite/control/action heads and later
+continuations cannot fit that topic. These proofs never supply executable
+object identity, dates or saved-state permission.
+
+A complete possible-project nominal followed by a terminal negated-relative
+adoption clause preserves its idea status. The denial scopes only that proved
+relative clause; the complete bounded nominal still faces current-action
+coverage. Actors, conditions, commands and later continuations cannot inherit
+this protection. This repairs the false adoption caused by reading an inner
+agreement phrase without its surrounding denial.
+
+### 2026-10-12 isolated nominal-declaration draft — verification pending
+
+This unshipped draft addresses a regression-exposed grammar gap: a present owned plural declaration such as “Our actual tasks are to …” could fail the singular-only task frame and leave its first predicate in preceding Memory context. This is source diagnosis, not proof of every downstream grouping cause or a measured correction. The exposed capture set is now regression material for this mechanism; it is not fresh evidence for a changed build.
+
+Owned singular and plural task/job/responsibility/commitment frames remain separate. Each requires matching present number agreement; the plural branch requires an infinitival complement, permits only bounded quantifier/status/temporal framing, and opens on the existing imperative vocabulary. Portable head-only verbs are admitted only at that proved complement head; the global mid-sentence action vocabulary is unchanged. Body readers, written boundaries, quote-return recognition and current-action coverage consume the shared declaration grammar. A plural return from quoted context uses ordinary predicate coordination rather than the singular context-preserving path.
+
+A positive local completion certificate remains singular and keeps its existing one-object/action proof. A plural contrastive status receives no completion authority and is held for review; exact independently owned suffix actions and saved requests use the existing repair/partition rebasing. Model roles cannot turn that review hold into resolved Memory. The draft adds reader/body, full-rules, indexed-adversary, optional-interpreter, source-occurrence and repository checks in existing test target files.
+
+All new checks are UNRUN. No native build, model generation, corpus gate, large asset hash, phone test or shipping promotion accompanies this draft. Existing v13 source/qualification/results remain unchanged and do not qualify this source. Bundled compact and semantic routing flags remain OFF. This draft requires its own focused/full/corpus/Release checks and any prospective complete-engine qualification selected by the owner.
+
+### October 11, 2026 — nominal-declaration regression repair (pending verification)
+
+The first nominal draft failed four focused tests. Preserve the failed v14 evidence. Its conservative Memory veto had accidentally required a known action stem; restore the broad current-intent veto for unfamiliar verbs without granting positive task authority. A foreign nominal declaration owns its coordinated complement. A fronted condition on a plural own declaration stays attached to every coordinated predicate, with unresolved triggers still reviewed. These changed sources require new checks and complete-engine evidence; v13/v14 receipts cannot qualify them.
+
+### October 12, 2026 — nominal scope boundaries, verification pending
+
+The v15 focused run passed 230 and failed two of 232 checks. Rules-probe outputs confirm a dropped comma prevented one inherited condition from being reparsed, while a past nominal declaration lost matrix ownership at its second predicate. Preserve the comma, retain foreign/historical declaration complements, and partition an overt new speaker commitment or polite imperative before applying that ownership or conditional inheritance. Bare coordinated verbs do not establish a new owner. New opposite controls cover same-sentence scope exits, complete source ownership and independent actions. Failed v14/v15 results are retained; this source needs new native and large evaluation evidence.
+
+An independently stated “remind me” request is also an explicit nominal-scope exit, with or without “please”. The opposite controls require its reminder to apply only to the new action and preserve every meaningful source unit. Bare coordinated foreign predicates remain non-adopted. This source addition is not qualified by v16 checks.
+
+The v16 focused run passed 231 and failed one of 232 checks: hypothetical “my jobs would be to …” still lost its matrix scope at the second predicate. The uncommitted nominal reader also retains bounded modal copulas as non-adopted context. An overt later polite imperative still exits that scope. v17 was frozen but not tested; v18 includes this final repair and needs its own full verification.
+
+The v18 focused run passed 231/232; the complete rules-only diagnostic confirmed the remaining resolved-action error is a denied agreement over an owned nominal declaration. Protect that negated matrix and its complement before coordination, using the same bounded owned declaration grammar. A later explicit request exits its ownership. Conditional and unclosed-quotation diagnostics retain review and do not gain execution authority. The full 19-input diagnostic and failed focused receipt remain separate evidence. All new source checks remain required.
+
+
+### October 12, 2026 — capture retention, fronted clocks and local repair
+
+The completed 330-case compact development comparison and second review found unsupported storage tasks, historical/routine calendar promotion and incomplete correction handling. The compact route remains disabled despite passing its separate lookup-speed gate; semantic safety is a separate gate. The next complete-engine comparison uses the normal full-bank configuration, with both compact and semantic routing OFF. Its original synthetic330 are exposed development cases, not an untouched holdout or a phone accuracy estimate.
+
+A complete bounded capture-retention proof distinguishes saving quoted/nominal content as an idea or Memory from a real-world saving task. Labels inside quotations and independent outside actions cannot grant that proof. Shared indexed-source guards enforce the same purpose, and independently framed finite or imperative continuations keep their own source. A fronted clock plus calendar day stays attached to its reminder; a sibling with its own hour keeps the shared day without inheriting the first clock. A bounded finite historical/routine reference proof owns routing, recurrence and clock-only annotations; actual grounded factual dates remain available to Memory. A unique repeated communication action with an explicitly excluded old recipient repairs only its person slot and keeps the original reminder modifiers. An occurrence-bound edit receipt proves the local old recipient, cue and negative echo, while preserving surrounding source; competing actors/recipients stay visible.
+
+Nine retention, four temporal-reference and five timing/recipient regression methods are prospective at this draft checkpoint. Exact frozen-source focused/full simulator, corpus and normal Release checks, plus a new complete330 normal-default engine run, are still required. Earlier v13/v19 receipts do not qualify these changes. Original failed runs, review judgments and contract disputes remain unchanged. No physical install, upload or account change is part of this preparation.
+
+### October 12, 2026 — failed focused run and source-boundary repairs
+
+Frozen v20 focused native results are retained: 448 passed, six failed and three skipped (457 total). One existing unpunctuated two-reminder capture acquired an extra timed detail after a new bare-clock context return broadened shared-command inheritance. The extension now requires both a clock and an existing positively read `on <calendar day>`; the existing bare-clock route remains authoritative.
+
+The failed retention cases revealed shortcuts outside the already passing bounded retention reader: singular-account folding missed a direct reminder wrapper, and generic quote handling marked an outer would-like retention request unresolved. Voice ownership, clause segmentation and quote lowering now consume the same complete retention proof and independently inspect a proved outside continuation. Tail voice spans retain their original offsets; quoted commands never gain permission. A competing-recipient guard runs before replacement-clause splitting, so a coordinated group cannot masquerade as a unique corrected person slot. A named saved-field edit keeps its own target words; the existing contextual fallback applies only when the request supplies none.
+
+Two new tests had demanded terminal row punctuation beyond the existing word-span provenance contract. Their corrections retain exact ordered word occurrences and add exact immutable CaptureSession punctuation checks; no semantic assertion or existing regression was weakened. New native focused/full/corpus/Release qualification and the declared normal-default complete330 development comparison remain pending for this repaired source.
+
+The frozen v21 focused build stopped before executing tests: a new repository test incorrectly used ExtractedThought.needsReview on CapturedItem. The next test-only snapshot uses the stored needsClarification flag and removes two redundant nil-coalescing expressions on nonoptional rawQuote values. Application source remains byte-identical; the failed v21 compile receipt is retained and grants no test credit.
+
+### October 12, 2026 — complete retention roots outrank discourse filing
+
+Frozen v22 focused verification completed: 454 passed, four failed, three skipped (461 total). The failure and full diagnostic outputs remain retained; neither this result nor earlier source checks qualify the next source. Native rules traces showed two correctly segmented independent intentions, then `isCaptureDiscourse` matched the retained phrase's external “as a Memory” label and attached its complete quote and occurrence IDs to the adjacent action. That late pass now declines the same complete bounded capture-retention proof used for voice and segmentation. Existing anaphoric pointer resolution still runs earlier. This is one additional positive ownership guard, not a broader own-voice or reminder permission.
+
+Two new assertions tested stronger tracking contracts that their entrypoints do not provide: ordinary row IDs belong to the repaired creation source, and ordinary saved-field partitioning does not supply the optional runtime source-separation certificate. Tests instead audit actual repaired-to-original ancestry and exact typed repair removals, and the saved-field request's exact original word ownership. A real repository regression must prove the separate Memory survives a resolved saved edit with the whole immutable capture, without changing the conservative unresolved-edit contract. Exact-source focused/full, corpus and normal Release verification and the complete330 normal-default engine comparison remain pending.
+
+
+2026-10-12 final normal-default capture qualification: frozen23 focused run completed with 458 passed, 1 failed, and 3 skipped (462 total). The sole failure was a newly added repository test expecting its retained originalTextSegment to lose the original terminal period. The repository correctly preserved the entire prefix including that period, consistent with the adjacent immutable-transcript tests. Frozen24 changes only that exact expected value to prefix; all persistence, revision, provenance, separate saved-call, and routing assertions remain intact. Application source is byte-identical to frozen23. Full native suite, Release compile, native harness build and large normal-default model comparison remain pending. Compact and semantic routing defaults remain off.
+
+
+2026-10-12 saved-field revision safety review: a bounded source-identical rules diagnostic confirmed that a same-sentence independently requested mail action or reminder after a recipient revision was included in the whole requestRange and removed before normal creation. A full-stop control preserved it. A second diagnostic confirmed the empty-name anaphoric fallback accepted explicitly retained quoted content as target words, just as it accepted a genuine saved-item introduction. These are proposal/range observations, not executed-store proof. The next candidate requires a complete supported field-clause certificate with exact bounded original range, keeps a positively independent tail for ordinary creation, and fails uncertain or untrusted antecedents closed without generic operation reauthorization. Real-repository regressions cover independent Today creation, one intended edit, unchanged unrelated saved rows, original capture preservation and quote-as-data non-authority. Final checks remain pending; no new normal-default model campaign has launched.
+
+
+2026-10-12 frozen24 full-suite result: 2,038 passed, eight failed, 35 skipped and one expected failure (2,082 total). Five failures are the separately tracked inherited StoreKit `notEntitled` setup limitation. Three new failing tests exposed two mechanisms: one exact-source expectation omitted a preserved terminal period, and two unchanged saved/reopen diagnostic tests crashed in the same recipient-repair range helper on the same original transcript. The expectation now includes the original period. The repair licence now requires the entire correction cue to fit its selected sentence before constructing the suffix range. Cross-sentence cues decline this narrow licence; original transcript and broader correction handling remain intact. Two additional regression methods cover the exact crash and 24 sentence-boundary/stacked-marker/whitespace controls. These changes and the saved-field scope/antecedent repair require their own native qualification; prior passes do not qualify frozen25.
+
+
+2026-10-12 frozen25 focused compile stopped before executing tests: a new savedSnapshot helper omitted try on the existing throwing snapshot call. Frozen26 corrects that test-only compile error and a separately reviewed conservative person-slot regression: Will and May are accepted as literal recipient names only inside the complete communication field-clause grammar, with both old/new roles covered. General nominal, condition and continuation guards remain unchanged. Source25 failures/build receipts are retained; this changed source requires new native checks before any normal-default model campaign.
+
+
+2026-10-12 saved-field parser cost review: the complete request-pattern match now precedes ClauseScope.read in directRequest and the unproved-field detector. Nonmatching ordinary sentences receive no structural edit-scope read from these two guards; matching requests retain the exact same structural condition. ClauseScope structural work is not cached by the lexical-context cache. This is an evaluation-order optimization, not new edit authority or a measured latency gain; all final source checks and whole-engine timing remain required.
+
+
+2026-10-12 frozen28 focused result: 177 passed, one failed and two skipped (180 total). The unchanged quoted-antecedent negative exposed a real rules-path safety gap: a stop immediately inside a closing ASCII quote did not expose the subsequent unproved field request to the review guard, and ordinary extraction created a resolved Today task. Only the conservative unproved-field scan now accepts balanced quoted-stop boundaries. Positive saved-field parsing and saved-item authority stay unchanged. Twelve quotation/stop controls, reported/conditional and unclosed-quote controls, plus a real-repository regression retain the entire uncertain capture, preserve saved rows and forbid a resolved Today edit. Frozen28 corpus/Release/host and signed archive succeeded, but the safety failure prevents qualification or delivery. The next source requires its own focused/full/corpus/Release checks before the declared normal330 comparison.

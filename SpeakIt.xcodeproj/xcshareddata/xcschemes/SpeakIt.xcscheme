@@ -26,7 +26,23 @@
       buildConfiguration = "Debug"
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
-      shouldUseLaunchSchemeArgsEnv = "YES">
+      shouldUseLaunchSchemeArgsEnv = "NO">
+      <EnvironmentVariables>
+         <EnvironmentVariable
+            key = "SPEAKIT_RUNTIME_EXAMPLES"
+            value = "0"
+            isEnabled = "YES">
+         </EnvironmentVariable>
+      </EnvironmentVariables>
+      <MacroExpansion>
+         <BuildableReference
+            BuildableIdentifier = "primary"
+            BlueprintIdentifier = "E10000000000000000000001"
+            BuildableName = "SpeakIt.app"
+            BlueprintName = "SpeakIt"
+            ReferencedContainer = "container:SpeakIt.xcodeproj">
+         </BuildableReference>
+      </MacroExpansion>
       <Testables>
          <TestableReference skipped = "NO" parallelizable = "NO">
             <BuildableReference
@@ -68,7 +84,7 @@
          </BuildableReference>
       </BuildableProductRunnable>
       <StoreKitConfigurationFileReference
-         identifier = "SpeakIt/SpeakIt.storekit">
+         identifier = "../../SpeakIt/SpeakIt.storekit">
       </StoreKitConfigurationFileReference>
    </LaunchAction>
    <ProfileAction

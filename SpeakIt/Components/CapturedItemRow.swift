@@ -169,7 +169,7 @@ struct CapturedItemRow: View {
             }
         }
         .font(SpeakItTypography.metadata)
-        .foregroundStyle(Color.speakMuted)
+        .foregroundStyle(presentation.isOverdue ? Color.speakWarning : Color.speakMuted)
         .multilineTextAlignment(.trailing)
         .padding(.top, 2)
     }
@@ -225,9 +225,10 @@ struct CapturedItemRow: View {
     /// row and the drawn row cannot drift apart.
     private func spokenLabel(for presentation: ItemPresentation) -> String {
         [
+            presentation.isOverdue ? "Overdue" : nil,
             item.displayTitle,
             secondaryText,
-            trailingText(for: presentation),
+            spokenTimingText(for: presentation),
             showsPinnedIndicator ? "Pinned" : nil,
             (showsPriorityIndicator && item.priority >= .high)
                 ? "\(item.priority.displayName) priority"
@@ -238,6 +239,18 @@ struct CapturedItemRow: View {
         .joined(separator: ", ")
     }
 
+    private func spokenTimingText(for presentation: ItemPresentation) -> String? {
+        if let trailingDetail { return trailingDetail }
+        if let timing = presentation.primaryTimingText { return timing }
+        guard showsCreatedDate else { return nil }
+
+        if Calendar.autoupdatingCurrent.isDateInToday(item.createdAt) {
+            return item.createdAt.formatted(date: .omitted, time: .shortened)
+        }
+
+        return item.createdAt.formatted(date: .abbreviated, time: .omitted)
+    }
+
     private func trailingText(for presentation: ItemPresentation) -> String? {
         if let trailingDetail { return trailingDetail }
 
@@ -246,7 +259,7 @@ struct CapturedItemRow: View {
         // was not today, so "call mom tomorrow at 5pm" and a date-only item
         // rendered the same string — and what puts the place on a place
         // reminder instead of leaving the slot empty.
-        if let timing = presentation.primaryTimingText { return timing }
+        if let timing = presentation.formattedTimingText { return timing }
 
         guard showsCreatedDate else { return nil }
 

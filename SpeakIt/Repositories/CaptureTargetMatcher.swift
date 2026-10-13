@@ -17,6 +17,7 @@ enum CaptureTargetMatcher {
         "reminder", "reminders", "alarm", "alarms", "task", "tasks", "item", "items",
         "note", "notes", "thing", "anymore", "any", "more", "please", "that", "it",
         "this", "there", "again", "already",
+        "existing", "saved", "same",
     ]
 
     /// Active items only. A cancellation never reaches into the completed log
@@ -30,8 +31,29 @@ enum CaptureTargetMatcher {
     ///
     /// Returns all matches rather than a best guess: the caller acts only when
     /// there is exactly one, so ranking would create false confidence.
-    static func candidates(for target: String, in items: [CapturedItem]) -> [CapturedItem] {
-        let wanted = significantTokens(in: target)
+    static func candidates(
+        for target: String, in items: [CapturedItem],
+        referenceDate: Date? = nil, calendar: Calendar = .autoupdatingCurrent
+    ) -> [CapturedItem] {
+        // A trailing day in a spoken saved-row reference identifies *which*
+        // reminder, not part of its title. Check it against the stored date
+        // before dropping the word; otherwise two identically named tasks on
+        // different days would become an unsafe tie or a wrong target.
+        let normalized = target.trimmingCharacters(in: .whitespacesAndNewlines)
+        let dayOffset: Int? = {
+            guard referenceDate != nil else { return nil }
+            if normalized.range(of: #"(?i)\btomorrow[.!?]*$"#, options: .regularExpression) != nil {
+                return 1
+            }
+            if normalized.range(of: #"(?i)\btoday[.!?]*$"#, options: .regularExpression) != nil {
+                return 0
+            }
+            return nil
+        }()
+        let name = dayOffset == nil ? target : normalized.replacingOccurrences(
+            of: #"(?i)\s+\b(?:today|tomorrow)[.!?]*$"#, with: "", options: .regularExpression
+        )
+        let wanted = significantTokens(in: name)
         guard !wanted.isEmpty else { return [] }
 
         return activeItems(items).filter { item in
@@ -41,7 +63,19 @@ enum CaptureTargetMatcher {
             // the durable knowledge layer is simply not searched. If only a
             // memory matches, the honest answer is "no reminder found", with
             // the fact left standing.
-            guard !item.belongsInMemory else { return false }
+            // A held capture is recoverable evidence, not a commitment that a
+            // word overlap can destroy. In particular, held knowledge does not
+            // become a saved-action target merely because it is outside Memory.
+            guard item.belongsInToday,!item.needsClarification else { return false }
+            if let dayOffset, let referenceDate {
+                guard let storedDate = item.dueDate ?? item.reminderDate,
+                      let spokenDay = calendar.date(
+                        byAdding: .day, value: dayOffset,
+                        to: calendar.startOfDay(for: referenceDate)
+                      ), calendar.isDate(storedDate, inSameDayAs: spokenDay) else {
+                    return false
+                }
+            }
             let haystack = tokens(in: [
                 item.displayTitle,
                 item.originalTextSegment,

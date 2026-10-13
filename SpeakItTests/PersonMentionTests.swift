@@ -64,6 +64,132 @@ final class PersonMentionTests: XCTestCase {
         ).items.map(\.organization.personName)
     }
 
+    static let withdrawnSendSource = "I said I would send the draft to Marcus on Monday, but ignore that timing. "
+            + "The final plan is to send him the reviewed version on Wednesday after Clara comments. "
+            + "Also I was going to print it, no, that makes no sense because it is a shared document. "
+            + "Save the revised send, and preserve my correction in the source, but do not create "
+            + "a Monday draft send or a print job."
+
+    func testUniqueWithdrawnAntecedentIsVisibleInSurvivingActionTitle() {
+        let source = Self.withdrawnSendSource
+        let items = ThoughtExtractionEngine.extractWithRules(
+            source, referenceDate: referenceDate, calendar: calendar
+        ).items
+        XCTAssertEqual(items.count, 1, items.map { "\($0.analysisText) / \($0.organization.personName ?? "nil") / \($0.suggestedTitle ?? "nil")" }.joined(separator: " | "))
+        XCTAssertEqual(items[0].organization.personName, "Marcus")
+        XCTAssertTrue(items[0].suggestedTitle?.contains("send Marcus") == true,
+                      "title=\(items[0].suggestedTitle ?? "nil") analysis=\(items[0].analysisText)")
+        XCTAssertTrue(items[0].rawQuote.contains("send the draft to Marcus"))
+
+        let short = ThoughtExtractionEngine.extractWithRules(
+            "Call Marcus tomorrow", referenceDate: referenceDate, calendar: calendar
+        ).items
+        XCTAssertEqual(short.count, 1)
+        XCTAssertEqual(short[0].organization.personName, "Marcus")
+        XCTAssertFalse(short[0].needsReview)
+
+        let embedded = ThoughtExtractionEngine.extractWithRules(
+            "Ask Marcus to email her tomorrow", referenceDate: referenceDate,
+            calendar: calendar
+        ).items
+        XCTAssertEqual(embedded.count, 1)
+        XCTAssertTrue(embedded[0].analysisText.contains("email her"))
+    }
+
+    func testCurrentPlanRevisionDoesNotConsumeIndependentActsOrReportedPlans() {
+        func rows(_ text: String) -> [ExtractedThought] {
+            ThoughtExtractionEngine.extractWithRules(text, referenceDate: referenceDate, calendar: calendar).items
+        }
+        let unrelated = rows("I said I would call Marcus on Monday, but ignore that timing. The final plan is to send Nora the reviewed version on Wednesday.")
+        XCTAssertEqual(unrelated.count, 2)
+        XCTAssertTrue(unrelated.contains { $0.sourceQuote.contains("call Marcus") })
+        XCTAssertTrue(unrelated.contains { $0.organization.personName == "Nora" && $0.organization.itemType.isActionable })
+        let report = rows("Asha said, 'My final plan is to send Ben the document on Wednesday.'")
+        XCTAssertTrue(report.allSatisfy { !$0.organization.itemType.isActionable && $0.organization.reminderDate == nil })
+        let physical = rows("Save the revised document in the shared folder.")
+        XCTAssertEqual(physical.count, 1)
+        XCTAssertTrue(physical[0].organization.itemType.isActionable)
+        let independent = rows("I was going to print the document, no, that makes no sense because it is shared. Buy eggs tomorrow.")
+        XCTAssertEqual(independent.filter { $0.organization.itemType.isActionable }.count, 1)
+        XCTAssertTrue(independent.contains { $0.analysisText.lowercased().contains("buy eggs") })
+        let fact = rows("I was going to print the document, no, that makes no sense, and the printer is broken.")
+        XCTAssertTrue(fact.contains { $0.sourceQuote.contains("printer is broken") })
+        let competing = rows("I said I would send the draft to Marcus and Ben on Monday, but ignore that timing. The final plan is to send him the reviewed version on Wednesday.")
+        XCTAssertFalse(competing.contains { $0.organization.itemType.isActionable && ["Marcus", "Ben"].contains($0.organization.personName ?? "") })
+    }
+
+    func testNamedGroupPurposeOwnsLaterPronounOnlyWithinThatGroup() {
+        let shared = ThoughtExtractionEngine.extractWithRules(
+            "For Amira's visit next Tuesday, wash the guest towels, put fresh sheets "
+                + "on the bed, and check the lamp. She is allergic to lavender, so "
+                + "remember that about her. Pick up unscented soap before she arrives.",
+            referenceDate: referenceDate, calendar: calendar
+        ).items
+        let allergy = shared.first { $0.analysisText.contains("allergic to lavender") }
+        XCTAssertEqual(allergy?.organization.personName, "Amira")
+        XCTAssertTrue(allergy?.suggestedTitle?.contains("Amira is allergic") == true)
+        XCTAssertTrue(allergy?.sourceQuote.contains("She is allergic") == true)
+        let soap = shared.first { $0.analysisText.contains("unscented soap") }
+        XCTAssertTrue(soap?.suggestedTitle?.contains("before Amira arrives") == true)
+        XCTAssertNil(soap?.organization.dueDate)
+
+        let unrelated = ThoughtExtractionEngine.extractWithRules(
+            "Call Amira. Buy soap. She likes lavender.",
+            referenceDate: referenceDate, calendar: calendar
+        ).items
+        let unrelatedFact = unrelated.first { $0.analysisText.contains("likes lavender") }
+        XCTAssertNil(unrelatedFact?.organization.personName)
+
+        let explicit = ThoughtExtractionEngine.extractWithRules(
+            "For Amira's visit, wash the towels and change the sheets. "
+                + "Nora is allergic to lavender.",
+            referenceDate: referenceDate, calendar: calendar
+        ).items
+        let nora = explicit.first { $0.analysisText.contains("allergic to lavender") }
+        XCTAssertEqual(nora?.organization.personName, "Nora")
+    }
+
+    func testVisiblePersonNameDoesNotChangeChoiceOwnershipAnalysis() {
+        let source = "For Maya's present, I had been weighing a scarf against a sketchbook. "
+            + "She told me she has enough scarves, so I have settled on the sketchbook. "
+            + "Buy it by Friday and wrap it before the party on Saturday. "
+            + "Remember that Maya already has enough scarves; it will help with gifts later. "
+            + "There should be no scarf purchase hiding in the list because I spoke about "
+            + "that option first."
+        let items = ThoughtExtractionEngine.extractWithRules(
+            source, referenceDate: referenceDate, calendar: calendar
+        ).items
+        XCTAssertEqual(items.count, 4)
+        XCTAssertEqual(items.filter { $0.organization.itemType.isActionable }.count, 2)
+        XCTAssertFalse(items.contains { $0.organization.itemType.isActionable
+            && $0.analysisText.lowercased().contains("scarf") })
+        XCTAssertTrue(items.contains { $0.sourceQuote.contains("She told me")
+            && $0.sourceQuote.contains("weighing a scarf") })
+    }
+
+    func testNegatedNominalPurchaseCannotBecomeAnActionOrHideIndependentDadCall() {
+        let exclusion = "There should be no emerald purchase hiding in my list because I mentioned that option first."
+        let source = exclusion + " Call Dad tomorrow."
+        let items = ThoughtExtractionEngine.extractWithRules(source,referenceDate:referenceDate,calendar:calendar).items
+        let actions = items.filter { $0.organization.itemType.isActionable }
+        XCTAssertEqual(actions.count,1,items.map(\.analysisText).joined(separator:" | "))
+        XCTAssertEqual(actions.first?.organization.personName,"Dad")
+        XCTAssertTrue(actions.first?.analysisText.lowercased().contains("call dad") == true)
+        XCTAssertFalse(actions.contains { $0.analysisText.lowercased().contains("emerald") })
+        XCTAssertTrue(items.contains { $0.sourceQuote.contains("no emerald purchase") })
+        XCTAssertTrue(RuntimeProposalGuard.covers(source,quotes:items.map(\.rawQuote)))
+        XCTAssertFalse(ActionabilityReader.read(exclusion).belongsOnToday)
+        let standalone = ThoughtExtractionEngine.extractWithRules(exclusion,referenceDate:referenceDate,calendar:calendar).items
+        XCTAssertFalse(standalone.contains { $0.organization.itemType.isActionable })
+        XCTAssertTrue(standalone.contains { $0.sourceQuote.contains("no emerald purchase") })
+        XCTAssertFalse(ActionabilityReader.isExcludedListEntry("There should be no emerald purchase in my list because I will buy the lamp tomorrow."))
+        let juxtaposed = ThoughtExtractionEngine.extractWithRules("There is no problem call Dad tomorrow",referenceDate:referenceDate,calendar:calendar).items
+        XCTAssertEqual(juxtaposed.filter { $0.organization.itemType.isActionable }.count,1)
+        XCTAssertTrue(juxtaposed.contains { $0.organization.itemType.isActionable && $0.analysisText.lowercased().hasPrefix("call dad") })
+        XCTAssertFalse(ActionabilityReader.isExcludedListEntry("There should be no emerald purchase in my list because I have promised to buy the lamp tomorrow."))
+        XCTAssertFalse(ActionabilityReader.isExcludedListEntry("There should be no emerald purchase in my list because I'll buy the lamp tomorrow."))
+    }
+
     // MARK: - The families a person can arrive in
 
     func testEveryWayAHumanIsNamedResolvesToTheSamePerson() {
@@ -183,6 +309,17 @@ final class PersonMentionTests: XCTestCase {
     /// A capitalized word is not a person. Every sentence here contains one and
     /// none of them is about a human participant, so an eager resolver would
     /// fill Memory's People collection with brands, book subjects and reports.
+    func testQuantifiedTransferObjectsAreNotPeopleButRecipientsRemainNamed() {
+        for source in ["send any files", "send some files", "send each file", "send either version", "send both drafts"] {
+            XCTAssertTrue(PersonMentionResolver.mentions(in: source).isEmpty, source)
+        }
+        for source in ["send any files to Amy", "send some files to Jo", "Send Amy the files"] {
+            let mentions = PersonMentionResolver.mentions(in: source)
+            XCTAssertEqual(mentions.count, 1, source)
+            XCTAssertEqual(mentions.first?.label, source.contains("Jo") ? "Jo" : "Amy", source)
+        }
+    }
+
     func testCapitalizationAloneNeverInventsAPerson() {
         let utterances = [
             "Buy milk at Walmart",
@@ -424,8 +561,10 @@ final class PersonMentionTests: XCTestCase {
         XCTAssertEqual(person("Drop off Sam at practice"), "Sam")
         XCTAssertEqual(person("Collect Dad from the station"), "Dad")
         XCTAssertEqual(person("Get Sam from the airport"), "Sam")
+        XCTAssertEqual(person("Collect Priya from daycare"), "Priya")
         XCTAssertNil(person("pick up milk"))
         XCTAssertNil(person("Pick up Tylenol at Shoppers"))
+        XCTAssertNil(person("Pick up the supplies from school"))
         XCTAssertNil(person("Get milk from the store"))
         XCTAssertNil(person("pick up the dry cleaning"))
     }

@@ -63,6 +63,15 @@ final class SchemaFreezeTests: XCTestCase {
         "UserPreferences": "Qb7pwhuu/qNfNofKI1l6tIrP9gHAUz/lNSt/TcOXpC8="
     ]
 
+    /// Version 5 adds one optional operation-state field to CaptureSession.
+    /// Freeze these hashes when the new schema is introduced; versions 3 and 4
+    /// above remain the historical contracts they already were.
+    private static let versionFiveHashes: [String: String] = [
+        "CaptureSession": "wDcx/jXOnB3rk66iogiSMrNuF/DlCcgqpKKhR8+0z+Q=",
+        "CapturedItem": "Y4Dzp7vh3yJKc5y1vpl8pPx4+Ad6okEtO2EMGXG7Qt4=",
+        "UserPreferences": "Qb7pwhuu/qNfNofKI1l6tIrP9gHAUz/lNSt/TcOXpC8="
+    ]
+
     /// The identifiers the seeded fixture carries, so a fetch can be checked
     /// against what was written rather than against titles alone.
     private enum Seeded {
@@ -155,6 +164,42 @@ final class SchemaFreezeTests: XCTestCase {
         )
     }
 
+    func testVersionFourStoreMigratesToFiveWithoutChangingSavedRow() throws {
+        let url = storeURL("v4-to-v5")
+        let sessionID = UUID()
+        let itemID = UUID()
+        let due = Date(timeIntervalSince1970: 1_800_000_000)
+        let v4 = Schema(versionedSchema: SpeakItSchemaV4.self)
+        let old = try ModelContainer(
+            for: v4,
+            configurations: [ModelConfiguration(schema: v4, url: url)]
+        )
+        let session = SpeakItSchemaV4.CaptureSession(
+            id: sessionID, originalTranscription: "Call the dentist tomorrow"
+        )
+        let item = SpeakItSchemaV4.CapturedItem(
+            id: itemID, originalTextSegment: "Call the dentist tomorrow",
+            displayTitle: "Call the dentist", itemTypeRawValue: "task",
+            dueDate: due, captureSession: session
+        )
+        old.mainContext.insert(session)
+        old.mainContext.insert(item)
+        try old.mainContext.save()
+
+        let migrated = try openAsReleaseCandidate(at: url)
+        let readSession = try XCTUnwrap(migrated.mainContext.fetch(
+            FetchDescriptor<CaptureSession>()
+        ).first { $0.id == sessionID })
+        let readItem = try XCTUnwrap(migrated.mainContext.fetch(
+            FetchDescriptor<CapturedItem>()
+        ).first { $0.id == itemID })
+        XCTAssertEqual(readSession.originalTranscription, "Call the dentist tomorrow")
+        XCTAssertNil(readSession.operationStateData)
+        XCTAssertEqual(readItem.displayTitle, "Call the dentist")
+        XCTAssertEqual(readItem.dueDate, due)
+        XCTAssertEqual(readItem.captureSession?.id, sessionID)
+    }
+
     // MARK: - The frozen snapshot is the historical schema
 
     func testFrozenVersionThreeStampsTheRecordedHistoricalHashes() throws {
@@ -200,6 +245,14 @@ final class SchemaFreezeTests: XCTestCase {
         )
     }
 
+    func testFrozenVersionFiveStampsItsRecordedShape() throws {
+        let hashes = try versionHashes(
+            ofStoreCreatedFrom: Schema(versionedSchema: SpeakItSchemaV5.self),
+            named: "frozen-v5"
+        )
+        XCTAssertEqual(hashes, Self.versionFiveHashes)
+    }
+
     /// The gate that makes freezing every version worth doing.
     ///
     /// Adding, removing or retyping any persisted property on `CaptureSession`,
@@ -218,26 +271,25 @@ final class SchemaFreezeTests: XCTestCase {
 
         XCTAssertEqual(
             live,
-            Self.versionFourHashes,
+            Self.versionFiveHashes,
             """
             A persisted model changed shape without a new schema version. Do \
-            not edit this expectation and do not edit SpeakItSchemaV4 — both \
-            are history. Add SpeakItSchemaV5 with its own frozen model copies, \
-            add a migration stage from version 4 to it, and point \
-            SpeakItSchemaCurrent at a live twin of version 5.
+            not edit this expectation or a frozen schema. Add a new numbered \
+            snapshot, migration stage and live alias for the next model change.
             """
         )
     }
 
     func testTheMigrationPlanStillEndsAtTheFrozenNewestVersion() {
-        XCTAssertEqual(SpeakItMigrationPlan.schemas.count, 4)
+        XCTAssertEqual(SpeakItMigrationPlan.schemas.count, 5)
         XCTAssertTrue(
-            SpeakItMigrationPlan.schemas.last is SpeakItSchemaV4.Type,
+            SpeakItMigrationPlan.schemas.last is SpeakItSchemaV5.Type,
             "The newest version in the plan must be the frozen snapshot"
         )
         XCTAssertEqual(SpeakItSchemaV3.versionIdentifier, Schema.Version(3, 0, 0))
         XCTAssertEqual(SpeakItSchemaV4.versionIdentifier, Schema.Version(4, 0, 0))
-        XCTAssertEqual(SpeakItSchemaCurrent.versionIdentifier, Schema.Version(4, 0, 0))
+        XCTAssertEqual(SpeakItSchemaV5.versionIdentifier, Schema.Version(5, 0, 0))
+        XCTAssertEqual(SpeakItSchemaCurrent.versionIdentifier, Schema.Version(5, 0, 0))
     }
 
     /// Version 3's snapshot must be untouched by version 4 existing. This is
@@ -322,7 +374,7 @@ final class SchemaFreezeTests: XCTestCase {
         XCTAssertEqual(preferences[0].preferredCaptureMethod, .inAppVoice)
         XCTAssertTrue(preferences[0].shortcutSetupCompleted)
 
-        XCTAssertEqual(try versionIdentifiers(atStore: url), ["4.0.0"], "The store must land on version 4")
+        XCTAssertEqual(try versionIdentifiers(atStore: url), ["5.0.0"], "The store must land on version 4")
     }
 
     /// The legacy contract, checked against the one store in this repository
@@ -452,7 +504,7 @@ final class SchemaFreezeTests: XCTestCase {
             )
             XCTAssertEqual(
                 try versionIdentifiers(atStore: url),
-                ["4.0.0"],
+                ["5.0.0"],
                 "Pass \(pass) left the store somewhere other than the newest version"
             )
         }
@@ -464,10 +516,10 @@ final class SchemaFreezeTests: XCTestCase {
         let url = storeURL("fresh")
         _ = try openAsReleaseCandidate(at: url)
 
-        XCTAssertEqual(try versionIdentifiers(atStore: url), ["4.0.0"])
+        XCTAssertEqual(try versionIdentifiers(atStore: url), ["5.0.0"])
         XCTAssertEqual(
             try versionHashes(atStore: url),
-            Self.versionFourHashes,
+            Self.versionFiveHashes,
             "A first launch must produce the same store shape an upgrade lands on"
         )
     }
@@ -540,7 +592,7 @@ final class SchemaFreezeTests: XCTestCase {
             "Version 4's attribute arrives empty too — no verdict is recoverable for it"
         )
         XCTAssertNil(items[0].semanticState)
-        XCTAssertEqual(try versionIdentifiers(atStore: url), ["4.0.0"])
+        XCTAssertEqual(try versionIdentifiers(atStore: url), ["5.0.0"])
     }
 
     /// The oldest store shape, kept here beside the others so the whole ladder
@@ -579,6 +631,6 @@ final class SchemaFreezeTests: XCTestCase {
         XCTAssertNil(items[0].locationIntentData)
         XCTAssertFalse(items[0].hasRecordedSemanticState)
         XCTAssertNil(items[0].semanticState)
-        XCTAssertEqual(try versionIdentifiers(atStore: url), ["4.0.0"])
+        XCTAssertEqual(try versionIdentifiers(atStore: url), ["5.0.0"])
     }
 }

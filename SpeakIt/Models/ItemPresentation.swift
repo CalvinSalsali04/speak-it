@@ -100,6 +100,8 @@ struct ItemPresentation: Equatable, Sendable {
     }
 
     var destination: Destination
+    /// True when the item is actionable, uncompleted, and past its scheduled due date or time.
+    var isOverdue: Bool
     /// The compact timing for a row's trailing slot, or `nil` when the item has
     /// no timing to show. A place reminder puts its place here rather than a
     /// date, because inventing one would misreport when it fires.
@@ -114,6 +116,14 @@ struct ItemPresentation: Equatable, Sendable {
     /// The repeat rule's name, when one applies.
     var recurrenceSummary: String?
 
+    /// Formatted timing text for display in row slots, prefixed with "Overdue · " when overdue.
+    var formattedTimingText: String? {
+        guard let primaryTimingText else {
+            return isOverdue ? "Overdue" : nil
+        }
+        return isOverdue ? "Overdue · \(primaryTimingText)" : primaryTimingText
+    }
+
     var requiresReview: Bool { destination == .needsReview }
 
     @MainActor
@@ -126,15 +136,18 @@ struct ItemPresentation: Equatable, Sendable {
         let blocker = item.locationBlocker(authorization: authorization)
         let reminderState = reminderState(for: item, blocker: blocker)
         let recurrence = RecurrenceStore.rule(for: item.id)?.displayName
+        let dest = destination(
+            for: item,
+            authorization: authorization,
+            now: now,
+            calendar: calendar
+        )
+        let isOverdue = !item.isCompleted && dest == .overdue
 
         return ItemPresentation(
-            destination: destination(
-                for: item,
-                authorization: authorization,
-                now: now,
-                calendar: calendar
-            ),
-            primaryTimingText: primaryTimingText(
+            destination: dest,
+            isOverdue: isOverdue,
+            primaryTimingText: calendarWindowText(for: item, calendar: calendar) ?? primaryTimingText(
                 for: reminderState,
                 now: now,
                 calendar: calendar
@@ -147,6 +160,19 @@ struct ItemPresentation: Equatable, Sendable {
     }
 
     // MARK: - Derivations
+
+    private static func calendarWindowText(for item: CapturedItem, calendar: Calendar) -> String? {
+        guard let intent = item.temporalIntent,
+              intent.kind == .calendarWindow else { return nil }
+        let intendedCalendar = intent.calendar(default: calendar)
+        guard let start = intent.day?.startOfDay(in: intendedCalendar),
+              let end = intent.windowEndDay?.startOfDay(in: intendedCalendar) else { return nil }
+        var style = Date.FormatStyle.dateTime.month(.abbreviated).day()
+        style.timeZone = intendedCalendar.timeZone
+        let first = start.formatted(style)
+        let last = end.formatted(style)
+        return "\(first)–\(last)"
+    }
 
     private static func reminderState(
         for item: CapturedItem,
@@ -209,6 +235,19 @@ struct ItemPresentation: Equatable, Sendable {
         return delivery
     }
 
+    @MainActor
+    static func savedTargetDetail(for item: CapturedItem) -> String {
+        func formatted(_ date: Date, clock: Bool) -> String {
+            clock ? date.formatted(.dateTime.year().month(.abbreviated).day().hour().minute())
+                : date.formatted(.dateTime.year().month(.abbreviated).day())
+        }
+        var details: [String] = []
+        if let due = item.dueDate { details.append("Due " + formatted(due, clock: !item.isDateOnly)) }
+        if let alert = item.reminderDate { details.append("Alert " + formatted(alert, clock: true)) }
+        if details.isEmpty { details.append("Captured " + formatted(item.createdAt, clock: true)) }
+        return details.joined(separator: "; ")
+    }
+
     /// Test support. A suite that rebuilds items with reused IDs must not
     /// observe a previous case's memoized parse.
     static func resetDeliveryCacheForTesting() {
@@ -221,17 +260,17 @@ struct ItemPresentation: Equatable, Sendable {
         for item: CapturedItem,
         segment: String
     ) -> ReminderDelivery {
-        let segmentDelivery = ThoughtOrganizer.organize(
-            segment,
-            referenceDate: item.createdAt
-        ).reminderDelivery
-        guard segmentDelivery == .none, let session = item.captureSession else {
-            return segmentDelivery
-        }
-        return ThoughtOrganizer.organize(
-            session.originalTranscription,
-            referenceDate: session.createdAt
-        ).reminderDelivery
+        parsedReminderDelivery(segment: segment, createdAt: item.createdAt,
+            parentSource: item.captureSession?.originalTranscription, parentCreatedAt: item.captureSession?.createdAt)
+    }
+
+    /// Also reads a frozen saved-change snapshot, using the same source and
+    /// parent fallback as the actual scheduled request.
+    static func parsedReminderDelivery(segment: String, createdAt: Date,
+                                       parentSource: String?, parentCreatedAt: Date?) -> ReminderDelivery {
+        let segmentDelivery = ThoughtOrganizer.organize(segment, referenceDate: createdAt).reminderDelivery
+        guard segmentDelivery == .none, let parentSource else { return segmentDelivery }
+        return ThoughtOrganizer.organize(parentSource, referenceDate: parentCreatedAt ?? createdAt).reminderDelivery
     }
 
     @MainActor
@@ -344,6 +383,14 @@ struct ItemPresentation: Equatable, Sendable {
     }
 
     @MainActor
+    static func savedChangeReviewPrompt(for item: CapturedItem) -> String? {
+        guard let state = CaptureOperationState.read(from:item.captureSession?.operationStateData),
+              state.phase == .pendingChoice, state.reviewItemID == item.id,
+              state.pendingSavedRevision != nil else { return nil }
+        return state.candidateIDs.isEmpty ? "Saved item not found" : "Choose which saved item to change"
+    }
+
+    @MainActor
     private static func reviewRequirement(
         for item: CapturedItem,
         blocker: LocationReminderBlocker?
@@ -352,6 +399,7 @@ struct ItemPresentation: Equatable, Sendable {
         // actually is — "Set your Home location" rather than the generic "Place
         // reminder" — and naming the wrong one sends the person looking in the
         // wrong place.
+        if let saved = savedChangeReviewPrompt(for:item) { return saved }
         if let blocker { return blocker.listLabel }
         guard item.needsClarification else { return nil }
         return (item.clarificationRequirement ?? .confirmation).listLabel

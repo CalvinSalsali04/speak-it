@@ -1,4 +1,5 @@
 import Foundation
+import NaturalLanguage
 
 /// Repairs dictated speech *before* anything tries to understand it.
 ///
@@ -16,6 +17,149 @@ import Foundation
 ///
 /// Each stage is deliberately conservative: when a rule is not confident it
 /// leaves the text alone, because a wrong repair is worse than no repair.
+
+/// The production repair order, with each transformation's exact input and
+/// output kept long enough to audit what happened to raw source occurrences.
+/// The trace is transient: it never changes CaptureSession's original text or
+/// the persisted model schema.
+enum SpeechRepairPipeline {
+    enum Kind: String {
+        case disfluency
+        case splitCompound
+        case selfCorrection
+        case clockDigit
+        case spokenShorthand
+        case twentyFourHourClock
+        case dictationPunctuation
+        case dictationHomophone
+        case groceryHomophone
+    }
+
+    struct Stage {
+        let kind: Kind
+        let input: String
+        let output: String
+        let removedRawWordIDs: Set<Int>
+        /// The exact raw occurrences behind each input word, before this edit.
+        let inputWordRawIDs: [Set<Int>]
+
+        init(kind: Kind, input: String, output: String,
+             removedRawWordIDs: Set<Int>, inputWordRawIDs: [Set<Int>] = []) {
+            self.kind = kind
+            self.input = input
+            self.output = output
+            self.removedRawWordIDs = removedRawWordIDs
+            self.inputWordRawIDs = inputWordRawIDs
+        }
+    }
+
+    struct Result {
+        let cleaned: String
+        let splitCompounds: String
+        let selfCorrected: String
+        let corrected: String
+        let stages: [Stage]
+        let rawWords: [SourceUnitLedger.Word]
+        let survivingRawWordIDs: Set<Int>
+        /// Each final repaired word's exact raw-source occurrence ancestry.
+        /// Kept separate from the surviving set so a caller can remap a
+        /// nested extraction without assuming repair preserved word offsets.
+        let correctedWordRawIDs: [Set<Int>]
+    }
+
+    static func run(_ normalized: String, trackOrigins: Bool = false) -> Result {
+        var value = normalized
+        var stages: [Stage] = []
+        let rawWords = trackOrigins ? SourceUnitLedger(normalized).words : []
+        var origins: [Set<Int>] = rawWords.indices.map { [$0] }
+        func apply(_ kind: Kind, _ transform: (String) -> String) {
+            let next = transform(value)
+            let inputOrigins = origins
+            var removed: Set<Int> = []
+            if trackOrigins && next != value {
+                var aligned = TranscriptProvenance(raw: value, repaired: next)
+                    .repairedWordOriginSpans()
+                if kind == .selfCorrection {
+                    aligned = correctionReplacementOrigins(
+                        input: value, output: next, aligned: aligned
+                    )
+                }
+                let nextOrigins = aligned.map { span -> Set<Int> in
+                    guard let span, span.upperBound < origins.count else { return [] }
+                    return span.reduce(into: Set<Int>()) { result, index in
+                        result.formUnion(origins[index])
+                    }
+                }
+                removed = Set(origins.flatMap { $0 })
+                    .subtracting(nextOrigins.flatMap { $0 })
+                origins = nextOrigins
+            }
+            stages.append(Stage(kind: kind, input: value, output: next,
+                                removedRawWordIDs: removed,
+                                inputWordRawIDs: inputOrigins))
+            value = next
+        }
+
+        apply(.disfluency, DisfluencyFilter.stripped)
+        let cleaned = value
+        apply(.splitCompound, SplitCompoundRepair.rejoined)
+        let splitCompounds = value
+        apply(.selfCorrection, SelfCorrectionResolver.resolved)
+        let selfCorrected = value
+        apply(.clockDigit, ClockDigitRepair.repaired)
+        apply(.spokenShorthand, SpokenShorthandRepair.repaired)
+        apply(.twentyFourHourClock, SpokenShorthandRepair.twentyFourHourClock)
+        apply(.dictationPunctuation, DictationPunctuationRepair.repaired)
+        apply(.dictationHomophone, DictationHomophoneRepair.repaired)
+        apply(.groceryHomophone, GroceryHomophoneRepair.repaired)
+        return Result(cleaned: cleaned, splitCompounds: splitCompounds,
+                      selfCorrected: selfCorrected, corrected: value,
+                      stages: stages, rawWords: rawWords,
+                      survivingRawWordIDs: Set(origins.flatMap { $0 }),
+                      correctedWordRawIDs: origins)
+    }
+
+    /// If a correction repeats the old words verbatim, generic LCS aligns the
+    /// output to the old occurrence and calls the spoken replacement deleted.
+    /// Bind an exact output suffix to the corresponding post-cue occurrence.
+    /// Earlier output words keep their original alignment; no approximate or
+    /// reordered match is introduced by this rule.
+    private static func correctionReplacementOrigins(
+        input: String, output: String,
+        aligned: [ClosedRange<Int>?]
+    ) -> [ClosedRange<Int>?] {
+        if let exact = SelfCorrectionResolver.reconsiderationWordOrigins(input: input, output: output) {
+            return exact
+        }
+        guard let marker = input.range(
+            of: #"(?i)\b(?:no\s+wait|actually|sorry|i\s+mean|correction|scratch\s+that|make\s+(?:it|that)|wait|no)\b"#,
+            options: [.regularExpression, .backwards]
+        ) else { return aligned }
+        let inputWords = SourceUnitLedger(input).words
+        let outputWords = SourceUnitLedger(output).words
+        guard aligned.count == outputWords.count else { return aligned }
+        let replacementIndices = inputWords.indices.filter {
+            inputWords[$0].range.lowerBound >= marker.upperBound
+        }
+        let maximum = min(outputWords.count, replacementIndices.count)
+        guard maximum > 0 else { return aligned }
+        for count in stride(from: maximum, through: 1, by: -1) {
+            let outputStart = outputWords.count - count
+            let inputStart = replacementIndices.count - count
+            guard (0..<count).allSatisfy({ offset in
+                outputWords[outputStart + offset].text
+                    == inputWords[replacementIndices[inputStart + offset]].text
+            }) else { continue }
+            var revised = aligned
+            for offset in 0..<count {
+                let origin = replacementIndices[inputStart + offset]
+                revised[outputStart + offset] = origin...origin
+            }
+            return revised
+        }
+        return aligned
+    }
+}
 
 // MARK: - Disfluency
 
@@ -65,7 +209,7 @@ enum DisfluencyFilter {
     /// turn at the lights" opens with a direction, and "I mean to call her" is
     /// an intention rather than a repair. The comma is the whole difference —
     /// without it these would eat the first word of real sentences.
-    private static let punctuatedLeadIns = #"right|i\s+mean|now|see|look|actually|quick\s+thing|for\s+later"#
+    private static let punctuatedLeadIns = #"right|i\s+mean|see|look"#
 
     /// Openers that carry no instruction of their own, and the spoken
     /// contractions that stand in for a dropped subject.
@@ -76,7 +220,7 @@ enum DisfluencyFilter {
     /// changed where a thought landed: "right so book the dentist" and "hey buy
     /// milk" were filed in Memory, and "gotta call the plumber" invented a
     /// person named Gotta.
-    private static let unpunctuatedLeadIns = #"right|now|see|look|hey|whatever|just|also|oh|ah|i\s+mean|gotta|gonna|lemme|needa|hafta"#
+    private static let unpunctuatedLeadIns = #"right|see|look|hey|whatever|just|also|oh|ah|i\s+mean|gotta|gonna|lemme|needa|hafta"#
 
     /// The evidence that an opener was discourse: a verb that starts an
     /// instruction directly behind it. "Right so email Professor Chen" is
@@ -120,19 +264,14 @@ enum DisfluencyFilter {
         // "Okay so the thing is I need to renew insurance" -> "I need to renew
         // insurance". Runs after the lead-in strip so it sees the bare phrase.
         value = replace(value, #"^(?:the\s+)?thing\s+is\b[\s,]*"#, "")
-        // "I was thinking" is throat-clearing in front of a clause the speaker
-        // owes -- "I was thinking, buy milk" -- and the sentence's own verb in
-        // front of its complement: "I was thinking of calling Priya" means the
-        // errand was contemplated, not committed to. Stripping the second kind
-        // deleted the modality and left a fragment ("of calling Priya"), which
-        // is a hypothetical marker the layers above this one are meant to read.
-        //
-        // The trailing `\S` is load-bearing. "I was thinking about" with
-        // nothing after it must keep stripping: the lone "about" it leaves is
-        // what `ClauseStructure.unfinished` reads as a trailing function word,
-        // and that is how an abandoned thought is recognised rather than
-        // turned into an errand.
-        value = replace(value, #"^i\s+was\s+thinking\b(?!\s+(?:of|about)\s+\S)[\s,]*"#, "")
+        // "I was thinking ..." can frame a proposal with a finite complement,
+        // not only "of/about/to". Stripping that frame can make an executable
+        // verb appear committed. Only a marked pause followed by an
+        // independently imperative clause licenses the preamble reading.
+        value = replace(value,
+                        #"^i\s+was\s+thinking\s*,\s*(?=\#(imperativeLead)\b)"#,
+                        "")
+        value = replace(value, #"^i\s+was\s+thinking\s+(?=(?:of|about)\s*$)"#, "")
         // A leading "I mean" is the same throat-clearing as "the thing is".
         // Left in place it cost real rows: "so uh I mean um the car needs the
         // winter tires on and also the plates renewed" collapsed to a single
@@ -143,7 +282,7 @@ enum DisfluencyFilter {
         // "right so I mean the meeting is Thursday" carries its openers
         // comma-free, and the imperative-gated strip above declines them
         // because a fact clause follows.
-        value = replace(value, #"^(?:(?:right|okay|ok|so|well|yeah|alright)\s+)*i\s+mean\b[\s,]*(?=\S)"#, "")
+        value = replace(value, #"^(?:(?:right|okay|ok|so|well|yeah|alright)\s+)*i\s+mean\b[\s,]*(?!to\b)(?=\S)"#, "")
         // "While I'm at it" and its family are asides meaning "also" — the
         // content is the instruction after them. Gated on that instruction:
         // only an action verb right behind the aside proves it was an aside,
@@ -168,6 +307,8 @@ enum DisfluencyFilter {
         value = replace(value, #"\bto\s+like\s+(?=\#(ActionabilityReader.actionVerb)\b)"#, "to ")
         value = replace(value, #"\b(and|also|so|then|plus)\s+like\s+also\b"#, "$1 also")
         value = replace(value, #"^like\s+(?=also\b)"#, "")
+
+        value = DiscourseFrame.strippingSignOff(value)
 
         // Announcements that a thought is coming. They are the spoken
         // equivalent of clearing your throat, and each one used to become a row
@@ -243,6 +384,10 @@ enum DisfluencyFilter {
         value = replace(value, #"\s+(?:you\s+know|y['’]know|i\s+guess)\s+"#, " ")
         value = replace(value, #"\s+(?:\#(alwaysFillers))\s+"#, " ")
         value = replace(value, #"\s+(?:\#(alwaysFillers))\b"#, "")
+        // After a sentence-final pause, a filler and its following comma
+        // can leave ".," behind. That malformed connector makes the next
+        // independent fact look like part of the preceding action.
+        value = replace(value, #"([.!?])\s*,\s*"#, "$1 ")
         // "oh" / "ah" / "er" only come out when what follows shows the speaker
         // was resuming rather than naming someone.
         value = replace(
@@ -267,9 +412,6 @@ enum DisfluencyFilter {
         value = replace(value,
             #"\bthen\s+after\s+(?=(?:i|we)\s+(?:need|want|have)\s+to\b)"#,
             "then ")
-
-        // How the recording ends. See `DiscourseFrame`.
-        value = DiscourseFrame.strippingSignOff(value)
 
         return normalize(value)
     }
@@ -298,6 +440,15 @@ enum DisfluencyFilter {
             // the series, not the end of a statement.
             if match.range(at: 1).location != NSNotFound { continue }
             guard let dayRange = Range(match.range(at: 2), in: result) else { continue }
+            // A fronted clock governs the reminder after it. Adding a comma
+            // after "tomorrow at nine in the morning" makes the splitter
+            // treat the time as a standalone event, then leak nine o'clock
+            // onto a later reminder with its own clock. A preceding completed
+            // statement ("the meeting is tomorrow at nine") still gets the
+            // pause that this repair was introduced to restore.
+            let head = String(result[..<dayRange.upperBound])
+            let frontedClock = #"(?i)(?:^|[,;.!?]\s*|\band\s+)(?:(?:today|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+)?(?:at\s+)?\#(SelfCorrectionResolver.timePattern)(?:\s+(?:in\s+the\s+)?(?:morning|afternoon|evening|night))?\s*$"#
+            if head.range(of: frontedClock, options: .regularExpression) != nil { continue }
             result.replaceSubrange(dayRange.upperBound..<dayRange.upperBound, with: ",")
         }
         return result
@@ -344,7 +495,7 @@ enum DiscourseFrame {
         #"(?:bye(?:\s*bye)?|goodbye|good\s*bye"#
         + #"|see\s+(?:you|ya)(?:\s+(?:later|soon|then|around))?"#
         + #"|talk\s+(?:to\s+you\s+)?(?:soon|later)|catch\s+you\s+later"#
-        + #"|over\s+and\s+out|that['’]?s\s+(?:it|all|everything)"#
+        + #"|(?:okay|ok)\s+done|over\s+and\s+out|that['’]?s\s+(?:it|all|everything)"#
         + #"|that\s+is\s+(?:it|all|everything))"#
 
     /// Closings that are also ordinary objects, and so need the guard below.
@@ -831,11 +982,25 @@ enum GroceryHomophoneRepair {
         let matches = regex.matches(in: text, range: NSRange(text.startIndex..., in: text))
         for match in matches.reversed() {
             guard let byRange = Range(match.range(at: 1), in: result) else { continue }
+            // Repair needs a place where a new instruction can begin. A
+            // product noun after an ordinary preposition is not such a place:
+            // "put the notice by snacks" must not invent "buy snacks".
+            guard beginsInstruction(in: result, before: byRange.lowerBound) else { continue }
             guard !precedingWordTakesBy(in: result, before: byRange.lowerBound) else { continue }
             let by = result[byRange]
             result.replaceSubrange(byRange, with: by.first == "B" ? "Buy" : "buy")
         }
         return result
+    }
+
+    private static func beginsInstruction(in text: String, before index: String.Index) -> Bool {
+        let prefix = text[..<index].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !prefix.isEmpty else { return true }
+        if let last = prefix.last, ",;:.!?".contains(last) { return true }
+        return prefix.range(
+            of: #"(?i)\b(?:to|please)\s*$"#,
+            options: .regularExpression
+        ) != nil
     }
 
     private static func precedingWordTakesBy(in text: String, before index: String.Index) -> Bool {
@@ -1099,7 +1264,10 @@ enum SelfCorrectionResolver {
     static func resolved(_ text: String) -> String {
         if hasUnresolvedOrdinalReference(text)
             || CaptureOperationDetector.hasAmbiguousLocalCancellation(text) { return text }
-        var value = text
+        // Explicit adjacent reconsideration has a different predicate, so a
+        // same-verb slot repair cannot prove it. The bounded plan preserves
+        // every source span outside the two complete local declarations.
+        var value = reconsiderationRepair(in: text)?.output ?? text
         // Naming the original calendar value again and saying it is correct
         // rejects the intervening proposal. Preserve the original instruction,
         // but only when the repeated value exactly matches its leading date.
@@ -1140,6 +1308,157 @@ enum SelfCorrectionResolver {
             with: "$2",
             options: .regularExpression
         )
+        // Correction identity is local to a sentence unless a later stage can
+        // bind an explicit reference to an earlier intention. A weak marker in
+        // a later sentence used to block an earlier valid date correction,
+        // because the resolver examined only the last marker in the capture.
+        // Keep exact separators and repair each sentence independently.
+        var ranges: [Range<String.Index>] = []
+        if value.range(of: RuleBasedThoughtExtractor.namedClockCorrectionPattern,
+                       options: .regularExpression) != nil {
+            // A named cross-sentence clock correction needs semantic ownership
+            // later. Respect the same lowercase sentence boundaries as the
+            // extractor so a local repair cannot consume its reference first.
+            ranges = RuleBasedThoughtExtractor.quotePreservingSentenceRanges(in: value)
+        } else {
+            let tokenizer = NLTokenizer(unit: .sentence)
+            tokenizer.string = value
+            tokenizer.enumerateTokens(in: value.startIndex..<value.endIndex) { range, _ in
+                ranges.append(range)
+                return true
+            }
+        }
+        guard ranges.count > 1 else { return repairRepeatedly(value) }
+        var repaired = ""
+        var cursor = value.startIndex
+        for range in ranges {
+            repaired += value[cursor..<range.lowerBound]
+            let sentence = value[range]
+            let first = sentence.firstIndex(where: { !$0.isWhitespace }) ?? sentence.endIndex
+            let last = sentence.lastIndex(where: { !$0.isWhitespace })
+                .map { sentence.index(after: $0) } ?? sentence.endIndex
+            repaired += sentence[sentence.startIndex..<first]
+            repaired += repairRepeatedly(String(sentence[first..<last]))
+            repaired += sentence[last..<sentence.endIndex]
+            cursor = range.upperBound
+        }
+        repaired += value[cursor...]
+        return repaired
+    }
+
+    private struct ReconsiderationRepair {
+        let output: String
+        let licensedIDs: Set<Int>
+        let wordOrigins: [ClosedRange<Int>?]
+    }
+
+    /// A complete adjacent "on second thought, just <action> it" replaces
+    /// one uniquely named local object action. A quote, report, condition,
+    /// coordination, temporal modifier or competing object declines this
+    /// narrow proof instead of retracting another intention.
+    private static func reconsiderationRepair(in text: String) -> ReconsiderationRepair? {
+        guard text.range(of: #"(?i)\bon\s+second\s+thought\b"#,
+                         options: .regularExpression) != nil,
+              !QuotedSpeechScope.hasUnclosedQuote(text) else { return nil }
+        let ranges = RuleBasedThoughtExtractor.quotePreservingSentenceRanges(in: text)
+        guard ranges.count > 1 else { return nil }
+        let ledger = SourceUnitLedger(text)
+        for index in ranges.indices.dropFirst() {
+            let oldRange = ranges[index - 1], correctionRange = ranges[index]
+            let old = String(text[oldRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let correction = String(text[correctionRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+            guard QuotedSpeechScope.ranges(in: old).isEmpty,
+                  QuotedSpeechScope.ranges(in: correction).isEmpty,
+                  ClauseScope.read(old).act != .reporting,
+                  ClauseScope.read(old).act != .communicating,
+                  ActionabilityReader.read(old).belongsOnToday,
+                  old.range(of: #"(?i)\b(?:if|unless|when|while|after|before|until|and|or|but|then|at|by|today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b|[,;]"#,
+                            options: .regularExpression) == nil,
+                  old.range(of: #"(?i)\b\#(repairDatePattern)\b"#,
+                            options: .regularExpression) == nil,
+                  let before = actionFrame(RuleBasedThoughtExtractor.canonicalizedListCommand(old, namingStore: false)),
+                  before.object.range(of: #"(?i)^(?:the|a|an|my|our)\s+[\p{L}][\p{L}'’-]*(?:\s+[\p{L}][\p{L}'’-]*){0,2}$"#,
+                                      options: .regularExpression) != nil,
+                  before.object.range(of: #"(?i)\b(?:i|we|you|he|she|it|they|that|this|who|which|said|says|is|are|was|were|has|have|will|would|could|should|not|never)\b"#,
+                                      options: .regularExpression) == nil,
+                  PersonMentionResolver.mentions(in: before.object).isEmpty,
+                  reconsiderationObjectIsNominal(before.object),
+                  let regex = NSRegularExpression.speakItCached(
+                    #"(?i)^on\s+second\s+thought\s*,\s*(?:just|only)\s+(\#(ActionabilityReader.actionVerb))\s+(it)(\s+first)?[.!?]*$"#
+                  ), let match = regex.firstMatch(in: correction,
+                        range: NSRange(correction.startIndex..., in: correction)),
+                  let verb = Range(match.range(at: 1), in: correction),
+                  let originalObject = text.range(of: before.object,
+                        options: [.backwards, .caseInsensitive], range: oldRange) else { continue }
+            let order = Range(match.range(at: 3), in: correction).map { String(correction[$0]) } ?? ""
+            let replacement = String(correction[verb]) + " " + String(text[originalObject]) + order
+            let terminal = correction.last.map { ".!?".contains($0) } == true ? "." : ""
+            let oldLeading = String(text[oldRange].prefix(while: \.isWhitespace))
+            let correctionTrailing = String(text[correctionRange].reversed().prefix(while: \.isWhitespace).reversed())
+            let output = String(text[..<oldRange.lowerBound]) + oldLeading + replacement + terminal
+                + correctionTrailing + String(text[correctionRange.upperBound...])
+            // Old object occurrences survive in the replacement. The old
+            // predicate, list frame, corrective cue and unique pronoun are
+            // the only source occurrences this plan may account for deleting.
+            guard let rawCorrection = text.range(of: correction, range: correctionRange) else { continue }
+            func raw(_ range: Range<String.Index>) -> Range<String.Index> {
+                let start = correction.distance(from: correction.startIndex, to: range.lowerBound)
+                let end = correction.distance(from: correction.startIndex, to: range.upperBound)
+                let lower = text.index(rawCorrection.lowerBound, offsetBy: start)
+                let upper = text.index(rawCorrection.lowerBound, offsetBy: end)
+                return lower..<upper
+            }
+            let verbIDs = ledger.ids(in: raw(verb)).sorted()
+            let orderIDs = Range(match.range(at: 3), in: correction)
+                .map { ledger.ids(in: raw($0)).sorted() } ?? []
+            let originIDs = ledger.ids(in: text.startIndex..<oldRange.lowerBound).sorted()
+                + verbIDs + ledger.ids(in: originalObject).sorted() + orderIDs
+                + ledger.ids(in: correctionRange.upperBound..<text.endIndex).sorted()
+            let outputWords = SourceUnitLedger(output).words
+            guard originIDs.count == outputWords.count,
+                  zip(originIDs, outputWords).allSatisfy({ ledger.words[$0.0].text == $0.1.text })
+            else { continue }
+            // The new predicate precedes the old object. A typed exact
+            // occurrence map preserves both even though this is not an LCS
+            // order; neither a guessed ancestry nor a broad deletion is used.
+            let surviving = Set(originIDs)
+            let licensed = Set(ledger.words.indices).subtracting(surviving)
+            return ReconsiderationRepair(output: output, licensedIDs: licensed,
+                wordOrigins: originIDs.map { $0...$0 })
+        }
+        return nil
+    }
+
+    private static func reconsiderationObjectIsNominal(_ object: String) -> Bool {
+        if RuntimeCurrentNominalProof.read(object) { return true }
+        // Portable household-object evidence when lexical assets are absent.
+        // This closes the entire nominal; unknown predicates do not acquire
+        // deletion authority merely by occupying a short object slot.
+        let heads: Set<String> = ["kettle", "toaster", "oven", "stove", "boiler", "heater",
+            "filter", "sink", "shower", "tap", "faucet", "pan", "pot", "cup", "bowl",
+            "plate", "dish", "bottle", "tray", "shelf", "chair", "table", "desk",
+            "printer", "projector", "laptop", "battery", "charger", "vacuum"]
+        let modifiers: Set<String> = ["small", "large", "spare", "new", "old", "portable",
+            "red", "blue", "green", "white", "black", "glass", "ceramic", "metal",
+            "steel", "electric", "kitchen", "bathroom", "office"]
+        var words = object.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
+        if ["the", "a", "an", "my", "our"].contains(words.first ?? "") { words.removeFirst() }
+        guard (1...3).contains(words.count), let head = words.last, heads.contains(head) else { return false }
+        return words.dropLast().allSatisfy { modifiers.contains($0) }
+    }
+
+    static func reconsiderationRepairIDs(input: String, output: String) -> Set<Int>? {
+        guard let repair = reconsiderationRepair(in: input), repair.output == output else { return nil }
+        return repair.licensedIDs
+    }
+
+    static func reconsiderationWordOrigins(input: String, output: String) -> [ClosedRange<Int>?]? {
+        guard let repair = reconsiderationRepair(in: input), repair.output == output else { return nil }
+        return repair.wordOrigins
+    }
+
+    private static func repairRepeatedly(_ text: String) -> String {
+        var value = text
         for _ in 0..<4 {
             let next = resolvedOnce(value)
             if next == value { break }
@@ -1149,39 +1468,46 @@ enum SelfCorrectionResolver {
     }
 
     private static func resolvedOnce(_ text: String) -> String {
+        // A complete direct reminder wrapper owns its calendar complement.
+        // Prove every part before optional lexical attribution can mistake
+        // the unfinished old frame for a separate subject/predicate.
+        if let plan = calendarFrameRepairPlan(input: text, requiresExplicitReminder: true) {
+            return plan.output
+        }
         let scope = ClauseScope.read(text)
         guard let regex = NSRegularExpression.speakItCached(correctionPattern),
-              let last = regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).last(where: { match in
-                  guard let span = Range(match.range, in: text) else { return false }
-                  if ClauseScope.isInsideQuotation(span.lowerBound, in: text) { return false }
+              let first = regex.matches(in: text, range: NSRange(text.startIndex..., in: text)).first(where: { match in
+                  guard let marker = Range(match.range, in: text) else { return false }
+                  if ClauseScope.isInsideQuotation(marker.lowerBound, in: text) { return false }
                   let outerReminder = scope.matrix.range(
-                    of: #"(?i)^(?:please\s+)?(?:remind|notify|alert)\b"#,
-                    options: .regularExpression
-                  ) != nil
+                      of: #"(?i)^(?:please\s+)?(?:remind|notify|alert)\b"#,
+                      options: .regularExpression) != nil
                   if !outerReminder, ClauseScope.continuesAttributedAction(
-                    left: String(text[..<span.lowerBound]), right: String(text[span.upperBound...])
+                      left: String(text[..<marker.lowerBound]), right: String(text[marker.upperBound...])
                   ) { return false }
-                  // Words inside a message/report are content, not edits to
-                  // the speaker's outer instruction.
-                  if let body = scope.complementRange, body.contains(span.lowerBound),
+                  if let body = scope.complementRange, body.contains(marker.lowerBound),
                      scope.act == .reporting || SentenceContextCache.context(for: text)
-                        .hasSubjectPredicate(in: body.lowerBound..<span.lowerBound) {
+                        .hasSubjectPredicate(in: body.lowerBound..<marker.lowerBound) { return false }
+                  let tail = String(text[marker.upperBound...])
+                  // A correction needs a replacement proposition. A sentence
+                  // ending in "the one I mean" instead identifies a referent;
+                  // punctuation alone must never replace the preceding words.
+                  guard tail.range(of: #"[\p{L}\p{N}]"#,
+                                   options: .regularExpression) != nil else { return false }
+                  let cue = String(text[marker])
+                  if cue.range(of: #"(?i)^\s+i\s+mean\s*$"#,
+                               options: .regularExpression) != nil,
+                     text[..<marker.lowerBound].range(
+                        of: #"(?i)\b(?:what|which|(?:the|this|that|these|those)\s+(?:one|ones))\s*$"#,
+                        options: .regularExpression
+                     ) != nil,
+                     tail.range(of: #"(?i)^\s*(?:is|are|was|were|has|have|by)\b"#,
+                                options: .regularExpression) != nil {
                       return false
                   }
-                  let marker = String(text[span])
-                  let tail = String(text[span.upperBound...])
-                  // A negative formatting constraint describes how to retain
-                  // the value; it does not replace that value with "spaces".
-                  let formattingConstraint = marker.range(
-                      of: #"(?i)^\s*[,—–-]?\s*no\s*,?\s*$"#,
-                      options: .regularExpression
-                  ) != nil && tail.range(
-                      of: #"(?i)^(?:spaces?|hyphens?|dashes?|punctuation|commas?|periods?|capitals?|capitalization)\b"#,
-                      options: .regularExpression
-                  ) != nil
-                  return !formattingConstraint
+                  return true
               }),
-              let range = Range(last.range, in: text),
+              let range = Range(first.range, in: text),
               range.lowerBound != text.startIndex else {
             return text
         }
@@ -1195,12 +1521,62 @@ enum SelfCorrectionResolver {
 
         let prefix = normalize(String(text[..<range.lowerBound]))
         var replacement = normalize(String(text[range.upperBound...]))
+        // In a conditional instruction, "make that <noun> <adjective>" can be
+        // the requested action rather than a repair marker: "If the request
+        // fails, make that limitation visible." Erasing the condition is
+        // particularly harmful because it changes when the action applies.
+        if prefix.range(
+            of: #"(?i)(?:^|[.!?]\s*)if\b[^.!?]*$|\bif\b[^.!?]*\bcannot\b[^.!?]*$"#,
+            options: .regularExpression
+        ) != nil,
+           text[range].range(of: #"(?i)\bmake\s+that\b"#,
+                             options: .regularExpression) != nil {
+            return text
+        }
         replacement = replacement.replacingOccurrences(
             of: #"(?i)^(?:make\s+(?:that|it)|let'?s\s+(?:do|make\s+it))\s+"#,
             with: "",
             options: .regularExpression
         )
         guard !replacement.isEmpty, !prefix.isEmpty else { return text }
+
+
+        // "No, skip the envelopes" names a local intention to withdraw.
+        // The correction resolver must leave both clauses for operation
+        // partitioning; its punctuation licence would otherwise discard every
+        // earlier action, including independent items in the same list.
+        if CaptureOperationDetector.beginsWithNamedLocalWithdrawal(replacement)
+            || replacement.range(of: #"(?i)^cancel\s+(?:the\s+|my\s+)?\S"#,
+                                 options: .regularExpression) != nil {
+            return text
+        }
+        // A bare retraction is an operation on the immediately preceding
+        // intention, not a replacement object. Rewriting "call Sarah,
+        // actually never mind" into "call never mind" destroys the target
+        // identity before the operation partition can withdraw it. Preserve
+        // the source, including an independent action after the retraction.
+        if replacement.range(
+            of: #"(?i)^(?:never\s*mind|nevermind|forget\s+(?:it|that)|scratch\s+that)(?:\s*[.!?]?\s*$|\s*[,;]\s*(?:and|then)\b)"#,
+            options: .regularExpression
+        ) != nil {
+            return text
+        }
+
+        // "Also" and "too" make the later clause additive even when a
+        // correction marker precedes it. A punctuation-only licence used to
+        // discard the earlier independent action before source coverage was
+        // measured: "buy milk, actually I also need to call Mom" silently
+        // lost the milk. Keep both clauses for intention splitting.
+        let explicitReversal = text[range].range(
+            of: #"(?i)\b(?:no|nope|scratch\s+that|make\s+(?:that|it)|i\s+mean)\b"#,
+            options: .regularExpression
+        ) != nil
+        if !explicitReversal, replacement.range(
+            of: #"(?i)^(?:(?:i|we)\s+)?(?:also|additionally)\b|\b(?:too|as\s+well)\b[.!?]*$"#,
+            options: .regularExpression
+        ) != nil {
+            return text
+        }
 
         // Sequencing says that both intentions survive. A discourse repair
         // inside "and then, actually, call..." cannot replace all earlier
@@ -1215,6 +1591,165 @@ enum SelfCorrectionResolver {
         ) != nil
         if sequencedPrefix || sequencedReplacement {
             return normalize(prefix + (sequencedReplacement ? "; " : " ") + replacement)
+        }
+
+
+        // A sole shared calendar frame is one slot across its siblings.
+        // A second action-specific date defeats this global repair licence.
+        if replacement.range(of: #"(?i)^\#(repairDatePattern)[.!?]*$"#,
+                             options: .regularExpression) != nil,
+           RuleBasedThoughtExtractor.leadingTemporalContext(in: prefix) != nil,
+           let dates = NSRegularExpression.speakItCached(#"(?i)\b\#(repairDatePattern)\b"#),
+           dates.numberOfMatches(in: prefix, range: NSRange(prefix.startIndex..., in: prefix)) == 1,
+           let repaired = repairSlot(prefix: prefix, replacement: replacement,
+                                     mayDiscardWords: true, markerSupportsBarePerson: false) {
+            return repaired
+        }
+
+        // A correction can revise only the intention immediately in scope.
+        // Resolve the final clause on its own when the prefix already contains
+        // independent clauses. This applies to every repair path below,
+        // including date/object slots and the destructive restart fallback.
+        // The exact earlier source stays untouched; a correction that cannot
+        // be placed locally leaves the entire capture intact for extraction.
+        let priorClauses = RuleBasedThoughtExtractor.splitClauses(prefix)
+        var localClause = priorClauses.count - 1
+        while localClause > 0, isBareForwardTime(priorClauses[localClause - 1]) {
+            localClause -= 1
+        }
+        let namesCompletedAction = isPunctuated && replacement.range(
+            of: #"(?i)^i\s+already\s+[\p{L}]+\b"#,
+            options: .regularExpression
+        ) != nil
+        if !namesCompletedAction, localClause > 0,
+           priorClauses.indices.contains(localClause),
+           let localRange = text.range(
+               of: priorClauses[localClause], options: [.backwards, .caseInsensitive],
+               range: text.startIndex..<range.lowerBound
+           ) {
+            let local = String(text[localRange.lowerBound...])
+            let repairedLocal = resolvedOnce(local)
+            guard repairedLocal != local else { return text }
+            return String(text[..<localRange.lowerBound]) + repairedLocal
+        }
+
+        // Prove a repeated recipient repair, or preserve a competing recipient
+        // group, before splitting its coordinated replacement. Splitting first
+        // could make a non-unique group look like a unique person slot.
+        if let repaired = repeatedRecipientRepair(prefix: prefix, replacement: replacement) {
+            return repaired
+        }
+        // An explicit excluded recipient defeats the generic same-verb
+        // restart when the unique person-slot proof declined. That fallback
+        // cannot decide which member of a competing group was withdrawn.
+        if replacement.range(
+            of: #"(?i)^(?:call|phone|text|email|message|contact|ask|tell)\b[^.!?;]+,\s*not\s+[\p{L}'’-]+(?:\s+[\p{L}'’-]+)?[.!?]*$"#,
+            options: .regularExpression
+        ) != nil { return text }
+
+        // The correction owns its first replacement clause, not every later
+        // action in the same breath. Without this boundary, "email her, and
+        // buy bread" fails the local pronoun/verb identity check because the
+        // replacement appears to end in "bread"; the earlier call stays
+        // active beside the email. Keep the exact following source suffix so
+        // its independent intention remains available to the splitter.
+        let replacementClauses = RuleBasedThoughtExtractor.splitClauses(replacement)
+        if replacementClauses.count > 1,
+           let first = replacementClauses.first,
+           replacement.hasPrefix(first) {
+            let local = String(text[..<range.upperBound]) + first
+            let repairedLocal = resolvedOnce(local)
+            if repairedLocal != local {
+                return repairedLocal + String(replacement.dropFirst(first.count))
+            }
+        }
+
+        // A second action verb is not an object correction. The generic
+        // object repair below used to turn "call Mara, actually mail the
+        // invoice" into "call mail the invoice". If the two action frames
+        // name the same object, the new verb replaces the old one; otherwise
+        // preserve both clauses for separate extraction.
+        if let before = actionFrame(prefix), let after = actionFrame(replacement),
+           before.verb != after.verb {
+            // A single local object can be restated by a pronoun while the
+            // speaker changes the action: "call Sarah, actually email her".
+            // Keep the unique antecedent in the repaired wording so the new
+            // action does not become an unresolved "email her" beside an
+            // active call. Multiple objects and cross-type pronouns have no
+            // unique binding and remain visible for review.
+            let directPronoun = after.object.range(
+                of: #"^(her|him|them|it)(?:\s+(?:about|regarding|with|for|on|at)\b.*)?$"#,
+                options: .regularExpression
+            ) != nil
+            if directPronoun,
+               !before.object.contains(" and "), !before.object.contains(" or "),
+               let tail = replacement.range(
+                   of: #"(?i)\b(?:her|him|them|it)\b(?=\s+(?:about|regarding|with|for|on|at)\b|[.!?]*$)"#,
+                   options: .regularExpression
+               ) {
+                let people = PersonMentionResolver.mentions(in: prefix)
+                let target: String? = if after.object == "it" || after.object.hasPrefix("it ") {
+                    people.isEmpty ? before.object : nil
+                } else {
+                    people.count == 1 ? people[0].label : nil
+                }
+                if let target, !target.isEmpty {
+                    var revised = replacement
+                    revised.replaceSubrange(tail, with: target)
+                    return revised
+                }
+            }
+            return before.object == after.object ? replacement : text
+        }
+
+        // A day at the start of the replacement can front a *new* action.
+        // Comparing only the day slots moved the earlier action's date and
+        // stripped the new action's: "call Sarah Monday, actually Tuesday call
+        // Maya" made Sarah Tuesday and Maya undated. A repeated action with
+        // the same object is a local replacement; a different action keeps
+        // both clauses and lets each own its own time.
+        if let front = replacement.range(
+            of: #"(?i)^(?:(?:on|by|before|at)\s+)?\#(datePattern)(?:\s+at\s+\#(timePattern))?\s+(?=\#(ActionabilityReader.actionVerb)\b)"#,
+            options: .regularExpression
+        ), let before = actionFrame(prefix),
+           let after = actionFrame(String(replacement[front.upperBound...])) {
+            return before == after ? replacement : text
+        }
+
+        // A completed-action report can retract the most recent locally
+        // spoken action. Require its past verb to restate that action's verb;
+        // otherwise the report may refer to something else and the original
+        // clauses must remain visible. Preserve earlier independent clauses.
+        if isPunctuated,
+           let report = replacement.range(
+               of: #"(?i)^i\s+already\s+([\p{L}]+)\b"#,
+               options: .regularExpression
+           ), let regex = NSRegularExpression.speakItCached(
+               #"(?i)^i\s+already\s+([\p{L}]+)\b"#
+           ), let match = regex.firstMatch(
+               in: replacement, range: NSRange(report, in: replacement)
+           ), let pastRange = Range(match.range(at: 1), in: replacement) {
+            let past = String(replacement[pastRange]).lowercased()
+            let reportTarget = String(replacement[pastRange.upperBound...]
+                .prefix { !".!?;".contains($0) })
+            let clauses = RuleBasedThoughtExtractor.splitClauses(prefix)
+            let matching = clauses.indices.filter { index in
+                localCompletionMatches(
+                    action: clauses[index], pastVerb: past, reportTarget: reportTarget
+                )
+            }
+            if matching.count == 1, let withdrawn = matching.first {
+                let kept = clauses.enumerated().compactMap {
+                    if $0.offset == withdrawn { return nil }
+                    if $0.offset + 1 == withdrawn,
+                       isBareForwardTime($0.element) { return nil }
+                    return $0.element
+                }.joined(separator: ". ")
+                return kept.isEmpty ? replacement : "\(kept). \(replacement)"
+            }
+            // A report that does not uniquely match a just-spoken action is
+            // not licensed to delete any part of this multi-intention prefix.
+            return text
         }
 
         // A repair never follows a dangling function word. "Remind me to make
@@ -1252,7 +1787,11 @@ enum SelfCorrectionResolver {
         if let repaired = repairSlot(
             prefix: prefix,
             replacement: replacement,
-            mayDiscardWords: mayDiscardWords
+            mayDiscardWords: mayDiscardWords,
+            markerSupportsBarePerson: text[range].range(
+                of: #"(?i)\b(?:actually|sorry|correction)\b"#,
+                options: .regularExpression
+            ) != nil
         ) {
             return repaired
         }
@@ -1261,12 +1800,15 @@ enum SelfCorrectionResolver {
         // discarding every word the person said before the marker. That is the
         // most destructive edit in this file and it needs evidence.
         //
-        // A pause is one kind of evidence. A restart is the other: "buy milk no
-        // wait buy milk and eggs" repeats its own verb, which is what somebody
-        // does when they begin the instruction again. Without one of the two,
-        // the sentence is left intact and the marker travels on as ordinary
-        // words — recoverable, where a deleted clause is not.
-        guard isPunctuated || restatesTheSameVerb(prefix: prefix, replacement: replacement) else {
+        // A restart such as "buy milk no wait buy milk and eggs" repeats its
+        // own verb. Without a restart or explicit reversal, keep the source.
+        // A pause alone says where a second clause began; it does not prove
+        // that a different action was withdrawn. An explicit reversal marker
+        // or a restated action frame supplies that evidence. Ambiguous
+        // "actually <different verb>" therefore keeps the first intention
+        // accessible instead of deleting it before the source ledger starts.
+        guard restatesTheSameVerb(prefix: prefix, replacement: replacement)
+            || (isPunctuated && explicitReversal) else {
             return text
         }
 
@@ -1278,18 +1820,130 @@ enum SelfCorrectionResolver {
         return replacement
     }
 
-    /// A replacement date plus a clock/daypart replaces one timestamp, not
-    /// just its date token. Appending the new clock after the action detaches
-    /// it from the reminder and leaves the old alert time active.
+    /// A standalone time immediately before a withdrawn instruction was its
+    /// adjunct, not an event of its own. Independent dated facts have a
+    /// predicate and fail this closed temporal shape.
+    static func isBareForwardTime(_ text: String) -> Bool {
+        normalize(text).range(
+            of: #"(?i)^(?:(?:for|on|by|before|at)\s+)?\#(datePattern)(?:\s+at\s+\#(timePattern))?[.!?]?$"#,
+            options: .regularExpression
+        ) != nil
+    }
+
+    static func sharedCalendarRepairIDs(input: String, output: String) -> Set<Int>? {
+        guard let cue = input.range(of: #"(?i)\b(?:actually|sorry|correction|i\s+mean|no\s+wait)\b"#,
+                                    options: [.regularExpression, .backwards]) else { return nil }
+        let before = String(input[..<cue.lowerBound]).trimmingCharacters(in: CharacterSet(charactersIn: " ,;"))
+        let after = String(input[cue.upperBound...]).trimmingCharacters(in: CharacterSet(charactersIn: " ,;.!?"))
+        guard let oldFrame = RuleBasedThoughtExtractor.leadingTemporalContext(in: before),
+              oldFrame.range(of: #"(?i)^\#(repairDatePattern)$"#, options: .regularExpression) != nil,
+              after.range(of: #"(?i)^\#(repairDatePattern)$"#, options: .regularExpression) != nil,
+              let old = input.range(of: oldFrame, options: [.anchored, .caseInsensitive]),
+              let replacement = input.range(of: after, options: [.backwards, .caseInsensitive]),
+              replacement.lowerBound >= cue.upperBound else { return nil }
+        let kept = String(input[old.upperBound..<cue.lowerBound])
+        guard SourceUnitLedger(output).words.map(\.text)
+            == SourceUnitLedger(after + " " + kept).words.map(\.text) else { return nil }
+        let ledger = SourceUnitLedger(input)
+        return ledger.ids(in: old).union(ledger.ids(in: cue)).union(ledger.ids(in: replacement))
+    }
+
+    /// A single explicit date-and-clock correction has one final calendar
+    /// frame. Recompute the existing frame repair and bind its exact original
+    /// occurrences; this proof cannot license another action, a quoted date,
+    /// an additive reminder, or an arbitrary caller-supplied output.
+    static func calendarFrameRepairIDs(input: String, output: String) -> Set<Int>? {
+        guard input != output, output == resolved(input),
+              let plan = calendarFrameRepairPlan(input: input, requiresExplicitReminder: false),
+              normalize(output) == plan.output else { return nil }
+        return plan.unitIDs
+    }
+
+    /// The explicit wrapper branch is a complete source grammar, independent
+    /// of optional lexical assets: one own reminder, one old clock, one cue,
+    /// one final clock and its unchanged single action complement. It grants
+    /// only the clock replacement's occurrence licence, never saved effects.
+    /// Other frames keep the existing attribution and actionability checks.
+    private static func calendarFrameRepairPlan(
+        input: String, requiresExplicitReminder: Bool
+    ) -> (output: String, unitIDs: Set<Int>)? {
+        // Keep this new hot-path check inert for ordinary sentences.
+        if requiresExplicitReminder,
+           input.range(
+            of: #"(?i)^(?:please\s+)?(?:set|make|create)\s+(?:a|one)\s+reminder\s+(?:for|on|at)\s+"#,
+            options: .regularExpression) == nil { return nil }
+        guard (!requiresExplicitReminder || input.count <= 2_000),
+              !QuotedSpeechScope.hasUnclosedQuote(input),
+              QuotedSpeechScope.ranges(in: input).isEmpty,
+              input.range(of: #"(?i)^\s*(?:if|unless|when|whenever|once|after|before|until|while)\b"#,
+                          options: .regularExpression) == nil,
+              let cues = NSRegularExpression.speakItCached(correctionPattern) else { return nil }
+        let matches = cues.matches(in: input, range: NSRange(input.startIndex..., in: input))
+        guard matches.count == 1, let cue = Range(matches[0].range, in: input) else { return nil }
+        let prefix = normalize(String(input[..<cue.lowerBound]))
+            .trimmingCharacters(in: CharacterSet(charactersIn: " ,;"))
+        let replacement = normalize(String(input[cue.upperBound...]))
+            .trimmingCharacters(in: CharacterSet(charactersIn: " ,;"))
+        guard !prefix.contains(where: { ".!?;".contains($0) }),
+              let dates = NSRegularExpression.speakItCached(#"(?i)\b\#(repairDatePattern)\b"#),
+              dates.numberOfMatches(in: prefix, range: NSRange(prefix.startIndex..., in: prefix)) == 1,
+              dates.numberOfMatches(in: replacement, range: NSRange(replacement.startIndex..., in: replacement)) == 1,
+              let oldDate = prefix.range(of: #"(?i)\b\#(repairDatePattern)\b"#,
+                                        options: .regularExpression),
+              let newDate = replacement.range(of: #"(?i)^\#(repairDatePattern)\b"#,
+                                               options: .regularExpression),
+              let oldFrame = completeCalendarFrame(in: String(prefix[oldDate.lowerBound...])),
+              let oldSpan = prefix.range(of: oldFrame, options: .caseInsensitive,
+                                        range: oldDate.lowerBound..<prefix.endIndex),
+              let newFrame = completeCalendarFrame(in: replacement),
+              let newSpan = replacement.range(of: newFrame, options: [.anchored, .caseInsensitive]),
+              oldFrame.range(of: #"(?i)\bat\b"#, options: .regularExpression) != nil,
+              newFrame.range(of: #"(?i)\bat\b"#, options: .regularExpression) != nil else { return nil }
+        let tail = String(replacement[newSpan.upperBound...])
+            .trimmingCharacters(in: CharacterSet(charactersIn: " ,.!?"))
+        let oldTail = String(prefix[oldSpan.upperBound...])
+            .trimmingCharacters(in: CharacterSet(charactersIn: " ,.!?"))
+        let reminderHead = String(prefix[..<oldSpan.lowerBound])
+        let reminderWrapper = reminderHead.range(
+            of: #"(?i)\b(?:please\s+)?(?:set|make|create)\s+(?:a|one)\s+reminder\s+(?:for|on|at)\s*$"#,
+            options: .regularExpression)
+        let explicitReminderPrefix = reminderWrapper?.lowerBound == reminderHead.startIndex
+        // Reminder wording alone does not establish the speaker as actor.
+        // An embedded/foreign wrapper cannot borrow the generic Today check.
+        guard reminderWrapper == nil || explicitReminderPrefix else { return nil }
+        let completeDirectReminder = explicitReminderPrefix && oldTail.isEmpty && !tail.isEmpty
+        guard (!requiresExplicitReminder || completeDirectReminder),
+              (completeDirectReminder || (
+                ClauseScope.read(input).act != .reporting
+                    && ClauseScope.read(input).act != .communicating
+                    && ActionabilityReader.read(prefix).belongsOnToday)),
+              (tail.isEmpty || oldTail.isEmpty),
+              tail.isEmpty || tail.range(
+            of: #"(?i)^to\s+\#(ActionabilityReader.actionVerb)\s+[^,;.!?]+$"#,
+            options: .regularExpression) != nil,
+              tail.range(of: #"(?i)\b(?:and|or|but|then|also|if|unless|when|i|we|you|he|she|they|will|would|could|should|not|never)\b"#,
+                         options: .regularExpression) == nil,
+              let expected = repairCalendarFrame(prefix: prefix, replacement: replacement,
+                  oldDate: oldDate, newDate: newDate),
+              let old = input.range(of: oldFrame, options: [.backwards, .caseInsensitive],
+                                    range: input.startIndex..<cue.lowerBound),
+              let new = input.range(of: newFrame, options: .caseInsensitive,
+                                    range: cue.upperBound..<input.endIndex),
+              input[cue.upperBound..<new.lowerBound].allSatisfy({ $0.isWhitespace || ",;".contains($0) })
+        else { return nil }
+        let ledger = SourceUnitLedger(input)
+        return (expected, ledger.ids(in: old).union(ledger.ids(in: cue)).union(ledger.ids(in: new)))
+    }
+
     private static func repairCalendarFrame(
         prefix: String, replacement: String,
         oldDate: Range<String.Index>, newDate: Range<String.Index>
     ) -> String? {
-        guard var newFrame = RuleBasedThoughtExtractor.leadingTemporalContext(in: replacement),
+        guard var newFrame = completeCalendarFrame(in: replacement),
               let newSpan = replacement.range(of: newFrame, options: [.anchored, .caseInsensitive]),
               newSpan.upperBound > newDate.upperBound else { return nil }
         var oldSpan = oldDate
-        if let frame = RuleBasedThoughtExtractor.leadingTemporalContext(in: String(prefix[oldDate.lowerBound...])),
+        if let frame = completeCalendarFrame(in: String(prefix[oldDate.lowerBound...])),
            let span = prefix.range(of: frame, options: .caseInsensitive,
                                    range: oldDate.lowerBound..<prefix.endIndex) {
             oldSpan = span
@@ -1322,9 +1976,20 @@ enum SelfCorrectionResolver {
                          + String(replacement[newSpan.upperBound...]))
     }
 
-    /// A bare 24-hour value has an explicit period even without AM/PM.
-    /// Normalize only the clock in an already recognized timestamp, so a day
-    /// number or an object quantity cannot acquire clock meaning here.
+    /// The shared adjunct reader stops after the spoken hour. A directly
+    /// attached period belongs to that same clock, so replacing the frame
+    /// must consume it on both sides rather than leave the old period behind
+    /// or misclassify the new period as a separate action tail.
+    private static func completeCalendarFrame(in text: String) -> String? {
+        guard let frame = RuleBasedThoughtExtractor.leadingTemporalContext(in: text),
+              let span = text.range(of: frame, options: [.anchored, .caseInsensitive]) else { return nil }
+        guard frame.range(of: #"(?i)\bat\b"#, options: .regularExpression) != nil,
+              let period = text[span.upperBound...].range(
+                of: #"(?i)^\s+(?:in\s+the\s+(?:morning|afternoon|evening)|at\s+night)\b"#,
+                options: .regularExpression) else { return frame }
+        return String(text[..<period.upperBound])
+    }
+
     private static func normalizedClockFrame(_ frame: String) -> String {
         guard frame.range(of: #"(?i)\b(?:a\.?m\.?|p\.?m\.?)\b"#,
                           options: .regularExpression) == nil,
@@ -1338,6 +2003,157 @@ enum SelfCorrectionResolver {
         let minute = Range(match.range(at: 3), in: frame).map { ":" + frame[$0] } ?? ""
         let normalized = "\(hour % 12 == 0 ? 12 : hour % 12)\(minute) \(hour < 12 ? "AM" : "PM")"
         return frame.replacingCharacters(in: clock, with: normalized)
+    }
+
+    private static func actionFrame(_ text: String) -> (verb: String, object: String)? {
+        let body = ActionabilityReader.actionBody(text)
+        guard let regex = NSRegularExpression.speakItCached(
+            #"(?i)^\s*(\#(ActionabilityReader.actionVerb))\b\s+(.+?)[.!?]*$"#
+        ), let match = regex.firstMatch(in: body, range: NSRange(body.startIndex..., in: body)),
+           let verbRange = Range(match.range(at: 1), in: body),
+           let objectRange = Range(match.range(at: 2), in: body) else { return nil }
+        let verb = normalize(String(body[verbRange])).lowercased()
+        var object = normalize(String(body[objectRange])).lowercased()
+        object = object.replacingOccurrences(
+            of: #"(?i)\s+(?:(?:on|by|before|at)\s+)?\#(datePattern)(?:\s+at\s+\#(timePattern))?[.!?]*$"#,
+            with: "",
+            options: .regularExpression
+        )
+        object = normalize(object)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "—–-"))
+        return object.isEmpty ? nil : (verb, object)
+    }
+
+    /// Repeating the same communication action and explicitly excluding its
+    /// unique old recipient proves a person-slot repair. The reminder frame,
+    /// date and other original modifiers stay in place. A different verb,
+    /// competing recipient, quoted report or additional proposition cannot
+    /// use this narrow licence.
+    private static func repeatedRecipientRepair(prefix: String, replacement: String) -> String? {
+        guard let before = actionFrame(prefix),
+              let regex = NSRegularExpression.speakItCached(
+                #"^(?<verb>(?i:call|phone|text|email|message|contact|ask|tell))\s+(?<new>\p{Lu}[\p{L}'’-]*(?:\s+\p{Lu}[\p{L}'’-]*)?)\s*,?\s+(?i:not)\s+(?<old>\p{Lu}[\p{L}'’-]*(?:\s+\p{Lu}[\p{L}'’-]*)?)[.!?]*$"#
+              ), let match = regex.firstMatch(in: replacement,
+                    range: NSRange(replacement.startIndex..., in: replacement)),
+              let verbRange = Range(match.range(withName: "verb"), in: replacement),
+              let newRange = Range(match.range(withName: "new"), in: replacement),
+              let oldRange = Range(match.range(withName: "old"), in: replacement),
+              before.verb == replacement[verbRange].lowercased(),
+              String(replacement[newRange]).caseInsensitiveCompare(String(replacement[oldRange])) != .orderedSame,
+              QuotedSpeechScope.ranges(in: prefix).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(prefix),
+              PersonMentionResolver.mentions(in: prefix).count == 1,
+              let target = PersonMentionResolver.mentions(in: prefix).first,
+              target.label.caseInsensitiveCompare(String(replacement[oldRange])) == .orderedSame
+        else { return nil }
+        return repairPerson(prefix: prefix, replacement: String(replacement[newRange]))
+    }
+
+    /// Return only the source occurrences explained by that exact local edit.
+    /// This is checked independently by the coverage ledger before deleted
+    /// words may disappear from the organized result.
+    static func repeatedRecipientRepairIDs(input: String, output: String) -> Set<Int>? {
+        guard let regex = NSRegularExpression.speakItCached(correctionPattern) else { return nil }
+        let ledger = SourceUnitLedger(input)
+        for match in regex.matches(in: input, range: NSRange(input.startIndex..., in: input)) {
+            guard let cue = Range(match.range, in: input),
+                  !ClauseScope.isInsideQuotation(cue.lowerBound, in: input),
+                  let sentence = RuleBasedThoughtExtractor.quotePreservingSentenceRanges(in: input)
+                    .first(where: { $0.contains(cue.lowerBound) }),
+                  cue.upperBound <= sentence.upperBound,
+                  let clause = RuleBasedThoughtExtractor.splitClauses(
+                    normalize(String(input[sentence.lowerBound..<cue.lowerBound]))).last,
+                  let local = input.range(of: clause, options: [.backwards, .caseInsensitive],
+                                          range: sentence.lowerBound..<cue.lowerBound),
+                  let replacementClause = RuleBasedThoughtExtractor.splitClauses(
+                    normalize(String(input[cue.upperBound..<sentence.upperBound]))).first,
+                  let replacementRange = input.range(of: replacementClause,
+                    options: .caseInsensitive, range: cue.upperBound..<sentence.upperBound)
+            else { continue }
+            let prefix = normalize(String(input[local.lowerBound..<cue.lowerBound]))
+            let replacement = normalize(String(input[replacementRange]))
+            guard let expected = repeatedRecipientRepair(prefix: prefix, replacement: replacement),
+                  SourceUnitLedger(String(input[..<local.lowerBound]) + expected
+                    + String(input[replacementRange.upperBound...])).words.map(\.text)
+                    == SourceUnitLedger(output).words.map(\.text),
+                  let target = PersonMentionResolver.mentions(in: prefix).first,
+                  let old = input.range(of: target.label, options: [.backwards, .caseInsensitive],
+                                        range: local.lowerBound..<cue.lowerBound),
+                  let newName = PersonMentionResolver.mentions(in: expected).first?.label,
+                  let new = input.range(of: newName, options: .caseInsensitive,
+                                        range: replacementRange)
+            else { continue }
+            return ledger.ids(in: old).union(ledger.ids(in: cue))
+                .union(ledger.ids(in: replacementRange)
+                    .subtracting(ledger.ids(in: new)))
+        }
+        return nil
+    }
+
+    /// A local completion may discharge only the same action and object.
+    /// With no spoken object, a unique same-verb action may be resolved by the
+    /// caller. An explicit different object vetoes the withdrawal.
+    static func localCompletionMatches(
+        action: String, pastVerb: String, reportTarget: String,
+        permitsScopedObjectReference: Bool = false
+    ) -> Bool {
+        let localAction = permitsScopedObjectReference
+            ? RuleBasedThoughtExtractor.canonicalizedListCommand(action, namingStore: false) : action
+        let actionWithoutFrontedTime = localAction.replacingOccurrences(
+            of: #"(?i)^\s*(?:(?:for|on|by|before|at)\s+)?\#(datePattern)\s*[,;:]?\s+(?=\#(ActionabilityReader.actionVerb)\b)"#,
+            with: "", options: .regularExpression
+        )
+        guard let frame = actionFrame(actionWithoutFrontedTime), !frame.verb.contains(" "),
+              pastVerb == frame.verb + "ed"
+                || (frame.verb.hasSuffix("e") && pastVerb == frame.verb + "d")
+                || (permitsScopedObjectReference && [
+                    "buy": "bought", "send": "sent", "pay": "paid", "write": "wrote",
+                    "bring": "brought", "take": "took", "make": "made", "get": "got",
+                    "leave": "left", "read": "read", "do": "did"
+                ][frame.verb] == pastVerb) else {
+            return false
+        }
+        func canonical(_ value: String) -> String {
+            normalize(value)
+                .trimmingCharacters(in: .punctuationCharacters.union(
+                    CharacterSet(charactersIn: "—–-")
+                ))
+                .replacingOccurrences(
+                    of: #"(?i)^(?:the|a|an|my|our|your)\s+"#, with: "",
+                    options: .regularExpression
+                )
+                .lowercased()
+        }
+        // A report with another clause after the past verb does not identify
+        // the called person. "I already called and the electrician answered"
+        // must not silently withdraw a different local call. Its source stays
+        // visible for review until the owner is explicit.
+        let reportObject = permitsScopedObjectReference ? reportTarget.replacingOccurrences(
+            of: #"(?i)\s+(?:this\s+(?:morning|afternoon|evening)|last\s+(?:night|week)|today|yesterday)[.!?]*$"#,
+            with: "", options: .regularExpression) : reportTarget
+        let target = canonical(reportObject)
+        if permitsScopedObjectReference {
+            let physicalObject = canonical(frame.object)
+            if ["it", "them"].contains(target),
+               !physicalObject.contains(" and "), !physicalObject.contains(" or "),
+               PersonMentionResolver.mentions(in: frame.object).isEmpty,
+               physicalObject.range(of: #"^[\p{L}][\p{L}'’-]*(?:\s+[\p{L}][\p{L}'’-]*){0,3}$"#,
+                                    options: .regularExpression) != nil {
+                return target == "it" || physicalObject.hasSuffix("s")
+            }
+            let targetWords = target.split(whereSeparator: { !$0.isLetter }).map(String.init)
+            let objectWords = canonical(frame.object).split(whereSeparator: { !$0.isLetter }).map(String.init)
+            guard !targetWords.isEmpty, targetWords.last == objectWords.last,
+                  !targetWords.contains("and"), !targetWords.contains("or"),
+                  !objectWords.contains("and"), !objectWords.contains("or") else { return false }
+            return Set(targetWords).isSubset(of: Set(objectWords))
+        }
+        if ["him", "her", "them"].contains(target) {
+            let people = PersonMentionResolver.mentions(in: action)
+            return people.count == 1
+                && canonical(frame.object).hasPrefix(canonical(people[0].label))
+        }
+        return target.isEmpty || target == canonical(frame.object)
     }
 
     /// Whether the replacement says again something the prefix already said.
@@ -1392,34 +2208,23 @@ enum SelfCorrectionResolver {
     private static func repairSlot(
         prefix: String,
         replacement: String,
-        mayDiscardWords: Bool
+        mayDiscardWords: Bool,
+        markerSupportsBarePerson: Bool
     ) -> String? {
-        // A corrected temporal preface before the first instruction replaces
-        // that whole preface. It does not add a second, conflicting date.
-        // This is narrower than slot repair inside an existing action, where
-        // a clock or condition may still belong to the instruction.
-        let preface = prefix.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
-        let wholeTemporal = RuleBasedThoughtExtractor.leadingTemporalContext(in: preface)
-            .map { $0.caseInsensitiveCompare(preface) == .orderedSame } ?? false
-        let otherTemporalPreface = preface.range(
-            of: #"(?i)^(?:later\s+(?:today|tonight)|(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|a|an)\s+(?:days?|weeks?)\s+from\s+now|(?:before|after)\s+(?:work|class))$"#,
+        // A bare number following an action's counted object revises its
+        // quantity, not its clock. Match only the number so the noun and its
+        // separating space survive the edit.
+        if replacement.range(of: #"^\d+$"#, options: .regularExpression) != nil,
+           prefix.range(of: #"(?i)^\#(ActionabilityReader.actionVerb)\b"#,
+                        options: .regularExpression) != nil,
+           let quantity = prefix.range(
+            of: #"\b\d+\b(?=\s+[\p{L}][\p{L}'’ -]*[.!?]?$)"#,
             options: .regularExpression
-        ) != nil
-        let explicitClock = preface.range(
-            of: #"(?i)\b(?:at|around)\s+\#(RuleBasedThoughtExtractor.clockExpression)\b"#,
-            options: .regularExpression
-        ) != nil
-        if (wholeTemporal || otherTemporalPreface) && !explicitClock,
-           let day = replacement.range(of: #"(?i)^\#(repairDatePattern)\b"#, options: .regularExpression) {
-            let tail = String(replacement[day.upperBound...])
-            if tail.range(of: #"(?i)^\s*,\s*(?:i\s+(?:need|have|want)\s+to\s+|\#(ActionabilityReader.actionVerb)\b)"#,
-                          options: .regularExpression) != nil {
-                return normalize(replacement)
-            }
+           ) {
+            return normalize(prefix.replacingCharacters(in: quantity, with: replacement))
         }
-
-        // Complete calendar forms come before clocks so "22 October" is a
-        // date, not a 22 o'clock repair. Durations precede bare time values.
+        // Duration first: it shares its opening token with `timePattern`, and
+        // whichever is tried first wins.
         let candidates: [(String, Slot)] = [
             (repairDatePattern, .date),
             (durationPattern, .duration),
@@ -1529,6 +2334,21 @@ enum SelfCorrectionResolver {
                let action = lastMatch(in: prefix, pattern: ActionabilityReader.actionVerb) {
                 return normalize(String(prefix[...action.upperBound]) + " " + object)
             }
+        }
+
+        // A bare name can uniquely revise the person slot even when the
+        // recognizer omitted the pause. The positive evidence is one named
+        // person in the prefix and a replacement that contains only a name;
+        // a predicate-bearing report or two possible targets cannot license
+        // a destructive edit from an unpunctuated "actually" or "sorry".
+        if !mayDiscardWords, markerSupportsBarePerson,
+           replacement.range(
+               of: #"^[\p{L}'’-]+(?:\s+[\p{L}'’-]+)?$"#,
+               options: .regularExpression
+           ) != nil,
+           PersonMentionResolver.mentions(in: prefix).count == 1,
+           let repaired = repairPerson(prefix: prefix, replacement: replacement) {
+            return repaired
         }
 
         // Everything below here removes words the person said. A marker with
@@ -1887,8 +2707,10 @@ enum ClauseJuxtaposition {
         // phrase, even when the word can also be a verb.
         "the", "a", "an", "my", "your", "his", "her", "their", "our", "its",
         "this", "that", "these", "those", "some", "any", "another", "each",
+        "every", "no", "all", "both", "either", "neither", "several", "few",
+        "many", "much", "whose", "which", "what",
         // Prepositions: what follows is inside the phrase they opened.
-        "of", "for", "with", "at", "in", "on", "by", "from", "about", "into",
+        "of", "for", "with", "as", "at", "in", "on", "by", "from", "about", "into",
         "onto", "over", "under", "after", "before", "during", "near", "through",
     ]
 
@@ -2002,9 +2824,38 @@ enum ClauseJuxtaposition {
         from lowerBound: String.Index
     ) -> Bool {
         let head = clause[lowerBound..<headEnd]
+        // A repair marker can stand in front of the next action's own day.
+        // Once the comma has separated the two intentions, "actually Tuesday"
+        // is one temporal adjunct to "call Maya", not a third intention.
+        if head.range(
+            of: #"(?i)^\s*actually\s+(?:(?:on|by|before|at)\s+)?\#(SelfCorrectionResolver.datePattern)(?:\s+at\s+\#(SelfCorrectionResolver.timePattern))?\s*$"#,
+            options: .regularExpression
+        ) != nil { return true }
         guard let opener = head.split(whereSeparator: \.isWhitespace).first else { return false }
         let word = opener.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ",.!?"))
         guard frontingPrepositions.contains(word) else { return false }
+        if word == "this" || word == "next" {
+            // These are temporal only with a day/period noun. "This option is
+            // better" is a complete comparison; treating "this" as a time
+            // opener makes the iOS tagger suppress the next instruction.
+            guard head.range(
+                of: #"(?i)^\s*(?:this|next)\s+(?:morning|afternoon|evening|night|week|month|weekend|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b"#,
+                options: .regularExpression
+            ) != nil else { return false }
+        }
+        // A temporal opener may govern a complete command before the next
+        // unpunctuated command arrives. iOS can tag that command's verb as a
+        // noun, so a tagger-only verbless check swallowed the next boundary.
+        // The peeled head must open on an explicit verb and carry an object.
+        // A bare "tomorrow morning" can read as an actionable dated event,
+        // but it is still only a fronted adjunct here.
+        let actionBody = ActionabilityReader.actionBody(String(head))
+        if actionBody.range(
+            of: #"(?i)^\#(ActionabilityReader.actionVerb)\b\s+\S+"#,
+            options: .regularExpression
+        ) != nil {
+            return false
+        }
         let context = SentenceContextCache.context(for: clause)
         return context.isVerbless(in: lowerBound..<headEnd)
     }
@@ -2013,8 +2864,86 @@ enum ClauseJuxtaposition {
     /// clause. The whole clause, because the tagger cannot read "Marcus
     /// prefers" on its own and calls "prefers" a noun there.
     private static func precedingTokenIsVerb(in clause: String, before cut: String.Index) -> Bool {
-        SentenceContextCache.context(for: clause).tokens
-            .last(where: { $0.range.upperBound <= cut })?.isVerb == true
+        guard let token = SentenceContextCache.context(for: clause).tokens
+            .last(where: { $0.range.upperBound <= cut }) else { return false }
+        // A completed intransitive change-of-state predicate has no object
+        // slot for the next verb-shaped word. Preserve the boundary in
+        // “the poster faded set the timer”, while “Marcus prefers phone
+        // calls” still needs the transitive predicate's object.
+        let completedIntransitive = ["faded", "vanished", "arrived", "died", "slept", "laughed"]
+        if completedIntransitive.contains(token.text.lowercased()),
+           SentenceContextCache.context(for: clause).hasSubjectPredicate(in: clause.startIndex..<cut) {
+            return false
+        }
+        if token.isVerb { return true }
+        // Without the lexical-class scheme (the iOS simulator has none) every
+        // token reads as "other word". An imperative stem straight in front
+        // still takes the verb-shaped word after it as its object: "bring
+        // water", "pack milk" are one instruction, as they are on the host.
+        let word = token.text.lowercased()
+        return word.range(
+            of: #"^(?:\#(instructionOpeners)|\#(ActionabilityReader.headOnlyImperativeVerb))$"#,
+            options: .regularExpression) != nil
+    }
+
+    /// A verb-shaped word can be part of a compound noun. The host and
+    /// simulator tag "contact" differently inside "emergency contact form",
+    /// so this safety boundary has to use the words rather than NLTagger.
+    private static func startsNominalCompound(in clause: String, at start: String.Index) -> Bool {
+        let tail = String(clause[start...])
+        // An imperative head needs an object or complement. A verb-shaped
+        // noun immediately followed by a finite copula or modal is instead
+        // the subject of a fact: "the fire alarm test is Thursday" or
+        // "the old set would look wrong". The latter must not become a
+        // fresh instruction to set something.
+        if tail.range(
+            of: #"(?i)^\#(ActionabilityReader.actionVerb)\s+(?:is|are|was|were|has|had|will|would|can|could|may|might|should|shall|must)\b"#,
+            options: .regularExpression
+        ) != nil { return true }
+        // A compound subject has the same boundary as a single noun head:
+        // "a phone call should ...", "the return label is ...". Require
+        // the finite predicate immediately after the second nominal token.
+        if tail.range(
+            of: #"(?i)^\#(ActionabilityReader.actionVerb)\s+[\p{L}'’-]+\s+(?:is|are|was|were|has|had|will|would|can|could|may|might|should|shall|must)\b"#,
+            options: .regularExpression
+        ) != nil { return true }
+        if tail.range(of: #"(?i)^contact\s+(?:form|details|information|number|sheet|list|book|card)\b"#,
+                      options: .regularExpression) != nil { return true }
+        let head = String(clause[..<start])
+        // A negative existential still has a nominal complement: "there
+        // should be no scarf purchase" does not issue "purchase". Require
+        // the complete closed output-list exclusion before vetoing a boundary;
+        // "there is no problem call Dad" still has its independent command.
+        // Preserve the finite statement before later output ownership reads
+        // its exclusion; a fresh imperative with an explicit object remains
+        // eligible for its own boundary.
+        if ActionabilityReader.isExcludedListEntry(clause),
+           head.range(of: #"(?i)\b(?:is|are|was|were|be)\s+no\s+[\p{L}'’-]+\s*$"#,
+                      options: .regularExpression) != nil,
+           tail.range(of: #"(?i)^\#(ActionabilityReader.actionVerb)\s+(?:a|an|the|my|our|your|his|her|their|this|that|these|those|it|them)\b"#,
+                      options: .regularExpression) == nil { return true }
+        // After a possession/report verb or topic preposition, determiner and modifier, a
+        // verb-shaped word is the head noun of that object: "it has a
+        // handwritten label". Opening a new instruction at "label" creates
+        // an executable action the speaker never gave. This is a syntactic
+        // boundary, independent of which particular noun was spoken.
+        if head.range(
+            of: #"(?i)\b(?:has|have|had|with|contains?|show(?:s|ed)?)\s+(?:a|an|the|my|our|his|her|their)\s+[\p{L}'’-]+\s*$"#,
+            options: .regularExpression
+        ) != nil { return true }
+        // A topic preposition can introduce the same nominal object. A
+        // following imperative with its own explicit object instead opens a
+        // new action, as in "about the deck submit the report".
+        if head.range(
+            of: #"(?i)\b(?:about|regarding)\s+(?:a|an|the|my|our|his|her|their)\s+[\p{L}'’-]+\s*$"#,
+            options: .regularExpression
+        ) != nil,
+           tail.range(
+            of: #"(?i)^\#(ActionabilityReader.actionVerb)\s+(?:a|an|the|my|our|your|his|her|their|this|that|these|those|it|them)\b"#,
+            options: .regularExpression
+           ) == nil { return true }
+        return head.range(of: #"(?i)\bphone\s*$"#, options: .regularExpression) != nil
+            && tail.range(of: #"(?i)^call\b"#, options: .regularExpression) != nil
     }
 
     /// An article plus adjectives still needs its noun: in "a portable drive"
@@ -2022,9 +2951,23 @@ enum ClauseJuxtaposition {
     private static func insideModifiedNounPhrase(_ clause: String, before cut: String.Index) -> Bool {
         let tokens = SentenceContextCache.context(for: clause).tokens
             .filter { $0.range.upperBound <= cut }
+        // A completed ordinal date is a whole nominal phrase, even when
+        // the tagger classes its ordinal as an adjective.
+        if let last = tokens.last,
+           last.text.range(of: #"^\d{1,2}(?:st|nd|rd|th)$"#, options: [.regularExpression, .caseInsensitive]) != nil,
+           SentenceContextCache.context(for: clause).hasSubjectPredicate(in: clause.startIndex..<cut) {
+            return false
+        }
         var sawModifier = false
         for token in tokens.reversed() {
-            if token.lexicalClass == .adjective || token.lexicalClass == .adverb {
+            // Keep common nominal modifiers usable when Apple's lexical asset
+            // is absent. The preceding determiner is still required below.
+            let fallbackModifier = (token.lexicalClass == nil || token.lexicalClass == .otherWord)
+                && ["hard", "portable", "expensive", "cheap", "new", "old", "small", "large",
+                    "red", "blue", "green", "black", "white", "heavy", "light", "electric",
+                    "wireless", "digital", "spare", "extra", "borrowed", "hired", "rental"]
+                    .contains(token.text.lowercased())
+            if token.lexicalClass == .adjective || token.lexicalClass == .adverb || fallbackModifier {
                 sawModifier = true
             } else {
                 return sawModifier && (token.lexicalClass == .determiner
@@ -2048,11 +2991,12 @@ enum ClauseJuxtaposition {
     }
 
     private static func opensAsIdeaOrNote(_ clause: String) -> Bool {
+        if ActionabilityReader.retainedContentKind(clause) != nil { return true }
         // "Great idea from the offsite: run a monthly interview" opens with
         // a modifier or two before the word that names the capture.
         // With or without the colon a recognizer may drop: a capture that
         // names itself an idea within its first three words is one idea.
-        clause.range(
+        return clause.range(
             of: #"(?i)^\s*(?:[\p{L}'’-]+\s+){0,2}(?:ideas?|thoughts?|concept|note)\b"#,
             options: .regularExpression
         ) != nil || clause.range(
@@ -2085,14 +3029,36 @@ enum ClauseJuxtaposition {
         var pieces: [String] = []
         var lowerBound = clause.startIndex
         for match in regex.matches(in: clause, range: NSRange(clause.startIndex..., in: clause)) {
-            guard let range = Range(match.range, in: clause),
-                  !ClauseScope.isInsideQuotation(range.lowerBound, in: clause),
-                  !ClauseScope.continuesAttributedAction(
-                    left: String(clause[lowerBound..<range.lowerBound]),
-                    right: String(clause[range.upperBound...])
-                  ) else { continue }
+            guard let range = Range(match.range, in: clause) else { continue }
+            if QuotedSpeechScope.protects(range, in: clause) { continue }
+            if ClauseScope.continuesAttributedAction(
+                left: String(clause[lowerBound..<range.lowerBound]),
+                right: String(clause[range.upperBound...])
+            ) { continue }
             let head = String(clause[lowerBound..<range.lowerBound])
+            // In “keep the dietary preference message as a separate task”,
+            // “message” is the object noun, not a new instruction. An
+            // imperative “message Dev” still opens its own clause below.
+            if clause[range.upperBound...].range(
+                of: #"(?i)^message\s+as\s+(?:a|an|the)\b"#,
+                options: .regularExpression
+            ) != nil { continue }
             let words = head.split(separator: " ")
+            // A short determiner phrase with nothing else is the subject of
+            // the verb after it, never a finished instruction: "The trees
+            // make a useful clue" is one statement, not a note "The trees"
+            // and a task "Make a useful clue".
+            if head.range(
+                of: #"(?i)^\s*(?:the|a|an|my|our|your|his|her|their|this|that|these|those|every|each|some|no|both|all)\s+(?![^\n]*\b[a-z]+ed\b)(?!.*\b(?:is|are|was|were|be|been|isn't|aren't|wasn't|weren't|has|have|had|will|would|can|could|should|must|may|might|did|does|do)\b)[\p{L}'’-]+(?:\s+[\p{L}'’-]+){0,2}\s*$"#,
+                options: .regularExpression
+            ) != nil { continue }
+            // A tentative sequence opener still belongs to the action after
+            // it. Otherwise "Maybe first buy batteries" becomes a separate
+            // resolved Memory row titled "Maybe first".
+            if head.range(
+                of: #"(?i)^\s*(?:maybe\s+)?(?:first|next|finally)\s*$"#,
+                options: .regularExpression
+            ) != nil { continue }
             // The verb has to be starting something, not continuing something.
             let recent = words.suffix(2).map {
                 // A repair leaves dash-joined text behind — "at 5—to call Alex"
@@ -2118,7 +3084,7 @@ enum ClauseJuxtaposition {
                   !(recent == ["pick", "up"] || recent == ["drop", "off"]),
                   // "Let people share lists", "let the kids pick": the verb
                   // behind a causative "let X" is its complement.
-                  recent.dropLast().last != "let",
+                  !["let", "lets", "letting"].contains(recent.dropLast().last ?? ""),
                   !isFrontedAdjunct(clause, headEnd: range.lowerBound, from: lowerBound),
                   let last = recent.last,
                   !clauseInternalLead.contains(last),
@@ -2141,8 +3107,10 @@ enum ClauseJuxtaposition {
                   // its object, whatever else it could open. Read from the
                   // tagging of the head, so "prefers", "likes" and "hates"
                   // need no list of their own.
-                  !(precedingTokenIsVerb(in: clause, before: range.lowerBound)
+                  !(last != "better"
+                    && precedingTokenIsVerb(in: clause, before: range.lowerBound)
                     && !clauseInternalLead.contains(last)),
+                  !startsNominalCompound(in: clause, at: range.upperBound),
                   // A two-word head that is somebody and their predicate
                   // ("Marcus prefers") has not reached its object yet, whatever
                   // the tagger calls the predicate. The resolver decides who is
@@ -2171,8 +3139,22 @@ enum ClauseJuxtaposition {
                   // floor because "buy milk" is a complete errand, and
                   // "buy milk call the dentist" is two of them.
                   words.count >= 2 else { continue }
-            pieces.append(head)
-            lowerBound = range.upperBound
+            // Once an independent instruction boundary is established, its
+            // immediately preceding repair cue belongs to that instruction.
+            // Stranding the cue on the previous clause loses the reversal's
+            // source identity and can leave competing commands executable.
+            if let cue = head.range(
+                of: #"(?i)\b(?:actually|sorry|correction|i\s+mean)\s*[,;:]?\s*$"#,
+                options: .regularExpression
+            ), head[..<cue.lowerBound].split(whereSeparator: \.isWhitespace).count >= 2 {
+                let cueStart = clause.index(lowerBound,
+                    offsetBy: head.distance(from: head.startIndex, to: cue.lowerBound))
+                pieces.append(String(clause[lowerBound..<cueStart]))
+                lowerBound = cueStart
+            } else {
+                pieces.append(head)
+                lowerBound = range.upperBound
+            }
         }
         guard !pieces.isEmpty else { return [clause] }
         pieces.append(String(clause[lowerBound...]))
@@ -2197,6 +3179,38 @@ enum ClauseJuxtaposition {
 ///
 /// Anything not matched here is an ordinary `.create` and returns `nil`.
 enum CaptureOperationDetector {
+
+    struct Partition {
+        struct DiscourseLink {
+            let cueUnitIDs: Set<Int>
+            let ownerUnitIDs: Set<Int>
+        }
+
+        let operations: [CaptureOperationRequest]
+        let remainder: String?
+        /// Exact word occurrences in the operation detector's input that
+        /// remain available for creation extraction. Reconstructing this
+        /// later from a joined remainder loses repeated-clause identity.
+        let retainedUnitIDs: Set<Int>
+        /// Closed connector/emphasis words removed while slicing clauses,
+        /// attached to the exact following clause rather than silently lost.
+        let discourseLinks: [DiscourseLink]
+
+        func unownedMeaningfulIDs(in source: String) -> [Int] {
+            let claimed = operations.reduce(into: retainedUnitIDs) { result, request in
+                result.formUnion(request.sourceUnitIDs)
+                result.formUnion(request.localTargetUnitIDs)
+            }
+            let withDiscourse = discourseLinks.reduce(into: claimed) {
+                $0.formUnion($1.cueUnitIDs)
+            }
+            return SourceUnitLedger(source).unownedMeaningfulIDs(claimed: withDiscourse)
+        }
+    }
+
+    static func beginsWithNamedLocalWithdrawal(_ text: String) -> Bool {
+        clauses(in: text).first.flatMap(namedLocalWithdrawal(in:)) != nil
+    }
 
     /// The one errand vocabulary, so "don't fix the sink" cancels a matching
     /// reminder exactly as "don't call the plumber" does. This was a private
@@ -2280,20 +3294,462 @@ enum CaptureOperationDetector {
     static func partition(
         _ text: String
     ) -> (operations: [CaptureOperationRequest], remainder: String?) {
-        if hasAmbiguousLocalCancellation(text) { return ([], text) }
-        let local = resolvingInCaptureCancellations(text)
-        let pieces = clauses(in: local.remainder)
-        guard pieces.count > 1 else {
-            if let single = detect(local.remainder) {
-                return (local.operations + [single], nil)
+        let result = partitionWithOwnership(text)
+        return (result.operations, result.remainder)
+    }
+
+    static func partitionWithOwnership(_ text: String) -> Partition {
+        let sourceLedger = SourceUnitLedger(text)
+        let allIDs = Set(sourceLedger.words.indices)
+        if QuotedSpeechScope.hasUnclosedQuote(text) {
+            return Partition(operations: [], remainder: text, retainedUnitIDs: allIDs,
+                             discourseLinks: [])
+        }
+        // Resolve a uniquely named just-spoken group before a saved-row
+        // operation can claim its directive. The legacy grammar proves which
+        // group was withdrawn; retain exact source ownership for the guard.
+        if let local = sourceOwnedLocalCancellation(text, ledger: sourceLedger) {
+            return local
+        }
+        if let removal = SavedAlertRemoval.read(text) {
+            var request = CaptureOperationRequest(
+                operation: .revise, polarity: .positive,
+                target: removal.targetWords + " " + removal.dayWord,
+                sourceQuote: text, needsReview: false
+            )
+            request.savedAlertRemoval = removal
+            request.sourceUnitIDs = allIDs
+            return Partition(operations: [request], remainder: nil,
+                             retainedUnitIDs: [], discourseLinks: [])
+        }
+        if let revision = SavedQuantityRevision.read(text) {
+            var request = CaptureOperationRequest(
+                operation: .revise, polarity: .positive,
+                target: revision.objectPhrase + " purchase", sourceQuote: text,
+                needsReview: false
+            )
+            request.savedQuantityRevision = revision
+            request.sourceUnitIDs = allIDs
+            return Partition(operations: [request], remainder: nil,
+                             retainedUnitIDs: [], discourseLinks: [])
+        }
+        // An explicit change to one field of a saved action is an operation
+        // on that item; the rest of the capture keeps its ordinary reading,
+        // so an independent new intention in the same breath still lands.
+        if let field = SavedFieldRevision.read(text) {
+            var request = CaptureOperationRequest(
+                operation: .revise, polarity: .positive,
+                target: field.itemWords, sourceQuote: field.requestSentence,
+                needsReview: false
+            )
+            request.savedFieldRevision = field
+            let requestIDs = sourceLedger.ids(in: field.requestRange)
+            request.sourceUnitIDs = requestIDs
+            let before = String(text[..<field.requestRange.lowerBound])
+            let after = String(text[(field.continuationStart ?? field.requestRange.upperBound)...])
+            let remainder = [before, after]
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }.joined(separator: " ")
+            return Partition(operations: [request],
+                             remainder: remainder.isEmpty ? nil : remainder,
+                             retainedUnitIDs: allIDs.subtracting(requestIDs),
+                             discourseLinks: [])
+        }
+        // A failed field certificate is not permission for the generic clause
+        // splitter to drop its competing scope and authorize a smaller edit.
+        // Keep the exact complete source visible without a mutable field plan.
+        if SavedFieldRevision.hasUnprovedFieldRequest(text) {
+            var request = CaptureOperationRequest(
+                operation: .revise, polarity: .positive, target: nil,
+                sourceQuote: text, needsReview: true
+            )
+            request.sourceUnitIDs = allIDs
+            return Partition(operations: [request], remainder: nil,
+                             retainedUnitIDs: [], discourseLinks: [])
+        }
+        // A named saved-task completion can carry a completed-action report,
+        // a negative guard for a different task, and source/audit explanation.
+        // With punctuation lost the generic clause splitter cuts at "complete"
+        // and turns those explanations into fresh Today work. Accept only this
+        // closed discourse shape; an independent affirmative action must keep
+        // going through the ordinary mixed-capture partition.
+        if let request = savedCompletionWithExplanation(text) {
+            var owned = request
+            owned.sourceUnitIDs = allIDs
+            return Partition(operations: [owned], remainder: nil,
+                             retainedUnitIDs: [], discourseLinks: [])
+        }
+        var amendmentLead = text.replacingOccurrences(
+            of: #"(?i)^\s*(?:(?:um|uh|er)\s*,?\s*)?let me think[.!?]\s*"#,
+            with: "", options: .regularExpression
+        )
+        // With punctuation lost, the first explanation can be swallowed into
+        // a saved cancellation's target ("... tomorrow the key has already
+        // been handed back"). Establish the boundary only when the prefix is
+        // already a complete named saved cancellation and the next words are
+        // an explanatory predicate. The closed tail check below still rejects
+        // a new request such as "also buy eggs".
+        if !amendmentLead.contains(where: { ".!?".contains($0) }),
+           let explanation = amendmentLead.range(
+               of: #"(?i)\b(?:the|this|that)\s+[\p{L}]+\s+has\s+already\s+been\b"#,
+               options: .regularExpression
+           ) {
+            let prefix = String(amendmentLead[..<explanation.lowerBound])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if let named = detect(prefix), named.operation == .cancel,
+               prefix.range(of: #"(?i)\b(?:saved|existing)\s+(?:reminder|task|item|entry)\b"#,
+                            options: .regularExpression) != nil {
+                var bounded = prefix + ". " + String(amendmentLead[explanation.lowerBound...])
+                for cue in [
+                    #"\bi\s+am\s+cancell?ing\b"#,
+                    #"\bleave\s+(?:the|my)\b"#,
+                    #"\b(?:also\s+)?preserve\s+(?:the\s+)?original\s+source\b"#,
+                    #"\bdo\s+not\s+silently\s+treat\b"#,
+                    #"\bif\s+(?:the\s+)?cancellation\s+cannot\b"#,
+                ] {
+                    bounded = bounded.replacingOccurrences(
+                        of: "(?i)\\s+(" + cue + ")", with: ". $1",
+                        options: .regularExpression
+                    )
+                }
+                amendmentLead = bounded
             }
-            return (local.operations, local.remainder)
+        }
+        // An explicit saved-row cancellation may be followed by reasons and
+        // boundaries for that same operation. Keep those words as its source
+        // instead of saving them as an unrelated Memory fact. The licence is
+        // intentionally closed: a new affirmative action ("also buy eggs")
+        // must still pass through the ordinary mixed-capture partition.
+        if let firstSentence = amendmentLead.range(
+            of: #"^[^.!?]+[.!?]"#, options: .regularExpression
+        ), let first = detect(String(amendmentLead[firstSentence])),
+           first.operation == .cancel,
+           amendmentLead[firstSentence].range(
+               of: #"(?i)\b(?:saved|existing)\s+(?:reminder|task|item|entry)\b"#,
+               options: .regularExpression
+           ) != nil {
+            let tail = String(amendmentLead[firstSentence.upperBound...])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let statements = tail.split(whereSeparator: { ".!?".contains($0) })
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+                .filter { !$0.isEmpty }
+            let explanations = [
+                #"^(?:the|this|that)\s+.+?\s+has\s+already\s+been\b"#,
+                #"^i\s+am\s+cancell?ing\s+(?:that|this|the)\s+(?:reminder|task|item)\b"#,
+                #"^leave\s+(?:the|my)\s+.+?\s+(?:task|reminder|item)\s+alone$"#,
+                #"^(?:also\s+)?preserve\s+(?:the\s+)?original\s+source\b"#,
+                #"^do\s+not\s+silently\s+treat\s+(?:a|the)\s+cancellation\b"#,
+                #"^if\s+(?:the\s+)?cancellation\s+cannot\s+be\s+applied\s+safely\b"#,
+                #"^right\s*,?\s*okay$"#,
+            ]
+            if !statements.isEmpty,
+               statements.allSatisfy({ statement in
+                   let requestsSourceRetention = statement.range(
+                       of: #"^(?:also\s+)?preserve\s+(?:the\s+)?original\s+source\b"#,
+                       options: .regularExpression
+                   ) != nil
+                   if !requestsSourceRetention, statement.range(
+                       of: #"(?i)\b(?:and|also|then|plus)\s+(?:(?:i|we)\s+(?:need|want)\s+to\s+)?(?:please\s+)?\#(ActionabilityReader.actionVerb)\b"#,
+                       options: .regularExpression
+                   ) != nil { return false }
+                   return explanations.contains { pattern in
+                       statement.range(of: pattern, options: .regularExpression) != nil
+                   }
+               }) {
+                var operation = first
+                operation.sourceQuote = text
+                operation.sourceUnitIDs = allIDs
+                return Partition(operations: [operation], remainder: nil,
+                                 retainedUnitIDs: [], discourseLinks: [])
+            }
+        }
+        // A saved-row date amendment can contain a comma in the destination
+        // date ("Friday, October ninth"). The general clause splitter treats
+        // that comma as a new intention. Keep the amendment and its anaphoric
+        // disambiguation together when the tail has no independent request.
+        if let firstSentence = amendmentLead.range(of: #"^[^.!?]+[.!?]?"#,
+                                                    options: .regularExpression),
+           var amendment = detect(String(amendmentLead[firstSentence])),
+           amendment.operation == .reschedule,
+           amendment.expectedOldTimingText != nil {
+            let tail = String(amendmentLead[firstSentence.upperBound...])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let statements = tail.split(whereSeparator: { ".!?".contains($0) })
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+                .filter { !$0.isEmpty }
+            let contextPrefixes = [
+                "it is the task", "it's the task", "keep its wording",
+                "i am changing an existing item", "i'm changing an existing item",
+                "right, okay", "right okay",
+                "leave the bike shop call exactly as it was",
+                "i have given enough information", "if the app cannot safely"
+            ]
+            if statements.allSatisfy({ statement in
+                contextPrefixes.contains(where: statement.hasPrefix)
+            }) {
+                amendment.sourceQuote = text
+                amendment.sourceUnitIDs = allIDs
+                return Partition(operations: [amendment], remainder: nil,
+                                 retainedUnitIDs: [], discourseLinks: [])
+            }
+        }
+        // An explicitly named saved-row operation is one speech act. Run its
+        // complete frame before the generic action splitter: an action-shaped
+        // word inside the item's name ("deposit" in "mark the deposit task
+        // complete") is not a second intention. A conjunction or internal
+        // sentence break still sends the capture through ordinary partitioning
+        // so independent requests remain independent.
+        let independentBoundary = text.range(
+            of: #"(?i)\b(?:and|but|then|also|plus)\b|[,;]|[.!?](?=\s+\S)"#,
+            options: .regularExpression
+        ) != nil
+        let namesSavedRow = text.range(
+            of: #"(?i)\b(?:reminder|task|item|entry)\b"#,
+            options: .regularExpression
+        ) != nil
+        let managesSavedRow = text.range(
+            of: #"(?i)^\s*(?:please\s+)?(?:mark|complete|finish|delete|remove|change|update|correct|revise|edit|reschedule|postpone|move|cancel)\b"#,
+            options: .regularExpression
+        ) != nil
+        if namesSavedRow, managesSavedRow, !independentBoundary,
+           var wholeOperation = detect(text) {
+            wholeOperation.sourceUnitIDs = allIDs
+            return Partition(operations: [wholeOperation], remainder: nil,
+                             retainedUnitIDs: [], discourseLinks: [])
+        }
+        let pieces = clauses(in: text)
+        guard pieces.count > 1 else {
+            if var single = detect(text) {
+                single.sourceUnitIDs = Set(sourceLedger.words.indices)
+                return Partition(operations: [single], remainder: nil, retainedUnitIDs: [],
+                                 discourseLinks: [])
+            }
+            return Partition(operations: [], remainder: text, retainedUnitIDs: allIDs,
+                             discourseLinks: [])
         }
 
-        var operations = local.operations
-
-        var remainders: [String] = []
-        for piece in pieces {
+        var operations: [CaptureOperationRequest] = []
+        var remainders: [(text: String, start: String.Index, end: String.Index)] = []
+        var discourseLinks: [Partition.DiscourseLink] = []
+        var sourceCursor = text.startIndex
+        var consumedLocalScopePieces: Set<Int> = []
+        for (pieceIndex, piece) in pieces.enumerated() {
+            let sourceRange = text.range(
+                of: piece, options: [.caseInsensitive],
+                range: sourceCursor..<text.endIndex
+            )
+            if let sourceRange {
+                let cueIDs = sourceLedger.ids(in: sourceCursor..<sourceRange.lowerBound)
+                let closedCues: Set<String> = ["and", "but", "so", "then", "also", "plus",
+                                               "no", "wait", "actually", "do", "please"]
+                if !cueIDs.isEmpty,
+                   cueIDs.allSatisfy({ closedCues.contains(sourceLedger.words[$0].text) }) {
+                    discourseLinks.append(Partition.DiscourseLink(
+                        cueUnitIDs: cueIDs,
+                        ownerUnitIDs: sourceLedger.ids(in: sourceRange)
+                    ))
+                }
+                sourceCursor = sourceRange.upperBound
+            }
+            if consumedLocalScopePieces.contains(pieceIndex) { continue }
+            // A reported imperative remains the other speaker's words even
+            // when punctuation split its reporting owner into a prior piece.
+            // Keep that ownership through the sentence, then let a new
+            // sentence start a fresh operation scope.
+            if let sourceRange {
+                let prefix = text[..<sourceRange.lowerBound]
+                let sentenceStart = prefix.lastIndex(where: { ".!?".contains($0) })
+                    .map { text.index(after: $0) } ?? text.startIndex
+                let sentenceLead = String(text[sentenceStart..<sourceRange.lowerBound])
+                if sentenceLead.range(
+                    of: #"(?i)\b(?:said|says|told|asked|reported|wrote|texted|messaged)\b"#,
+                    options: .regularExpression
+                ) != nil,
+                   // A causal "..., so <imperative>" returns to the
+                   // speaker's own decision. A bare reported imperative has
+                   // no such boundary and remains non-executable.
+                   sentenceLead.range(of: #"(?i)[,;]\s*so\s*$"#,
+                                      options: .regularExpression) == nil {
+                    remainders.append((piece, sourceRange.lowerBound, sourceRange.upperBound))
+                    continue
+                }
+            }
+            // "Cancel that thought, I already bought them" explicitly
+            // addresses a just-spoken intention. It may discharge only one
+            // matching local action; it is never a saved-row cancellation or
+            // a saved completion. Keep the factual completion in the creation
+            // remainder with its own exact source occurrences.
+            if isCurrentThoughtWithdrawal(piece), let sourceRange,
+               !QuotedSpeechScope.protects(sourceRange, in: text) {
+                let nextIndex = pieceIndex + 1
+                let report = pieces.indices.contains(nextIndex)
+                    ? localCompletionReport(pieces[nextIndex]) : nil
+                let reportRange = report == nil ? nil : text.range(
+                    of: pieces[nextIndex], options: .caseInsensitive,
+                    range: sourceRange.upperBound..<text.endIndex)
+                let ownsReport = reportRange.map {
+                    !QuotedSpeechScope.protects($0, in: text)
+                        && ClauseScope.read(String(text[$0])).act != .reporting
+                        && ClauseScope.read(String(text[$0])).act != .communicating
+                } ?? false
+                let candidates = remainders.indices.filter { index in
+                    let prior = remainders[index]
+                    guard ActionabilityReader.read(prior.text).belongsOnToday,
+                          ClauseScope.read(prior.text).act != .reporting,
+                          ClauseScope.read(prior.text).act != .communicating,
+                          !QuotedSpeechScope.protects(prior.start..<prior.end, in: text),
+                          originalSentenceOwnsLocalAction(prior.start..<prior.end, in: text),
+                          prior.text.range(of: #"(?i)^\s*(?:if|unless|when|whenever|once|after|before|until|while)\b"#,
+                                           options: .regularExpression) == nil else { return false }
+                    if let report, ownsReport {
+                        return SelfCorrectionResolver.localCompletionMatches(
+                            action: prior.text, pastVerb: report.verb,
+                            reportTarget: report.object, permitsScopedObjectReference: true)
+                    }
+                    return report == nil
+                }
+                var request = CaptureOperationRequest(
+                    operation: .retract, target: nil, sourceQuote: piece,
+                    needsReview: candidates.count != 1 || (report != nil && !ownsReport),
+                    isScoped: true)
+                request.sourceUnitIDs = sourceLedger.ids(in: sourceRange)
+                if candidates.count == 1, report == nil || ownsReport {
+                    let withdrawn = remainders.remove(at: candidates[0])
+                    request.localTargetUnitIDs = sourceLedger.ids(in: withdrawn.start..<withdrawn.end)
+                }
+                operations.append(request)
+                if ownsReport, let reportRange {
+                    remainders.append((pieces[nextIndex], reportRange.lowerBound, reportRange.upperBound))
+                    consumedLocalScopePieces.insert(nextIndex)
+                }
+                continue
+            }
+            // A completion report followed by an explicit current-capture
+            // withdrawal refers to a just-spoken action, never a saved row.
+            // Resolve exact local occurrences before generic completion detection.
+            if pieces.indices.contains(pieceIndex + 1),
+               isCurrentCaptureWithdrawal(pieces[pieceIndex + 1]),
+               let report = localCompletionReport(piece), let sourceRange,
+               !QuotedSpeechScope.ranges(in: text).contains(where: {
+                   $0.contains(sourceRange.lowerBound)
+               }),
+               let scopeRange = text.range(of: pieces[pieceIndex + 1],
+                   options: .caseInsensitive, range: sourceRange.upperBound..<text.endIndex) {
+                let matches = remainders.indices.filter {
+                    SelfCorrectionResolver.localCompletionMatches(
+                        action: remainders[$0].text, pastVerb: report.verb,
+                        reportTarget: report.object, permitsScopedObjectReference: true
+                    )
+                }
+                let quoteRange = sourceRange.lowerBound..<scopeRange.upperBound
+                var request = CaptureOperationRequest(
+                    operation: .retract, target: report.object,
+                    sourceQuote: String(text[quoteRange]), needsReview: matches.count != 1,
+                    isScoped: true
+                )
+                request.sourceUnitIDs = sourceLedger.ids(in: quoteRange)
+                if matches.count == 1 {
+                    let withdrawn = remainders.remove(at: matches[0])
+                    request.localTargetUnitIDs = sourceLedger.ids(in: withdrawn.start..<withdrawn.end)
+                }
+                operations.append(request)
+                consumedLocalScopePieces.insert(pieceIndex + 1)
+                continue
+            }
+            // "Replace buying X with texting Y" withdraws one uniquely
+            // identified action from this capture and introduces Y. Keep the
+            // original spoken span as provenance, while sending only the new
+            // action to ordinary extraction. A missing or ambiguous old action
+            // falls through unchanged for review rather than guessing.
+            if let replacement = explicitLocalReplacement(in: piece) {
+                let oldPattern = replacement.oldAction.split(separator: " ")
+                    .map { NSRegularExpression.escapedPattern(for: String($0)) }
+                    .joined(separator: #"\s+"#)
+                let matches = remainders.indices.filter { index in
+                    ActionabilityReader.actionBody(remainders[index].text).range(
+                        of: "(?i)^" + oldPattern + #"\b"#,
+                        options: .regularExpression
+                    ) != nil
+                }
+                if matches.count == 1 {
+                    let withdrawn = remainders.remove(at: matches[0])
+                    var request = CaptureOperationRequest(
+                        operation: .retract, target: replacement.oldAction,
+                        sourceQuote: piece, needsReview: false, isScoped: true
+                    )
+                    request.sourceUnitIDs = sourceRange.map(sourceLedger.ids(in:)) ?? []
+                    request.localTargetUnitIDs = sourceLedger.ids(in: withdrawn.start..<withdrawn.end)
+                    operations.append(request)
+                    remainders.append((replacement.newAction,
+                                       sourceRange?.lowerBound ?? sourceCursor,
+                                       sourceRange?.upperBound ?? sourceCursor))
+                    continue
+                }
+            }
+            // A named withdrawal points to an intention in this capture, not
+            // necessarily the immediately preceding clause. Resolve only a
+            // unique local target; otherwise keep the speaker's words visible.
+            if let target = namedLocalWithdrawal(in: piece) {
+                let matches = remainders.indices.filter {
+                    let index = $0
+                    let ownsAction = ActionabilityReader.actionBody(remainders[index].text).range(
+                        of: #"(?i)^\#(ActionabilityReader.actionVerb)\b"#,
+                        options: .regularExpression
+                    ) != nil
+                    let sharedVerbObject: Bool = {
+                        guard index > 0,
+                              remainders[index].text.split(separator: " ").count <= 3,
+                              ActionabilityReader.actionBody(remainders[index - 1].text).range(
+                                  of: #"(?i)^\#(ActionabilityReader.actionVerb)\b"#,
+                                  options: .regularExpression
+                              ) != nil,
+                              remainders[index - 1].end <= remainders[index].start else {
+                            return false
+                        }
+                        let gap = String(text[remainders[index - 1].end..<remainders[index].start])
+                        return gap.range(of: #"(?i)\band\b"#,
+                                         options: .regularExpression) != nil
+                            && !gap.contains(where: { ".!?".contains($0) })
+                    }()
+                    return (ownsAction || sharedVerbObject)
+                        && locallyNames(remainders[index].text, target: target)
+                }
+                if matches.count == 1 {
+                    let withdrawn = remainders.remove(at: matches[0])
+                    if let marker = remainders.last?.text.trimmingCharacters(
+                        in: CharacterSet(charactersIn: " ,.!?")
+                    ).lowercased(),
+                       ["no", "wait", "actually"].contains(marker) {
+                        let cue = remainders.removeLast()
+                        if let sourceRange {
+                            discourseLinks.append(Partition.DiscourseLink(
+                                cueUnitIDs: sourceLedger.ids(in: cue.start..<cue.end),
+                                ownerUnitIDs: sourceLedger.ids(in: sourceRange)
+                            ))
+                        }
+                    }
+                    var request = CaptureOperationRequest(
+                        operation: .retract, target: target,
+                        sourceQuote: piece, needsReview: false, isScoped: true
+                    )
+                    request.sourceUnitIDs = sourceRange.map(sourceLedger.ids(in:)) ?? []
+                    request.localTargetUnitIDs = sourceLedger.ids(in: withdrawn.start..<withdrawn.end)
+                    operations.append(request)
+                    continue
+                }
+                if !remainders.isEmpty {
+                    // The speaker named something to take back, but several
+                    // prior intentions or none match that name. Preserve the
+                    // independent creations and hold this operation for review.
+                    var request = CaptureOperationRequest(
+                        operation: .retract, target: target,
+                        sourceQuote: piece, needsReview: true
+                    )
+                    request.sourceUnitIDs = sourceRange.map(sourceLedger.ids(in:)) ?? []
+                    operations.append(request)
+                    continue
+                }
+            }
             if let operation = detect(piece, within: text) {
                 // A withdrawal that names no target takes back the thought it
                 // was spoken after — the one it scopes over, and only that one.
@@ -2305,10 +3761,8 @@ enum CaptureOperationDetector {
                 if operation.operation == .retract,
                    operation.target == nil,
                    !remainders.isEmpty {
-                    let start = semanticGroupStart(in: remainders)
-                    remainders.removeSubrange(start...)
-                    operations.append(
-                        CaptureOperationRequest(
+                    let withdrawn = remainders.removeLast()
+                    var request = CaptureOperationRequest(
                             operation: operation.operation,
                             polarity: operation.polarity,
                             target: operation.target,
@@ -2318,18 +3772,225 @@ enum CaptureOperationDetector {
                             newTimingText: operation.newTimingText,
                             isScoped: true
                         )
-                    )
+                    request.sourceUnitIDs = sourceRange.map(sourceLedger.ids(in:)) ?? []
+                    request.localTargetUnitIDs = sourceLedger.ids(in: withdrawn.start..<withdrawn.end)
+                    operations.append(request)
                 } else {
-                    operations.append(operation)
+                    var request = operation
+                    request.sourceUnitIDs = sourceRange.map(sourceLedger.ids(in:)) ?? []
+                    operations.append(request)
                 }
             } else {
-                remainders.append(piece)
+                remainders.append((piece, sourceRange?.lowerBound ?? sourceCursor,
+                                   sourceRange?.upperBound ?? sourceCursor))
             }
         }
 
-        guard !operations.isEmpty else { return ([], text) }
-        let remainder = remainders.joined(separator: ", ")
-        return (operations, remainder.isEmpty ? nil : remainder)
+        guard !operations.isEmpty else {
+            return Partition(operations: [], remainder: text, retainedUnitIDs: allIDs,
+                             discourseLinks: [])
+        }
+        // Retain sentence boundaries between surviving intentions. Joining
+        // everything with commas fused a corrected call, a shopping errand,
+        // and later context into one confident row after a withdrawal.
+        var remainder = ""
+        var previousEnd: String.Index?
+        for entry in remainders {
+            if let previousEnd {
+                let gap = previousEnd <= entry.start
+                    ? String(text[previousEnd..<entry.start]) : ""
+                if gap.contains(where: { ".!?".contains($0) }) {
+                    remainder += ". "
+                } else if gap.contains(";") {
+                    remainder += "; "
+                } else if gap.range(of: #"(?i)\band\b"#, options: .regularExpression) != nil {
+                    remainder += ", and "
+                } else if gap.range(of: #"(?i)\bbut\b"#, options: .regularExpression) != nil {
+                    remainder += ", but "
+                } else {
+                    remainder += ", "
+                }
+            }
+            remainder += entry.text
+            previousEnd = entry.end
+        }
+        // Repeated bare withdrawals in one breath are one retraction of the
+        // unsaved thought, not a sequence of independent store operations.
+        // Keeping both sent persistence down its multiple-operation review
+        // path and turned "never mind, forget that" into two visible rows.
+        if remainder.isEmpty,
+           operations.allSatisfy({ $0.operation == .retract && $0.target == nil && !$0.isScoped }),
+           let first = operations.first {
+            var combined = first
+            combined.sourceUnitIDs = operations.reduce(into: Set<Int>()) {
+                $0.formUnion($1.sourceUnitIDs)
+            }
+            return Partition(operations: [combined], remainder: nil, retainedUnitIDs: [],
+                             discourseLinks: discourseLinks)
+        }
+        let retainedIDs = remainders.reduce(into: Set<Int>()) { result, entry in
+            result.formUnion(sourceLedger.ids(in: entry.start..<entry.end))
+        }
+        // An explicitly ambiguous saved cancellation is one operation plus
+        // any separately introduced "also <action>". The intervening sentences
+        // explain the two possible saved titles and how to ask; extracting
+        // those instructions as new tasks creates confident nonsense. Give
+        // those source units to the operation, while retaining the independent
+        // imperative as its own source span.
+        if operations.count == 1,
+           operations[0].operation == .cancel,
+           !operations[0].isScoped,
+           text.range(of: #"(?i)\bcalled\s+it\s+(?:the\s+)?\S.+?\s+or\s+(?:the\s+)?\S.+?\s+when\s+i\s+saved\s+it\b"#,
+                      options: .regularExpression) != nil,
+           let regex = NSRegularExpression.speakItCached(
+               #"(?i)\balso\s+(?:\#(ActionabilityReader.actionVerb))\b(?:(?!\bthat\s+is\b|[.!?]).)*"#
+           ),
+           let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+           let actionRange = Range(match.range, in: text) {
+            let actionIDs = sourceLedger.ids(in: actionRange)
+            var operation = operations[0]
+            operation.sourceUnitIDs = allIDs.subtracting(actionIDs)
+            return Partition(operations: [operation],
+                             remainder: String(text[actionRange]).trimmingCharacters(in: .whitespacesAndNewlines),
+                             retainedUnitIDs: actionIDs, discourseLinks: [])
+        }
+        return Partition(operations: operations,
+                         remainder: remainder.isEmpty ? nil : remainder,
+                         retainedUnitIDs: retainedIDs,
+                         discourseLinks: discourseLinks)
+    }
+
+    private static func savedCompletionWithExplanation(_ text: String) -> CaptureOperationRequest? {
+        let flattened = text.replacingOccurrences(of: #"\s+"#, with: " ",
+                                                   options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let commandPattern = #"(?i)^(?:(?:um|uh|er),?\s+)?(?:let me think[.!?]?\s+)?(mark\s+(?:the\s+)?(?:saved|existing)\s+(?:task|reminder|item|entry)\s+to\s+.+?\s+as\s+complete)\b[.!?]?\s+(.+)$"#
+        guard let regex = NSRegularExpression.speakItCached(commandPattern),
+              let match = regex.firstMatch(in: flattened,
+                                           range: NSRange(flattened.startIndex..., in: flattened)),
+              let commandRange = Range(match.range(at: 1), in: flattened),
+              let tailRange = Range(match.range(at: 2), in: flattened),
+              var request = detect(String(flattened[commandRange])),
+              request.operation == .complete else { return nil }
+
+        let tail = String(flattened[tailRange])
+            .replacingOccurrences(of: #"[.,;!?]+"#, with: " ", options: .regularExpression)
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .lowercased().trimmingCharacters(in: .whitespaces)
+        let reportAndGuard = #"^i\s+(?:sent|emailed|finished|completed|paid|called|submitted|delivered|returned)\s+.+?\s+(?:this\s+morning|today|yesterday|already)\s+do\s+not\s+mark\s+.+?\s+complete\s+because\s+i\s+have\s+not\s+.+?\s+yet\b"#
+        guard let report = tail.range(of: reportAndGuard, options: .regularExpression) else {
+            return nil
+        }
+        var explanation = String(tail[report.upperBound...])
+            .trimmingCharacters(in: .whitespaces)
+        // The rest is a reason the other task remains open, followed by
+        // optional audit language. A new command anywhere in that span is not
+        // licensed by this single saved-row operation.
+        guard explanation.hasPrefix("even though "),
+              explanation.range(
+                of: #"\b(?:also|then|plus)\s+(?:(?:i|we)\s+(?:need|want|have)\s+to\s+)?(?:please\s+)?\#(actionVerbs)\b"#,
+                options: .regularExpression
+              ) == nil else { return nil }
+        if let auditStart = explanation.range(of: "i am reporting completion of ") {
+            let reason = String(explanation[..<auditStart.lowerBound])
+            guard reason.contains("both about the same ") else { return nil }
+            explanation = String(explanation[auditStart.lowerBound...])
+            explanation = explanation.replacingOccurrences(
+                of: #"^i am reporting completion of .+? not asking to .+? the current capture should remain available as evidence of the change there should still be .+? unfinished .+? after this is processed$"#,
+                with: "", options: .regularExpression
+            )
+            guard explanation.isEmpty else { return nil }
+        } else {
+            guard explanation.contains("both about the same ") else { return nil }
+        }
+        request.sourceQuote = text
+        return request
+    }
+
+    /// Clause slicing does not release a leading condition or reporting
+    /// owner. A local completion must prove its candidate in the original
+    /// sentence, where the comma and the owning prefix still exist.
+    private static func originalSentenceOwnsLocalAction(
+        _ action: Range<String.Index>, in source: String
+    ) -> Bool {
+        guard let sentence = RuleBasedThoughtExtractor.quotePreservingSentenceRanges(in: source)
+            .first(where: { $0.contains(action.lowerBound) }),
+              action.upperBound <= sentence.upperBound else { return false }
+        let owned = String(source[sentence.lowerBound..<action.upperBound])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return owned.range(of: #"(?i)^(?:if|unless|when|whenever|once|after|before|until|while)\b"#,
+                           options: .regularExpression) == nil
+            && ClauseScope.read(owned).act != .reporting
+            && ClauseScope.read(owned).act != .communicating
+    }
+
+    private static func isCurrentThoughtWithdrawal(_ text: String) -> Bool {
+        text.range(of: #"(?i)^(?:please\s+)?cancel\s+(?:that|this)\s+thought[.!?]*$"#,
+                   options: .regularExpression) != nil
+    }
+
+    private static func isCurrentCaptureWithdrawal(_ text: String) -> Bool {
+        text.range(of: #"(?i)^take\s+(?:that|this)\s+(?:purchase|task|action|job|item)\s+out\s+of\s+(?:what\s+i\s+just\s+said|(?:this|the\s+current)\s+(?:recording|capture))[.!?]*$"#,
+                   options: .regularExpression) != nil
+    }
+
+    private static func localCompletionReport(_ text: String) -> (verb: String, object: String)? {
+        guard let regex = NSRegularExpression.speakItCached(
+            #"(?i)^(?:(?:actually|sorry|wait\s*,?\s*no)\s*,?\s*)?i\s+already\s+([\p{L}]+)\s+(.+?)[.!?]*$"#
+        ), let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+           let verb = Range(match.range(at: 1), in: text),
+           let object = Range(match.range(at: 2), in: text) else { return nil }
+        return (String(text[verb]).lowercased(), String(text[object]))
+    }
+
+    private static func namedLocalWithdrawal(in piece: String) -> String? {
+        let pattern = #"(?i)^(?:(?:no|wait|actually)\s*,?\s*)?(?:skip|forget|scratch)\s+(?:the\s+|my\s+)?(.+?)[.!?]*$"#
+        guard let regex = NSRegularExpression.speakItCached(pattern),
+              let match = regex.firstMatch(in: piece, range: NSRange(piece.startIndex..., in: piece)),
+              let range = Range(match.range(at: 1), in: piece) else { return nil }
+        let target = String(piece[range]).trimmingCharacters(in: .whitespacesAndNewlines)
+        return target.isEmpty ? nil : target
+    }
+
+    private static func explicitLocalReplacement(in piece: String)
+        -> (oldAction: String, newAction: String)? {
+        let pattern = #"(?i)^(?:no\s*,?\s*)?replace\s+([\p{L}]+ing\s+.+?)\s+with\s+([\p{L}]+ing\s+.+?)[.!?]*$"#
+        guard let regex = NSRegularExpression.speakItCached(pattern),
+              let match = regex.firstMatch(in: piece, range: NSRange(piece.startIndex..., in: piece)),
+              let oldRange = Range(match.range(at: 1), in: piece),
+              let newRange = Range(match.range(at: 2), in: piece),
+              let old = actionFromGerund(String(piece[oldRange])),
+              let new = actionFromGerund(String(piece[newRange])) else { return nil }
+        return (old, new)
+    }
+
+    private static func actionFromGerund(_ phrase: String) -> String? {
+        let words = phrase.split(separator: " ", maxSplits: 1).map(String.init)
+        guard words.count == 2 else { return nil }
+        let verbs: [String: String] = [
+            "buying": "buy", "texting": "text", "calling": "call",
+            "sending": "send", "booking": "book", "printing": "print",
+            "watering": "water", "emailing": "email", "paying": "pay",
+            "cancelling": "cancel", "canceling": "cancel"
+        ]
+        guard let verb = verbs[words[0].lowercased()] else { return nil }
+        return verb + " " + words[1].trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func locallyNames(_ clause: String, target: String) -> Bool {
+        let words = target.lowercased().split(whereSeparator: { !$0.isLetter }).map(String.init)
+        guard !words.isEmpty else { return false }
+        // List commands put the item before a destination phrase. Suffix-only
+        // matching left a locally scratched product active because the clause
+        // ended in "shopping list" rather than in the product name.
+        let escapedTarget = words.map(NSRegularExpression.escapedPattern(for:)).joined(separator: #"\s+"#)
+        if clause.range(
+            of: #"(?i)^(?:put|add)\s+"# + escapedTarget
+                + #"\s+(?:on|to)\s+(?:the|my|our)?\s*(?:shopping|grocery|to[- ]?do)\s+list\b"#,
+            options: .regularExpression
+        ) != nil { return true }
+        let source = clause.lowercased().split(whereSeparator: { !$0.isLetter }).map(String.init)
+        return source.count >= words.count && source.suffix(words.count).elementsEqual(words)
     }
 
     /// Resolves cancellation that targets a sibling in the capture before the
@@ -2386,6 +4047,69 @@ enum CaptureOperationDetector {
             isScoped: true
         )
         return ([operation], pieces.joined(separator: ", "))
+    }
+
+    private static func literalLocalRange(_ spoken: String, in ledger: SourceUnitLedger) -> Range<String.Index>? {
+        let wanted = SourceUnitLedger(spoken).words.map(\.text)
+        guard !wanted.isEmpty, wanted.count <= ledger.words.count else { return nil }
+        let matches = (0...(ledger.words.count-wanted.count)).filter { start in
+            ledger.words[start..<(start+wanted.count)].map(\.text) == wanted
+        }
+        guard matches.count == 1, let start = matches.first else { return nil }
+        return ledger.words[start].range.lowerBound..<ledger.words[start+wanted.count-1].range.upperBound
+    }
+
+    private static func sourceOwnedLocalCancellation(_ text: String, ledger: SourceUnitLedger) -> Partition? {
+        let all = Set(ledger.words.indices)
+        // An unmatched/duplicate local skip is not a request to remove some
+        // older saved row. Keep it intact for clarification.
+        if hasAmbiguousLocalCancellation(text) {
+            return Partition(operations: [], remainder: text, retainedUnitIDs: all, discourseLinks: [])
+        }
+        let local = resolvingInCaptureCancellations(text)
+        // Nonterminal named skips belong to the ordinary per-clause resolver.
+        // A visit-only resolver cannot preempt that ownership with a no-op.
+        guard !local.operations.isEmpty else {
+            // A terminal unmatched or duplicated visit withdrawal has no
+            // independent tail to partition. Preserve its entire source for
+            // clarification rather than manufacture an unscoped saved edit.
+            if text.range(of: #"(?i)(?:^|[,;]\s*)(?:actually\s+|no\s+)skip\s+[^,;.!?]+[.!?]*\s*$"#,
+                          options: .regularExpression) != nil {
+                return Partition(operations: [], remainder: text, retainedUnitIDs: all, discourseLinks: [])
+            }
+            return nil
+        }
+        // Every surviving word must match an ordered original occurrence.
+        // Shared leading context is copied from its original spoken position.
+        var surviving = Set<Int>(), cursor = 0
+        for word in SourceUnitLedger(local.remainder).words {
+            guard let index = ledger.words.indices.dropFirst(cursor).first(where: {
+                ledger.words[$0].text == word.text
+            }) else { return nil }
+            surviving.insert(index); cursor = index + 1
+        }
+        let next = local.remainder.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? Partition(operations: [], remainder: nil, retainedUnitIDs: [], discourseLinks: [])
+            : partitionWithOwnership(local.remainder)
+        var operations = local.operations
+        let removed = all.subtracting(surviving)
+        guard !removed.isEmpty else { return nil }
+        for index in operations.indices {
+            guard let directive = literalLocalRange(operations[index].sourceQuote, in: ledger) else {
+                return Partition(operations: [], remainder: text, retainedUnitIDs: all, discourseLinks: [])
+            }
+            operations[index].sourceQuote = String(text[directive])
+            let directiveIDs = ledger.ids(in: directive)
+            operations[index].sourceUnitIDs = directiveIDs.union(removed)
+            operations[index].localTargetUnitIDs = removed.subtracting(directiveIDs)
+        }
+        for request in next.operations {
+            guard let range = text.range(of: request.sourceQuote, options: [.caseInsensitive, .backwards]) else { return nil }
+            var mapped = request; mapped.sourceUnitIDs = ledger.ids(in: range)
+            operations.append(mapped)
+        }
+        return Partition(operations: operations, remainder: next.remainder,
+                         retainedUnitIDs: surviving, discourseLinks: [])
     }
 
     private static func inheritedActionPrefix(in clause: String) -> String? {
@@ -2580,6 +4304,44 @@ enum CaptureOperationDetector {
     /// own. "But" is included because it is how people join a refusal to a
     /// request; the general thought splitter deliberately does not break on it.
     private static func clauses(in text: String) -> [String] {
+        // The explicit current-capture frame supplies a scope boundary even
+        // when dictation omitted every stop. Establish its original spans
+        // before generic conjunction splitting can sever the frame or its
+        // completion report. Object/antecedent authority remains with the
+        // existing local-completion consumer below.
+        let localScope = #"(?i)\btake\s+(?:that|this)\s+(?:purchase|task|action|job|item)\s+out\s+of\s+(?:what\s+i\s+just\s+said|(?:this|the\s+current)\s+(?:recording|capture))\b"#
+        if let scope = text.range(of: localScope, options: .regularExpression),
+           !QuotedSpeechScope.protects(scope, in: text),
+           ClauseScope.read(text).act != .reporting,
+           ClauseScope.read(text).act != .communicating {
+            let before = String(text[..<scope.lowerBound])
+            if let reportRegex = NSRegularExpression.speakItCached(
+                #"(?i)\b(?:(?:actually|sorry|wait\s*,?\s*no)\s*,?\s*)?i\s+already\s+[\p{L}]+\s+"#
+            ), let reportMatch = reportRegex.matches(in: before,
+                range: NSRange(before.startIndex..., in: before)).last,
+               let reportStart = Range(reportMatch.range, in: before)?.lowerBound {
+                let report = before[reportStart...].trimmingCharacters(in: .whitespacesAndNewlines)
+                let prefix = String(before[..<reportStart])
+                let localMatrix = clauses(in: prefix).last ?? prefix
+                if !ClauseScope.opensMessageComplement(localMatrix),
+                   ClauseScope.read(localMatrix).act != .reporting,
+                   localMatrix.range(of: #"(?i)^\s*(?:if|when|whenever|once|after|before|until|while|unless)\b"#,
+                                     options: .regularExpression) == nil,
+                   localCompletionReport(report) != nil,
+                   !QuotedSpeechScope.protects(reportStart..<before.endIndex, in: before),
+                   ClauseScope.read(report).act != .reporting {
+                    let tail = String(text[scope.upperBound...])
+                        .trimmingCharacters(in: CharacterSet(charactersIn: " .!?;,\n\r\t"))
+                    // Do not recurse over the same already-separated pair.
+                    if !prefix.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        || !tail.isEmpty {
+                        return clauses(in: prefix).filter { !$0.isEmpty }
+                            + [report, String(text[scope])]
+                            + (tail.isEmpty ? [] : clauses(in: tail))
+                    }
+                }
+            }
+        }
         // A bare "and" after a denial is genuinely ambiguous: "don't buy milk
         // and call support" can negate one conjunct or both, and English does
         // not say which. That ambiguity is already owned by `hasMixedPolarity`,
@@ -2605,21 +4367,61 @@ enum CaptureOperationDetector {
         // the two spellings — so a boundary that exists in one has to exist in
         // the other. Without this the comma form was withdrawn and the ellipsis
         // form became a task dated tomorrow.
-        let pause = #"\s*(?:[;,]|\.{2,}|…)\s*"#
+        // A recognizer may punctuate two independent instructions as sentences.
+        // Keep a single period inside abbreviations and decimals; only a
+        // sentence break followed by a capitalized start is a boundary here.
+        // Without this, an anchored "I already ..." operation consumed the
+        // next sentence, including a new task, as its target.
+        let pause = #"\s*(?:[;,]|\.{2,}|…|\.(?=\s+[A-Z])|[.!?][\"”’](?=\s+[A-Z]))\s*"#
         let pattern = deniesUpFront
-            ? #"(?i)(?:\#(pause)(?:and\s+|but\s+|then\s+)?|\s+but\s+|\s+and\s+(?=(?:i|we)\b|don'?t\b|do\s+not\b|never\b))"#
-            : #"(?i)(?:\#(pause)(?:and\s+|but\s+|then\s+)?|\s+(?:and|but|then|also|plus)\s+)"#
+            ? #"(?i)(?:\#(pause)(?:and\s+|but\s+|then\s+|so\s+)?|\s+but\s+|\s+and\s+(?=(?:i|we)\b|don'?t\b|do\s+not\b|never\b))"#
+            : #"(?i)(?:\#(pause)(?:and\s+|but\s+|then\s+|so\s+)?|\s+(?:and|but|then|also|plus)\s+)"#
         guard let regex = NSRegularExpression.speakItCached(pattern) else { return [text] }
 
+        let deniedComplements = ClauseScope.deniedRequestComplementRanges(in: text)
         var pieces: [String] = []
         var lowerBound = text.startIndex
         for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
-            guard let range = Range(match.range, in: text),
-                  !ClauseScope.isInsideQuotation(range.lowerBound, in: text),
-                  !ClauseScope.continuesAttributedAction(
-                    left: String(text[lowerBound..<range.lowerBound]),
-                    right: String(text[range.upperBound...])
-                  ) else { continue }
+            guard let range = Range(match.range, in: text) else { continue }
+            // A negative operation governed by a leading condition is not an
+            // immediate request against a saved row. Keep the condition's
+            // delimiter with its consequence before generic pause splitting;
+            // later interpretation can retain the unsupported condition, but
+            // must never receive an unconditional destructive child.
+            let prefix = String(text[lowerBound..<range.lowerBound])
+            let prefixScope = ClauseScope.read(prefix)
+            let conditionPrefix = prefixScope.act == .communicating
+                ? (prefixScope.complement ?? prefix) : prefix
+            if text[range].contains(","),
+               conditionPrefix.range(
+                    of: #"(?i)^\s*(?:if|unless|when|whenever|once|after|before|until|while)\b"#,
+                    options: .regularExpression
+               ) != nil,
+               String(text[range.upperBound...]).range(
+                    of: #"(?i)^(?:skip|forget|don['’]?t|do\s+not|cancel|delete|remove|stop)\b"#,
+                    options: .regularExpression
+               ) != nil { continue }
+            if QuotedSpeechScope.protects(range, in: text),
+               !ClauseScope.isCausalReturn(range, in: text) { continue }
+            let left = String(text[lowerBound..<range.lowerBound])
+            // The pause consumes the period, so passing only `left` to the
+            // attribution reader hides the sentence stop. A new sentence is
+            // the speaker's own operation scope; conjunctions and quoted
+            // continuations still retain their reporting owner.
+            let endsReportedSentence = text[range].range(
+                of: #"^[.!?][\"”’]?\s*(?:(?:and|but|then|so)\s+)?$"#,
+                options: [.regularExpression, .caseInsensitive]
+            ) != nil && left.range(
+                of: #"(?i)(?:\b(?:dr|mr|mrs|ms|prof|st|sr|jr|vs|etc|inc|ltd)|\b\p{L})$"#,
+                options: .regularExpression
+            ) == nil
+            if !endsReportedSentence, ClauseScope.continuesAttributedAction(
+                left: left,
+                right: String(text[range.upperBound...])
+            ), text[range].range(of: #"(?i),\s*so\s+"#, options: .regularExpression) == nil { continue }
+            if deniedComplements.contains(where: {
+                range.lowerBound >= $0.lowerBound && range.upperBound <= $0.upperBound
+            }) { continue }
             append(String(text[lowerBound..<range.lowerBound]), to: &pieces)
             lowerBound = range.upperBound
         }
@@ -2627,6 +4429,7 @@ enum CaptureOperationDetector {
         let punctuated = pieces.isEmpty ? [text] : pieces
         return punctuated
             .flatMap(splittingJuxtaposedInstructions)
+            .flatMap(splittingListCommandContinuation)
             .flatMap(splittingTrailingWithdrawal)
     }
 
@@ -2700,9 +4503,49 @@ enum CaptureOperationDetector {
     }
 
     private static func splittingJuxtaposedInstructions(_ clause: String) -> [String] {
-        ClauseJuxtaposition.pieces(in: clause).map {
+        let scope = ClauseScope.read(clause).act
+        if scope == .communicating || scope == .reporting { return [clause] }
+        // Pause splitting already retained this conditional consequence.
+        // Juxtaposition must consume that same grammatical scope rather than
+        // reopen its negative verb as an immediate operation.
+        if let delimiter = clause.range(
+            of: #",\s*(?=(?:skip|forget|don['’]?t|do\s+not|cancel|delete|remove|stop)\b)"#,
+            options: [.regularExpression, .caseInsensitive]
+        ), !QuotedSpeechScope.protects(delimiter, in: clause),
+           String(clause[..<delimiter.lowerBound]).range(
+                of: #"(?i)^\s*(?:if|unless|when|whenever|once|after|before|until|while)\b"#,
+                options: .regularExpression
+           ) != nil { return [clause] }
+        if !QuotedSpeechScope.ranges(in: clause).isEmpty {
+            let act = ClauseScope.read(clause).act
+            if act == .reporting || act == .communicating
+                || QuotedSpeechScope.isQuotedCommunication(clause) { return [clause] }
+        }
+        return ClauseJuxtaposition.pieces(in: clause).map {
             $0.trimmingCharacters(in: CharacterSet(charactersIn: " ,;."))
         }.filter { !$0.isEmpty }
+    }
+
+    private static func splittingListCommandContinuation(_ clause: String) -> [String] {
+        // A parsed list addition ends at its stated destination. A following
+        // first-person finite clause is a separate source span, rather than
+        // part of the list object's name. Keep both spans; later ownership may
+        // attach the description, but cannot corrupt the action frame.
+        if ClauseScope.read(clause).act != .communicating,
+           ClauseScope.read(clause).act != .reporting,
+           let continuation = clause.range(
+                of: #"(?i)\s+(?=i\s+(?:(?:only|also|still)\s+)?(?:need|want|have)\b)"#,
+                options: .regularExpression
+           ) {
+            let head = String(clause[..<continuation.lowerBound])
+            let command = RuleBasedThoughtExtractor.canonicalizedListCommand(head, namingStore: false)
+            if command != head, head.range(of: #"(?i)^(?:put|add|throw)\b"#,
+                                           options: .regularExpression) != nil,
+               !QuotedSpeechScope.protects(continuation, in: clause) {
+                return [head] + splittingListCommandContinuation(String(clause[continuation.upperBound...]))
+            }
+        }
+        return [clause]
     }
 
     private static func append(_ value: String, to pieces: inout [String]) {
@@ -2731,10 +4574,24 @@ enum CaptureOperationDetector {
             .trimmingCharacters(in: CharacterSet(charactersIn: ".!? "))
         guard !lower.isEmpty else { return nil }
 
+        // Direct callers receive the same fail-closed field scope as the
+        // partitioner; a partial clause cannot borrow authority from a failed
+        // complete capture supplied by its caller.
+        if SavedFieldRevision.hasUnprovedFieldRequest(containing ?? source) {
+            return request(.revise, target: nil, source: containing ?? source, review: true)
+        }
+
         // Emphasis, not negation. "Don't forget" attaches the negative to
         // forgetting, which means *remember* — the single most important
         // exception in this file.
         if matches(lower, #"^(?:don'?t|do\s+not)\s+(?:forget|let\s+me\s+forget)\b"#) {
+            return nil
+        }
+
+        // A prohibition on cancelling is not itself a cancellation. In a
+        // mixed capture the generic "don't <action verb>" operation pattern
+        // otherwise turns "don't cancel it" into a destructive request.
+        if matches(lower, #"^(?:don'?t|do\s+not|never)\s+(?:cancel|delete|remove|stop)\b"#) {
             return nil
         }
 
@@ -2746,6 +4603,17 @@ enum CaptureOperationDetector {
         // so the honest answer is to keep the words for review rather than to
         // hunt for a matching reminder and report that none exists.
         if matches(lower, #"\b(?:anything|everything|nothing)\b"#) { return nil }
+
+        // An indefinite new object denies a proposed future creation; it does
+        // not identify a saved row to cancel. Keep the words in the creation
+        // remainder for review. A definite or bare target can still be a real
+        // request to manage an existing item.
+        if matches(lower,
+                   #"^(?:don'?t|do\s+not)\s+\#(actionVerbs)\s+(?:a|an|another)\b"#) {
+            return nil
+        }
+
+        if isCaptureContrastExclusion(source, within: containing) { return nil }
 
         // Broad or destructive scope stays in review by design.
         if matches(lower, #"\b(?:all|every|everything)\b"#),
@@ -2775,6 +4643,21 @@ enum CaptureOperationDetector {
             return request(.retract, target: nil, source: source, review: false)
         }
 
+        if isCurrentThoughtWithdrawal(source) {
+            return CaptureOperationRequest(operation: .retract, target: nil,
+                sourceQuote: source, needsReview: true, isScoped: true)
+        }
+
+        // Present possession with a trailing "already" is still a fact.
+        // The old trailing completion wildcard consumed the booking from a
+        // whole mixed capture and vetoed its unrelated new intentions.
+        // These complete current noun objects cannot represent a past action;
+        // auxiliary "have finished/downloaded" and explicit mark-done requests
+        // retain the existing completion and saved-state validation path.
+        if matches(lower,#"^i\s+(?:have|own|possess)\s+(?:(?:the|a|an|my|our)\s+)?(?:booking|ticket|key|receipt|confirmation|passport|railcard|pass)\s+already$"#) {
+            return nil
+        }
+
         // Completion: something already happened.
         //
         // "Already" is the marker that separates a completion from a record.
@@ -2784,10 +4667,14 @@ enum CaptureOperationDetector {
         // subject dropped entirely, and each of those was previously a new task
         // asserting the reverse of what was said.
         let completePatterns = [
-            #"^i\s+already\s+(.+)$"#,
-            #"^i'?ve\s+already\s+(.+)$"#,
-            #"^i\s+have\s+already\s+(.+)$"#,
-            #"^already\s+(.+)$"#,
+            // "I already have a box" is possession, not completion of an
+            // existing task. A completion needs evidence of an accomplished
+            // action; the broad "already anything" frame consumed facts in
+            // long captures and could then hide a later instruction.
+            #"^i\s+already\s+(?!have\b|had\b|own\b|possess\b|am\b|was\b|were\b)(.+)$"#,
+            #"^i'?ve\s+already\s+(?!had\b|owned\b|possessed\b)(.+)$"#,
+            #"^i\s+have\s+already\s+(?!had\b|owned\b|possessed\b)(.+)$"#,
+            #"^already\s+(?!have\b|had\b|own\b|possess\b)(.+)$"#,
             #"^i\s+(.+?)\s+already$"#,
             #"^i'?ve\s+(.+?)\s+already$"#,
             #"^(?:i'?m\s+)?done\s+with\s+(?:the\s+)?(.+)$"#,
@@ -2806,6 +4693,23 @@ enum CaptureOperationDetector {
             return request(.complete, target: nil, source: source, review: true)
         }
 
+        // A complete quoted old/new action pair is a semantic revision, even
+        // when the new title contains a date. Read its occurrence-linked
+        // identity before generic timing detection; the quoted action is not
+        // permission to reschedule only the old row and discard the new person.
+        if (containing == nil || containing == source),
+           SavedItemRevision.hasQuotedReplacement(source) {
+            guard let revision = SavedItemRevision.read(source) else {
+                return request(.revise, target: nil, source: source, review: true)
+            }
+            var request = CaptureOperationRequest(
+                operation: .revise, polarity: .positive,
+                target: revision.oldTitle, sourceQuote: source, needsReview: false
+            )
+            request.savedItemRevision = revision
+            return request
+        }
+
         // Rescheduling: move an existing item to a new moment. The timing gate
         // is what keeps "move the couch to the garage" an ordinary task — the
         // words after "to" must actually name a time before this reads as an
@@ -2817,6 +4721,17 @@ enum CaptureOperationDetector {
         // the meeting Friday, move it to Monday"), and claiming it as an
         // operation here would erase that correction. Only a named target
         // reads as a request against the store.
+        if let (target, oldTiming, newTiming) = captureTriple(
+            lower,
+            #"^(?:change|move|reschedule)\s+(?:the\s+|my\s+)?(?:saved|existing)\s+(.+?)\s+from\s+(.+?)\s+to\s+(.+)$"#
+        ), looksLikeTiming(oldTiming), looksLikeTiming(newTiming) {
+            return CaptureOperationRequest(
+                operation: .reschedule, polarity: .positive,
+                target: cleaned(target), sourceQuote: source,
+                needsReview: false, newTimingText: newTiming,
+                expectedOldTimingText: oldTiming
+            )
+        }
         if let (target, timing) = capturePair(
             lower,
             #"^(?:move|shift|bump|change|reschedule|postpone|delay|push)\s+(?:the\s+|my\s+)?(.+?)\s+(?:reminder\s+)?(?:to|until|till|for)\s+(.+)$"#
@@ -2860,22 +4775,49 @@ enum CaptureOperationDetector {
             )
         }
 
+        // A command to edit a saved row has a different identity from a new
+        // intention. Keep that type even when the replacement's fields cannot
+        // all be resolved safely. The row-reference noun is the licence: a
+        // world action such as "change the filter" remains a new errand.
+        if matches(lower,
+                   #"^(?:please\s+)?(?:(?:i|we)\s+(?:need|want)\s+to\s+)?(?:change|update|correct|revise|edit)\b"#),
+           matches(lower, #"\b(?:reminder|task|item|entry)\b"#),
+           matches(lower, #"\b(?:existing|saved|same|current|old|my|the)\b"#) {
+            return CaptureOperationRequest(
+                operation: .revise, polarity: .positive,
+                target: nil, sourceQuote: source, needsReview: true
+            )
+        }
+
         // Something already on the calendar that has been called off. Without
         // these the sentence read as a copular fact with a day in it, and
         // "the meeting on Tuesday is cancelled" put the meeting back on Today
         // for Tuesday — the person shows up to a room nobody booked.
-        let calledOffPatterns = [
-            #"^(?:the\s+|my\s+)?(.+?)\s+(?:is|was|are|were|has\s+been|have\s+been)\s+(?:cancelled|canceled|called\s+off|off)$"#,
-            #"^(.+?)\s+(?:isn'?t|is\s+not|aren'?t|are\s+not)\s+(?:happening|coming|going\s+ahead)(?:\s+anymore)?$"#,
-            #"^(?:i'?m|i\s+am|we'?re|we\s+are)\s+not\s+(?:going\s+to|going|doing|attending)\s+(.+?)(?:\s+anymore)?$"#,
+        if let target = capture(lower,
+            #"^(?:i'?m|i\s+am|we'?re|we\s+are)\s+not\s+going\s+(?:ahead|through)\s+with\s+(.+?)(?:\s+anymore)?$"#) {
+            guard ActionabilityReader.hasScheduledNominalHead(target),
+                  !isVague(target), !cancellationIsEmbedded((containing ?? source).lowercased()),
+                  !cancellationIsTakenBack((containing ?? source).lowercased()) else { return nil }
+            return request(.cancel, target: target, source: source, review: false)
+        }
+        let calledOffPatterns: [(String, Bool)] = [
+            (#"^(?:the\s+|my\s+)?(.+?)\s+(?:is|was|are|were|has\s+been|have\s+been)\s+(?:cancelled|canceled|called\s+off)$"#, false),
+            (#"^(?:the\s+|my\s+)?(.+?)\s+(?:is|was|are|were|has\s+been|have\s+been)\s+off$"#, true),
+            (#"^(.+?)\s+(?:isn'?t|is\s+not|aren'?t|are\s+not)\s+(?:happening|coming|going\s+ahead)(?:\s+anymore)?$"#, false),
+            (#"^(?:i'?m|i\s+am|we'?re|we\s+are)\s+not\s+(?:going\s+to|going|doing|attending)\s+(.+?)(?:\s+anymore)?$"#, false),
         ]
         let whole = (containing ?? source)
             .lowercased()
             .trimmingCharacters(in: CharacterSet(charactersIn: ".!? "))
-        for pattern in calledOffPatterns {
+        let deniesReportingCancellation = matches(
+            lower,
+            #"\b(?:do\s+not|don'?t|not|never)\s+(?:report|claim|say|tell)\b.*\b(?:cancelled|canceled|called\s+off)\b"#
+        )
+        for (pattern, requiresScheduledSubject) in calledOffPatterns where !deniesReportingCancellation {
             if let target = capture(lower, pattern),
                namesAnItem(target),
                namesSomethingContentful(target),
+               (!requiresScheduledSubject || ActionabilityReader.hasScheduledNominalHead(target)),
                !cancellationIsEmbedded(whole),
                !cancellationIsTakenBack(whole) {
                 return request(.cancel, target: target, source: source, review: isVague(target))
@@ -2893,6 +4835,14 @@ enum CaptureOperationDetector {
 
         // Cancellation, in descending order of explicitness.
         let cancelPatterns = [
+            // The speaker explicitly names a stored reminder through a
+            // request frame. The row noun keeps a world cancellation such as
+            // "I need you to cancel the gym membership" out of this path.
+            #"^(?:i|we)\s+need\s+you\s+to\s+cancel\s+(?:(?:the|my)\s+)?(?:reminder|task|item|entry)\s+(?:about|for|to)\s+(.+)$"#,
+            // The row noun may precede the action it names. "Delete my
+            // reminder to collect tickets" names the stored reminder, while
+            // "delete the tickets" is an ordinary world action.
+            #"^(?:delete|remove|clear|drop)\s+(?:(?:the|my)\s+)?(?:(?:existing|saved|old)\s+)?(?:reminder|task|item|entry)\s+(?:to|for|about)\s+(.+)$"#,
             #"^cancel\s+(?:the\s+)?(.+)$"#,
             #"^scratch\s+(?:the\s+)?(.+)$"#,
             #"^stop\s+reminding\s+me\s+(?:about\s+)?(?:the\s+)?(.+)$"#,
@@ -2926,6 +4876,29 @@ enum CaptureOperationDetector {
         }
 
         return nil
+    }
+
+    /// A denied obligation contrasted with a just-stated own action is
+    /// current capture context. An explicit saved-row noun keeps the saved
+    /// operation affordance; a standalone "I no longer need to ..." does too.
+    private static func isCaptureContrastExclusion(_ source: String, within containing: String?) -> Bool {
+        guard let containing, containing != source,
+              matches(source.lowercased(), #"^(?:i|we)\s+(?:(?:don['’]?t|do\s+not)\s+need\s+to|no\s+longer\s+need\s+to)\s+.+[.!?]*$"#),
+              !matches(source.lowercased(), #"\b(?:saved|existing|reminder|task|item|entry|alarm)\b"#),
+              let range = containing.range(of: source, options: .backwards),
+              !QuotedSpeechScope.protects(range, in: containing),
+              let contrast = containing[..<range.lowerBound].range(
+                of: #"(?i)\bbut\s*$"#, options: .regularExpression) else { return false }
+        let prefix = String(containing[..<contrast.lowerBound])
+        guard let last = RuleBasedThoughtExtractor.quotePreservingSentenceRanges(in: prefix).last else { return false }
+        let own = String(prefix[last]).trimmingCharacters(in: CharacterSet(charactersIn: " ,;.!?\n\t"))
+        return ClauseScope.read(own).act != .reporting
+            && ClauseScope.read(own).act != .communicating
+            && !QuotedSpeechScope.hasUnclosedQuote(own)
+            && QuotedSpeechScope.ranges(in: own).isEmpty
+            && ActionabilityReader.read(own).belongsOnToday
+            && own.range(of: #"(?i)^\s*(?:if|unless|when|whenever|once|after|before|until|while)\b"#,
+                         options: .regularExpression) == nil
     }
 
     /// Nouns that say a target is **a row this app is holding** rather than a
@@ -3287,6 +5260,16 @@ enum CaptureOperationDetector {
         }
         let second = Range(match.range(at: 2), in: text).map { String(text[$0]) } ?? ""
         return (String(text[first]), second)
+    }
+
+    private static func captureTriple(_ text: String, _ pattern: String) -> (String, String, String)? {
+        guard let regex = NSRegularExpression.speakItCached(pattern, options: [.caseInsensitive]),
+              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              match.numberOfRanges > 3,
+              let first = Range(match.range(at: 1), in: text),
+              let second = Range(match.range(at: 2), in: text),
+              let third = Range(match.range(at: 3), in: text) else { return nil }
+        return (String(text[first]), String(text[second]), String(text[third]))
     }
 
     private static func capture(_ text: String, _ pattern: String) -> String? {

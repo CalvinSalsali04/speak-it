@@ -1097,6 +1097,33 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertEqual(item.captureSession?.originalTranscription, original)
     }
 
+    func testIdeaContentKeepsItsMemoryOwnershipAcrossColon() {
+        let items = ThoughtExtractionEngine.extractWithRules(
+            "I had an idea for the garden: put herbs in the narrow planter so they get morning sun. Friday send the form to payroll."
+        ).items
+        XCTAssertEqual(items.count, 2)
+        XCTAssertEqual(items[0].organization.itemType, .idea)
+        XCTAssertEqual(items[0].organization.category, .ideas)
+        XCTAssertTrue(items[0].sourceQuote.contains("put herbs"))
+        XCTAssertTrue(items[1].organization.itemType.isActionable)
+    }
+
+    func testAnExplicitNewCommitmentAfterAnIdeaDoesNotBecomeIdeaContent() {
+        for text in [
+            "Idea: grow herbs by the window, but I need to buy soil tomorrow.",
+            "Idea: grow herbs by the window, and I should call the garden centre tomorrow.",
+            "Idea: grow herbs by the window, but I must send the plan tomorrow.",
+            "Idea: grow herbs by the window, and I will book the workshop tomorrow."
+        ] {
+            let items = ThoughtExtractionEngine.extractWithRules(text).items
+            XCTAssertEqual(items.count, 2, text)
+            guard items.count == 2 else { continue }
+            XCTAssertEqual(items[0].organization.itemType, .idea, text)
+            XCTAssertEqual(items[0].organization.category, .ideas, text)
+            XCTAssertTrue(items[1].organization.itemType.isActionable, text)
+        }
+    }
+
     func testProposalLanguageCreatesIdeasWhileCommitmentsStayTasks() throws {
         let ideas = [
             "Let me create a feature in the future that lets people create events for their calendar automatically",
@@ -1109,7 +1136,9 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
             "Maybe I should add calendar integration",
         ]
         for text in ideas {
+            XCTAssertEqual(ThoughtOrganizer.organize(text).itemType, .idea, "organizer: \(text)")
             let extracted = try XCTUnwrap(ThoughtExtractionEngine.extractWithRules(text).items.first)
+            XCTAssertEqual(extracted.organization.itemType, .idea, "extraction: \(text); analysis=\(extracted.analysisText); quote=\(extracted.sourceQuote)")
             XCTAssertFalse(
                 extracted.needsReview,
                 "\(text): type=\(extracted.organization.itemType), organizationReview=\(extracted.organization.needsClarification), analysis=\(extracted.analysisText)"
@@ -1129,6 +1158,18 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
             XCTAssertEqual(item.itemType, .task, text)
             XCTAssertTrue(item.belongsInToday, text)
             XCTAssertFalse(item.belongsInMemory, text)
+        }
+    }
+
+    func testReportedIdeaRemainsMemoryFact() throws {
+        for text in [
+            "Alex just thought of an idea to simplify setup",
+            "Alex said, 'I just thought of an idea to simplify setup.'",
+        ] {
+            let item = try repository.createCapture(text: text)
+            XCTAssertEqual(item.itemType, .note, text)
+            XCTAssertTrue(item.belongsInMemory, text)
+            XCTAssertFalse(item.belongsInToday, text)
         }
     }
 
@@ -1434,6 +1475,298 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertTrue(result.items.allSatisfy { $0.organization.reminderDelivery == .notification })
     }
 
+    func testTemporalContextBelongsToItsSentenceAndCoordinatedActions() {
+        let calendar = utcCalendar
+        let referenceDate = makeDate(year: 2026, month: 8, day: 3, hour: 10, calendar: calendar)
+        let result = ThoughtExtractionEngine.extractWithRules(
+            "Tomorrow call Alex and buy milk. Friday submit the report and email Priya.",
+            referenceDate: referenceDate,
+            calendar: calendar
+        )
+        XCTAssertEqual(result.items.count, 4)
+        let tomorrow = makeDate(year: 2026, month: 8, day: 4, hour: 0, calendar: calendar)
+        let friday = makeDate(year: 2026, month: 8, day: 7, hour: 0, calendar: calendar)
+        XCTAssertEqual(result.items.map(\.organization.dueDate), [tomorrow, tomorrow, friday, friday])
+
+        let separate = ThoughtExtractionEngine.extractWithRules(
+            "Tomorrow call Alex. Buy milk.", referenceDate: referenceDate, calendar: calendar
+        )
+        XCTAssertEqual(separate.items.count, 2)
+        XCTAssertEqual(separate.items[0].organization.dueDate, tomorrow)
+        XCTAssertNil(separate.items[1].organization.dueDate)
+    }
+
+    func testFrontedDaypartBelongsToEveryCoordinatedActionButNotNextSentence() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Toronto")!
+        let referenceDate = makeDate(year: 2026, month: 8, day: 3, hour: 10, calendar: calendar)
+        let result = ThoughtExtractionEngine.extractWithRules(
+            "After lunch, call Theo and book the dentist. Tomorrow pay the rent.",
+            referenceDate: referenceDate, calendar: calendar
+        )
+        XCTAssertEqual(result.items.count, 3)
+        let tomorrow = makeDate(year: 2026, month: 8, day: 4, hour: 0, calendar: calendar)
+        // The iOS 26.5 simulator's NaturalLanguage tagger can decline the
+        // daypart itself; assert the deterministic ownership here. The host
+        // pipeline probe also checks the resulting 13:00 due times.
+        XCTAssertTrue(result.items[0].analysisText.lowercased().contains("after lunch"))
+        XCTAssertTrue(result.items[1].analysisText.lowercased().contains("after lunch"))
+        XCTAssertFalse(result.items[2].analysisText.lowercased().contains("after lunch"))
+        XCTAssertEqual(result.items[2].organization.dueDate, tomorrow)
+    }
+
+    func testNamedLaterTimingRevisionOnlyChangesItsOwner() throws {
+        let calendar = utcCalendar
+        let referenceDate = makeDate(year: 2026, month: 8, day: 3, hour: 10, calendar: calendar)
+        let result = ThoughtExtractionEngine.extractWithRules(
+            "Tomorrow call Alex and buy milk. Actually Alex can wait until Friday.",
+            referenceDate: referenceDate, calendar: calendar
+        )
+        XCTAssertEqual(result.items.count, 2)
+        let tomorrow = makeDate(year: 2026, month: 8, day: 4, hour: 0, calendar: calendar)
+        let friday = makeDate(year: 2026, month: 8, day: 7, hour: 0, calendar: calendar)
+        XCTAssertEqual(result.items[0].organization.dueDate, friday)
+        XCTAssertEqual(result.items[1].organization.dueDate, tomorrow)
+        XCTAssertEqual(result.items[0].rawQuote, "Tomorrow call Alex")
+        XCTAssertTrue(result.items[0].sourceQuote.contains("Actually Alex can wait until Friday"))
+
+        let chained = ThoughtExtractionEngine.extractWithRules(
+            "Tuesday call Alex. Actually Alex can wait until Thursday. Actually Alex can wait until Friday.",
+            referenceDate: referenceDate, calendar: calendar
+        )
+        XCTAssertEqual(chained.items.count, 1)
+        XCTAssertEqual(chained.items[0].organization.dueDate, friday)
+
+        let unrelated = ThoughtExtractionEngine.extractWithRules(
+            "Tomorrow call Alex and buy milk. Actually Priya can wait until Friday.",
+            referenceDate: referenceDate, calendar: calendar
+        )
+        XCTAssertEqual(unrelated.items.count, 3)
+        XCTAssertEqual(unrelated.items[0].organization.dueDate, tomorrow)
+        XCTAssertTrue(unrelated.items[2].needsReview)
+        XCTAssertEqual(unrelated.items[2].organization.state, .contested(.ambiguousTemporalScope))
+
+        let objectOwner = ThoughtExtractionEngine.extractWithRules(
+            "Tomorrow schedule the inspection. Actually the inspection can wait until Friday.",
+            referenceDate: referenceDate, calendar: calendar
+        )
+        XCTAssertEqual(objectOwner.items.count, 1)
+        XCTAssertEqual(objectOwner.items[0].organization.dueDate, friday)
+        let ambiguousObject = ThoughtExtractionEngine.extractWithRules(
+            "Tomorrow schedule the inspection and prepare the inspection report. Actually the inspection can wait until Friday.",
+            referenceDate: referenceDate, calendar: calendar
+        )
+        XCTAssertEqual(ambiguousObject.items.count, 3)
+        XCTAssertEqual(ambiguousObject.items[0].organization.dueDate, tomorrow)
+        XCTAssertEqual(ambiguousObject.items[1].organization.dueDate, tomorrow)
+        XCTAssertTrue(ambiguousObject.items[2].needsReview)
+        let topicPerson = ThoughtExtractionEngine.extractWithRules(
+            "Tomorrow text Bob about Alex. Actually Alex can wait until Friday.",
+            referenceDate: referenceDate, calendar: calendar
+        )
+        XCTAssertEqual(topicPerson.items.count, 2)
+        XCTAssertEqual(topicPerson.items[0].organization.dueDate, tomorrow)
+        XCTAssertTrue(topicPerson.items[1].needsReview)
+
+        let previousZone = NSTimeZone.default
+        NSTimeZone.default = TimeZone(identifier: "America/Toronto")!
+        defer { NSTimeZone.default = previousZone }
+        try repository.createCapture(
+            text: "Tomorrow call Alex and buy milk. Actually Alex can wait until Friday.",
+            source: .inAppText, createdAt: referenceDate, schedulesReminder: false
+        )
+        let saved = try container.mainContext.fetch(FetchDescriptor<CapturedItem>())
+        let call = try XCTUnwrap(saved.first { $0.displayTitle.localizedCaseInsensitiveContains("call Alex") })
+        var toronto = Calendar(identifier: .gregorian)
+        toronto.timeZone = TimeZone(identifier: "America/Toronto")!
+        XCTAssertEqual(call.dueDate, makeDate(year: 2026, month: 8, day: 7, hour: 0, calendar: toronto))
+        XCTAssertTrue(call.originalTextSegment.contains("Actually Alex can wait until Friday"))
+    }
+
+    func testSpokenSequenceOpenerAndActuallyTransitionKeepDistinctActions() {
+        let items = ThoughtExtractionEngine.extractWithRules(
+            "Maybe first buy batteries, then actually replace the smoke detector battery."
+        ).items
+        XCTAssertEqual(items.count, 2)
+        XCTAssertTrue(items.allSatisfy { $0.organization.itemType.isActionable })
+        XCTAssertTrue(items[0].sourceQuote.localizedCaseInsensitiveContains("buy batteries"))
+        XCTAssertTrue(items[1].sourceQuote.localizedCaseInsensitiveContains("replace the smoke detector battery"))
+
+        let reference = ThoughtExtractionEngine.extractWithRules(
+            "The first aid kit is in the cupboard."
+        ).items
+        XCTAssertEqual(reference.count, 1)
+        XCTAssertFalse(reference[0].organization.itemType.isActionable)
+    }
+
+    func testAdditiveStatedNeedAfterActionsRemainsReviewable() throws {
+        let mixed = ThoughtExtractionEngine.extractWithRules(
+            "Buy batteries. The plants need water too."
+        ).items
+        XCTAssertEqual(mixed.count, 2)
+        XCTAssertEqual(mixed[0].organization.itemType, .shopping)
+        XCTAssertEqual(mixed[1].organization.itemType, .unclear)
+        XCTAssertTrue(mixed[1].needsReview)
+        XCTAssertEqual(mixed[1].organization.state, .contested(.ambiguousActor))
+        XCTAssertTrue(mixed[1].sourceQuote.contains("plants need water"))
+
+        let standalone = ThoughtExtractionEngine.extractWithRules(
+            "The plants need water too."
+        ).items
+        XCTAssertEqual(standalone.count, 1)
+        XCTAssertEqual(standalone[0].organization.itemType, .note)
+        let reported = ThoughtExtractionEngine.extractWithRules(
+            "Buy batteries. Nina said the plants need water too."
+        ).items
+        XCTAssertEqual(reported.count, 2)
+        XCTAssertEqual(reported[1].organization.itemType, .note)
+
+        try repository.createCapture(
+            text: "Buy batteries. The plants need water too.",
+            source: .inAppText, createdAt: .now, schedulesReminder: false
+        )
+        let persisted = try container.mainContext.fetch(FetchDescriptor<CapturedItem>())
+        let hold = try XCTUnwrap(persisted.first { $0.originalTextSegment.contains("plants need water") })
+        XCTAssertTrue(hold.needsClarification)
+        XCTAssertEqual(hold.semanticState, .contested(.ambiguousActor))
+        XCTAssertNil(hold.reminderDate)
+    }
+
+    func testRecalledReportedNarrativeStaysOneMemoryWhileIndependentFactsStaySeparate() {
+        let narrative = "The conversation with Dr Chen was useful. She explained that the early numbers in the report were estimates, that the final lab result arrives after a second review, and that the family should keep the printed instructions because the portal summary leaves out some context. She said the result from last spring was measured with a different method. I want to remember that explanation when I read the next report."
+        let joined = ThoughtExtractionEngine.extractWithRules(narrative).items
+        XCTAssertEqual(joined.count, 1)
+        XCTAssertEqual(joined[0].organization.itemType, .note)
+        XCTAssertEqual(joined[0].rawQuote, narrative)
+        XCTAssertTrue(joined[0].sourceQuote.contains("printed instructions"))
+
+        let independent = ThoughtExtractionEngine.extractWithRules(
+            "The spare key is in the blue bowl. Nina prefers green tea. I want to remember that preference."
+        ).items
+        XCTAssertGreaterThan(independent.count, 1)
+
+        let changedSpeaker = ThoughtExtractionEngine.extractWithRules(
+            "The conversation with Dr Chen was useful. She explained the estimate. He said the printer is broken. I want to remember that explanation."
+        ).items
+        XCTAssertGreaterThan(changedSpeaker.count, 1)
+        let separateFact = ThoughtExtractionEngine.extractWithRules(
+            "The conversation with Dr Chen was useful. She likes green tea. I want to remember that explanation."
+        ).items
+        XCTAssertGreaterThan(separateFact.count, 1)
+    }
+
+    func testAnaphoricSaveRequestKeepsAdjacentReportedFactInMemory() {
+        let capture = "The venue manager said the deposit is refundable until Monday. Save that detail for later."
+        let recorded = ThoughtExtractionEngine.extractWithRules(capture).items
+        XCTAssertEqual(recorded.count, 1)
+        XCTAssertEqual(recorded[0].organization.itemType, .note)
+        XCTAssertEqual(recorded[0].rawQuote, capture)
+        XCTAssertTrue(recorded[0].sourceQuote.contains("refundable until Monday"))
+        XCTAssertTrue(recorded[0].sourceQuote.contains("Save that detail for later"))
+
+        let file = ThoughtExtractionEngine.extractWithRules(
+            "The venue manager said the deposit is refundable. Save the file for later."
+        ).items
+        XCTAssertEqual(file.count, 2)
+        XCTAssertEqual(file[1].sourceQuote, "Save the file for later.")
+        let unrelated = ThoughtExtractionEngine.extractWithRules(
+            "The venue manager said the deposit is refundable. Call the venue. Save that detail for later."
+        ).items
+        XCTAssertEqual(unrelated.count, 3)
+        XCTAssertEqual(unrelated[2].sourceQuote, "Save that detail for later.")
+
+        let repeated = ThoughtExtractionEngine.extractWithRules(
+            "The deposit is refundable. The deposit is refundable. Save that detail for later."
+        ).items
+        XCTAssertEqual(repeated.count, 2)
+        XCTAssertEqual(repeated[0].rawQuote, "The deposit is refundable.")
+        XCTAssertEqual(repeated[1].rawQuote,
+                       "The deposit is refundable. Save that detail for later.")
+        XCTAssertTrue(repeated[1].sourceQuote.contains("Save that detail for later"))
+    }
+
+    func testReportedSuggestionAndLaterSaveRequestPreserveOwnership() {
+        let capture = "Nina said, \"Cancel the reservation and tell everyone the event is off,\" but that was her suggestion, not my decision. I need to call the venue tomorrow to ask about its cancellation policy. The venue manager said the deposit is refundable until Monday. Save that detail for later."
+        let items = ThoughtExtractionEngine.extractWithRules(capture).items
+        XCTAssertEqual(items.count, 3)
+        XCTAssertEqual(items.map(\.organization.itemType.isActionable), [false, true, false])
+        XCTAssertTrue(items[0].sourceQuote.contains("Cancel the reservation"))
+        XCTAssertTrue(items[2].sourceQuote.contains("refundable until Monday"))
+        XCTAssertTrue(items[2].sourceQuote.contains("Save that detail for later"))
+        XCTAssertTrue(items.allSatisfy { !$0.needsReview })
+    }
+
+    func testResolvedAlternativesBelongToTheirUniqueCommittedActions() throws {
+        let capture = "I considered taking the bus or driving to the conference, but I decided to take the bus. Buy the bus ticket tonight and ask Jules for the venue address. For dinner I was choosing between Thai and pizza; I settled on Thai, so book the Thai place for Saturday."
+        let items = ThoughtExtractionEngine.extractWithRules(capture).items
+        XCTAssertEqual(items.count, 3)
+        XCTAssertTrue(items.allSatisfy { $0.organization.itemType.isActionable })
+        XCTAssertTrue(items[0].sourceQuote.contains("or driving"))
+        XCTAssertTrue(items[0].sourceQuote.contains("Buy the bus ticket"))
+        XCTAssertTrue(items[1].sourceQuote.contains("ask Jules"))
+        XCTAssertTrue(items[2].sourceQuote.contains("Thai and pizza"))
+        XCTAssertTrue(items[2].sourceQuote.contains("book the Thai place"))
+
+        let unresolved = ThoughtExtractionEngine.extractWithRules(
+            "I was choosing between tea and coffee. Buy milk."
+        ).items
+        XCTAssertEqual(unresolved.count, 2)
+        XCTAssertEqual(unresolved[0].organization.itemType, .note)
+        let unmatched = ThoughtExtractionEngine.extractWithRules(
+            "I considered the bus or car and decided on the bus. Call Nina."
+        ).items
+        XCTAssertEqual(unmatched.count, 2)
+        XCTAssertEqual(unmatched[0].organization.itemType, .note)
+        let simple = ThoughtExtractionEngine.extractWithRules("Book the Thai place for Saturday.").items
+        XCTAssertEqual(simple.count, 1)
+        XCTAssertTrue(simple[0].organization.itemType.isActionable)
+
+        try repository.createCapture(
+            text: capture, source: .inAppText,
+            createdAt: .now, schedulesReminder: false
+        )
+        let saved = try container.mainContext.fetch(FetchDescriptor<CapturedItem>())
+        XCTAssertEqual(saved.count, 3)
+        XCTAssertTrue(saved.allSatisfy { $0.itemType.isActionable })
+        XCTAssertTrue(saved.contains { $0.originalTextSegment.contains("or driving") })
+        XCTAssertTrue(saved.contains { $0.originalTextSegment.contains("Thai and pizza") })
+    }
+
+    func testRetrospectivePurposeOwnsItsCountedActionsOnly() {
+        let items = ThoughtExtractionEngine.extractWithRules(
+            "On Friday call the plumber, email the building manager, take photos of the ceiling, and ask Sam for the insurance number. All four are about the leak in the upstairs bathroom. Separately, remember that the spare paint is in the basement cupboard."
+        ).items
+        XCTAssertEqual(items.count, 5)
+        XCTAssertTrue(items.prefix(4).allSatisfy {
+            $0.organization.itemType.isActionable
+                && $0.sourceQuote.contains("leak in the upstairs bathroom")
+        })
+        XCTAssertEqual(items[4].organization.itemType, .note)
+        XCTAssertFalse(items[4].sourceQuote.contains("leak"))
+
+        let mismatch = ThoughtExtractionEngine.extractWithRules(
+            "Call the plumber and email the manager. All three are about the leak."
+        ).items
+        XCTAssertEqual(mismatch.count, 3)
+        XCTAssertEqual(mismatch[2].organization.state, .contested(.uncertainClauseBoundary))
+        XCTAssertTrue(mismatch[2].needsReview)
+    }
+
+    func testPronounPersonOwnershipDoesNotCrossAnIndependentTopic() {
+        let local = ThoughtExtractionEngine.extractWithRules(
+            "Call Priya today and call her tomorrow."
+        ).items
+        XCTAssertEqual(local.count, 2)
+        XCTAssertEqual(local[1].organization.personName, "Priya")
+
+        let mixed = ThoughtExtractionEngine.extractWithRules(
+            "Call Priya about the invoice. The spare key is in the blue bowl. I had an idea for the garden: put herbs in the planter so they get morning sun."
+        ).items
+        XCTAssertEqual(mixed.count, 3)
+        XCTAssertEqual(mixed[2].organization.itemType, .idea)
+        XCTAssertNil(mixed[2].organization.personName)
+    }
+
     func testMixedReminderTaskAndMemoryRouteIndependently() {
         let calendar = utcCalendar
         let referenceDate = makeDate(year: 2026, month: 8, day: 3, hour: 10, calendar: calendar)
@@ -1655,6 +1988,10 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertEqual(
             GroceryHomophoneRepair.repaired("Submit the report by Friday"),
             "Submit the report by Friday"
+        )
+        XCTAssertEqual(
+            GroceryHomophoneRepair.repaired("Place the allergy notice by snacks"),
+            "Place the allergy notice by snacks"
         )
         XCTAssertEqual(
             GroceryHomophoneRepair.repaired("by bread, milk, and eggs"),
@@ -2034,6 +2371,7 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         }
         let sorted = latencies.sorted()
         let p95Index = min(sorted.count - 1, Int(Double(sorted.count) * 0.95))
+        XCTContext.runActivity(named: "Rule-based semantic p95: \(sorted[p95Index])") { _ in }
         XCTAssertLessThan(
             sorted[p95Index],
             .milliseconds(250),
@@ -2626,7 +2964,7 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
     /// and errands 13 and 14 existed in no row at all — their words survived
     /// only on the untouched transcript, where nothing would surface them
     /// again. A 45-second grocery list reaching fifteen entries is ordinary.
-    func testLongCaptureKeepsEveryErrandUpToTheRowCap() throws {
+    func testLongCaptureKeepsEveryIndependentErrand() throws {
         let transcript = (1...14).map { "Call person\($0)" }.joined(separator: " and ")
 
         let first = try repository.createCapture(text: transcript, source: .shortcut, createdAt: .now)
@@ -2636,27 +2974,52 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertEqual(session.originalTranscription, transcript)
     }
 
-    /// Past the cap the bound still holds, but it folds rather than truncates:
-    /// the overflow arrives as one review row carrying every remaining quote,
-    /// so the words stay on screen and the person is told there is more to
-    /// sort instead of never learning something vanished.
-    func testOverflowPastTheRowCapFoldsIntoOneReviewRowInsteadOfVanishing() throws {
+    /// A long list already segmented into independent actions must keep each
+    /// action separately accessible. The old 20-row cap bundled the final six
+    /// into one review row despite having found their boundaries.
+    func testTwentyFiveIndependentErrandsRemainSeparate() throws {
         let transcript = (1...25).map { "Call person\($0)" }.joined(separator: " and ")
 
         let first = try repository.createCapture(text: transcript, source: .shortcut, createdAt: .now)
         let session = try XCTUnwrap(first.captureSession)
 
-        XCTAssertEqual(session.items.count, 20)
+        XCTAssertEqual(session.items.count, 25)
         XCTAssertEqual(session.originalTranscription, transcript)
 
-        let overflow = try XCTUnwrap(session.items.first { $0.needsClarification })
-        // Every errand past the cap has to be readable somewhere on the row.
-        for index in 20...25 {
-            XCTAssertTrue(
-                overflow.captureSession?.originalTranscription.contains("person\(index)") == true,
-                "person\(index) must survive the cap"
+        for index in 1...25 {
+            XCTAssertEqual(
+                session.items.filter { $0.originalTextSegment.lowercased() == "call person\(index)" }.count,
+                1,
+                "person\(index) must have one independently accessible row"
             )
         }
+    }
+
+    func testThirtyIndependentErrandsRemainSeparateAfterPersistence() throws {
+        let transcript = (1...30).map { "Call person\($0)" }.joined(separator: " and ")
+
+        let first = try repository.createCapture(
+            text: transcript, source: .inAppText, createdAt: .now
+        )
+        let session = try XCTUnwrap(first.captureSession)
+        XCTAssertEqual(session.originalTranscription, transcript)
+        XCTAssertEqual(session.items.count, 30)
+        for index in 1...30 {
+            XCTAssertEqual(session.items.filter {
+                $0.originalTextSegment.lowercased() == "call person\(index)"
+            }.count, 1, "person\(index) must remain independently accessible")
+        }
+    }
+
+    func testExposedLongGateTwentyFiveErrandsPersistIndividually() throws {
+        let transcript = "Call the dentist, pay the water bill, mail the tax form, book the haircut, pick up the shoes, return the router, email the coach, clean the fridge, water the fern, charge the flashlight, renew the library card, order printer paper, update the budget, wash the car, text Elena, replace the kitchen bulb, file the receipt, schedule the inspection, back up the laptop, take out recycling, mend the jacket, check the passport, buy stamps, print the tickets, and send the invitation."
+        let first = try repository.createCapture(text: transcript, source: .inAppText, createdAt: .now)
+        let session = try XCTUnwrap(first.captureSession)
+        XCTAssertEqual(session.items.count, 25)
+        XCTAssertEqual(session.originalTranscription, transcript)
+        XCTAssertEqual(session.items.filter { $0.displayTitle.localizedCaseInsensitiveContains("mend the jacket") }.count, 1)
+        XCTAssertEqual(session.items.filter { $0.displayTitle.localizedCaseInsensitiveContains("send the invitation") }.count, 1)
+        XCTAssertTrue(session.items.allSatisfy { $0.itemType.isActionable })
     }
 
     func testRamblingWithoutAPointStaysSafeAndDoesNotBecomeAParagraphTitle() throws {
@@ -2842,7 +3205,7 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         )
 
         XCTAssertEqual(result.items.count, 1)
-        XCTAssertEqual(result.items.first?.sourceQuote, "call Sarah")
+        XCTAssertEqual(result.items.first?.sourceQuote, "Tomorrow at 9 AM, call Sarah.")
         XCTAssertEqual(result.items.first?.organization.itemType, .personFollowUp)
         XCTAssertNotNil(result.items.first?.organization.dueDate)
     }
@@ -2856,14 +3219,64 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
 
         let item = try XCTUnwrap(result.items.first)
         XCTAssertEqual(result.items.count, 1)
-        XCTAssertEqual(item.sourceQuote, "Ask Maya about the proposal")
+        XCTAssertTrue(item.sourceQuote.contains("Tomorrow at nine"))
+        XCTAssertTrue(item.sourceQuote.contains("Ask Maya about the proposal"))
         XCTAssertEqual(item.organization.itemType, .personFollowUp)
         XCTAssertEqual(item.organization.personName, "Maya")
-        XCTAssertEqual(item.analysisText, "Tomorrow at nine Ask Maya about the proposal")
+        XCTAssertEqual(item.suggestedTitle, "Ask Maya about the proposal")
+        XCTAssertEqual(
+            item.analysisText.trimmingCharacters(in: .punctuationCharacters),
+            "Tomorrow at nine Ask Maya about the proposal"
+        )
         XCTAssertEqual(
             utcCalendar.dateComponents([.hour, .minute], from: try XCTUnwrap(item.organization.dueDate)).hour,
             9
         )
+    }
+
+    func testStandaloneTimeDoesNotScopeFollowingRecollection() {
+        let result = ThoughtExtractionEngine.extractWithRules(
+            "Tomorrow at nine. Maya called yesterday.",
+            referenceDate: date(0),
+            calendar: utcCalendar
+        )
+        XCTAssertEqual(result.items.count, 2)
+        XCTAssertNil(result.items.last?.organization.dueDate)
+        XCTAssertEqual(result.items.last?.organization.itemType, .note)
+        XCTAssertTrue(result.items.first?.needsReview == true)
+        XCTAssertNil(result.items.last?.suggestedTitle)
+    }
+
+    func testStandaloneTimeDoesNotOverrideIndependentlyTimedAction() throws {
+        let result = ThoughtExtractionEngine.extractWithRules(
+            "Tomorrow at nine. Call Mom at noon.",
+            referenceDate: date(0), calendar: utcCalendar
+        )
+        XCTAssertEqual(result.items.count, 2)
+        XCTAssertTrue(result.items[0].needsReview)
+        XCTAssertEqual(result.items[0].rawQuote, "Tomorrow at nine.")
+        XCTAssertEqual(result.items[1].organization.itemType, .personFollowUp)
+        XCTAssertEqual(result.items[1].rawQuote, "Call Mom at noon.")
+        XCTAssertNil(result.items[1].suggestedTitle)
+        XCTAssertEqual(
+            utcCalendar.dateComponents([.hour, .minute], from: try XCTUnwrap(result.items[1].organization.dueDate)).hour,
+            12
+        )
+    }
+
+    func testStandaloneTimeScopesActionWhoseObjectMentionsAnotherDay() throws {
+        let result = ThoughtExtractionEngine.extractWithRules(
+            "Tomorrow at nine. Ask Maya about Friday's proposal.",
+            referenceDate: date(0), calendar: utcCalendar
+        )
+        let item = try XCTUnwrap(result.items.first)
+        XCTAssertEqual(result.items.count, 1)
+        XCTAssertEqual(item.organization.personName, "Maya")
+        XCTAssertEqual(
+            utcCalendar.dateComponents([.hour, .minute], from: try XCTUnwrap(item.organization.dueDate)).hour,
+            9
+        )
+        XCTAssertTrue(item.rawQuote.contains("Friday's proposal"))
     }
 
     func testTodayVisualFixturesNeverCreateMemoryItems() {
@@ -2898,6 +3311,244 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertEqual(completed, .milliseconds(1_900))
         XCTAssertEqual(continuing, .seconds(8))
         XCTAssertLessThan(completed, continuing)
+    }
+
+    func testContinuousInAppDefaultNeverSelectsAnAutomaticPause() {
+        let transcript = "Buy milk."
+        XCTAssertEqual(SpeechTranscriber.inAppDefaultEndpointMode, .longCapture)
+        XCTAssertNil(SpeechTranscriber.automaticPauseDecision(
+            for: transcript, mode: SpeechTranscriber.inAppDefaultEndpointMode
+        ))
+        XCTAssertEqual(
+            SpeechTranscriber.automaticPauseDecision(for: transcript, mode: .automatic)?.finishAfter,
+            .milliseconds(1_900)
+        )
+        XCTAssertNil(
+            SpeechTranscriber.automaticPauseDecision(for: transcript, mode: .longCapture)
+        )
+
+        let transcriber = SpeechTranscriber(reportsAudioLevel: false)
+        XCTAssertEqual(transcriber.endpointMode, .automatic)
+        XCTAssertFalse(transcriber.requiresWholeRecordingVerification)
+        XCTAssertFalse(SpeechTranscriber.wholeRecordingVerificationRequired(
+            previously: false, nextMode: .automatic
+        ))
+        transcriber.setEndpointMode(.longCapture)
+        XCTAssertEqual(transcriber.endpointMode, .longCapture)
+        XCTAssertTrue(transcriber.requiresWholeRecordingVerification)
+        transcriber.setEndpointMode(.automatic)
+        XCTAssertEqual(transcriber.endpointMode, .automatic)
+        XCTAssertTrue(transcriber.requiresWholeRecordingVerification)
+        XCTAssertTrue(SpeechTranscriber.wholeRecordingVerificationRequired(
+            previously: true, nextMode: .automatic
+        ))
+        XCTAssertFalse(SpeechTranscriber.requiresWholeRecordingRecovery(
+            verificationRequired: false,
+            engine: .legacyRecognizer,
+            offlineRecoveryRequired: false
+        ))
+        XCTAssertTrue(SpeechTranscriber.requiresWholeRecordingRecovery(
+            verificationRequired: true,
+            engine: .legacyRecognizer,
+            offlineRecoveryRequired: false
+        ))
+        XCTAssertFalse(SpeechTranscriber.requiresWholeRecordingRecovery(
+            verificationRequired: true,
+            engine: .speechAnalyzer,
+            offlineRecoveryRequired: false
+        ))
+    }
+
+    func testLateBackendCallbacksCannotWriteIntoTheNextCapture() {
+        let transcriber = SpeechTranscriber(reportsAudioLevel: false)
+        let oldCapture = UUID()
+        let currentCapture = UUID()
+        transcriber.setSyntheticCaptureForTesting(oldCapture)
+        transcriber.receiveTranscript("First capture", isFinal: false, captureID: oldCapture)
+        transcriber.setSyntheticCaptureForTesting(currentCapture)
+
+        transcriber.receiveTranscript("Stale final", isFinal: true, captureID: oldCapture)
+        transcriber.receiveVoiceActivity(captureID: oldCapture)
+        transcriber.receiveError(SpeechRecognitionBackendError.unexpectedFinalization,
+                                 captureID: oldCapture)
+        XCTAssertEqual(transcriber.state, .listening)
+        XCTAssertEqual(transcriber.transcript, "First capture")
+        XCTAssertFalse(transcriber.hasDetectedAudioInput)
+
+        transcriber.receiveTranscript("Second capture", isFinal: false, captureID: currentCapture)
+        transcriber.receiveVoiceActivity(captureID: currentCapture)
+        XCTAssertEqual(transcriber.transcript, "Second capture")
+        XCTAssertTrue(transcriber.hasDetectedAudioInput)
+    }
+
+    func testLongRecordingChunksStayBelowOneMinuteAndRejectUnverifiedSeams() throws {
+        let ranges = try LongCaptureChunks.plan(frameCount: 120, sampleRate: 1)
+        XCTAssertEqual(ranges, [0..<45, 40..<85, 80..<120])
+        XCTAssertTrue(ranges.allSatisfy { $0.count <= 45 })
+        XCTAssertEqual(
+            LongCaptureChunks.stitch([
+                "Call Maya tomorrow and buy milk",
+                "and buy milk then note our meeting"
+            ]),
+            "Call Maya tomorrow and buy milk then note our meeting"
+        )
+        XCTAssertNil(LongCaptureChunks.stitch([
+            "Call Maya tomorrow and buy milk",
+            "Then note our meeting"
+        ]))
+        XCTAssertNil(LongCaptureChunks.stitch(["", "buy milk"]))
+        XCTAssertNil(LongCaptureChunks.stitch([
+            "Call Maya tomorrow and buy milk and buy milk",
+            "and buy milk then note our meeting"
+        ]))
+    }
+
+    func testLongRecordingRequiresEveryAudioBufferToReachProtectedFile() {
+        let integrity = CaptureAudioIntegrity()
+        XCTAssertFalse(integrity.isComplete)
+        integrity.recordExpected(2_048)
+        XCTAssertFalse(integrity.isComplete)
+        integrity.recordWritten(2_048)
+        XCTAssertTrue(integrity.isComplete)
+        integrity.markFailure()
+        XCTAssertFalse(integrity.isComplete)
+        XCTAssertTrue(SpeechCaptureAudioProcessor.acceptsPendingFrames(
+            current: 0, incoming: 2_048, sampleRate: 48_000
+        ))
+        XCTAssertFalse(SpeechCaptureAudioProcessor.acceptsPendingFrames(
+            current: 143_000, incoming: 2_048, sampleRate: 48_000
+        ))
+    }
+
+    func testAudioProcessorFinishesAfterAcceptedBuffersWithoutBlockingCaller() throws {
+        let format = try XCTUnwrap(AVAudioFormat(
+            standardFormatWithSampleRate: 48_000, channels: 1
+        ))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 128))
+        buffer.frameLength = 128
+        let releaseProcessing = DispatchSemaphore(value: 0)
+        let finished = DispatchSemaphore(value: 0)
+        let processor = SpeechCaptureAudioProcessor(process: { _ in
+            _ = releaseProcessing.wait(timeout: .now() + .seconds(1))
+        })
+        processor.append(buffer)
+        let beganAt = DispatchTime.now().uptimeNanoseconds
+        processor.finish { finished.signal() }
+        let elapsed = DispatchTime.now().uptimeNanoseconds - beganAt
+        XCTAssertLessThan(elapsed, 500_000_000)
+        XCTAssertEqual(finished.wait(timeout: .now()), .timedOut)
+        releaseProcessing.signal()
+        XCTAssertEqual(finished.wait(timeout: .now() + .seconds(2)), .success)
+    }
+
+    func testProtectedAudioFilesKeepEveryFrameAcrossSupportedDurationBoundaries() throws {
+        // Synthetic PCM exercises the shipping buffer copier, ordered drain,
+        // integrity accounting and native file I/O. It is not speech or a
+        // microphone/recognizer qualification run, and uses no wall-time wait.
+        let sampleRate = 16_000
+        let format = try XCTUnwrap(AVAudioFormat(
+            standardFormatWithSampleRate: Double(sampleRate), channels: 1
+        ))
+        for seconds in [59, 61, 90, 180, 300, 360] {
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("SpeakIt-duration-\(UUID().uuidString).caf")
+            defer { try? FileManager.default.removeItem(at: url) }
+            var writer: AVAudioFile? = try AVAudioFile(forWriting: url, settings: format.settings)
+            try FileManager.default.setAttributes(
+                [.protectionKey: FileProtectionType.completeUnlessOpen], ofItemAtPath: url.path
+            )
+            let integrity = CaptureAudioIntegrity()
+            let processed = DispatchSemaphore(value: 0)
+            let lock = NSLock()
+            var writeErrors: [String] = []
+            let processor = SpeechCaptureAudioProcessor(
+                enforcesBacklogLimit: true,
+                process: { buffer in
+                    do {
+                        try writer?.write(from: buffer)
+                        integrity.recordWritten(buffer.frameLength)
+                    } catch {
+                        integrity.markFailure()
+                        lock.lock(); writeErrors.append(String(describing: error)); lock.unlock()
+                    }
+                    processed.signal()
+                },
+                onBufferCopyFailure: { integrity.markFailure(); processed.signal() }
+            )
+            let buffer = try XCTUnwrap(AVAudioPCMBuffer(
+                pcmFormat: format, frameCapacity: AVAudioFrameCount(sampleRate)
+            ))
+            buffer.frameLength = AVAudioFrameCount(sampleRate)
+            let samples = try XCTUnwrap(buffer.floatChannelData?.pointee)
+            func marker(_ second: Int) -> Float {
+                // Fifteen-second silent spans are still source frames.
+                (10..<25).contains(second % 30) ? 0 : Float(second + 1) / 1_000
+            }
+            for second in 0..<seconds {
+                samples.initialize(repeating: marker(second), count: sampleRate)
+                integrity.recordExpected(buffer.frameLength)
+                processor.append(buffer)
+                samples[0] = 0.99 // The tap may reuse its buffer immediately.
+                guard processed.wait(timeout: .now() + .seconds(2)) == .success else {
+                    XCTFail("Buffer drain stalled at \(second)/\(seconds) seconds")
+                    break
+                }
+            }
+            let drained = expectation(description: "\(seconds)-second file drained")
+            let beganAt = DispatchTime.now().uptimeNanoseconds
+            processor.finish { drained.fulfill() }
+            XCTAssertLessThan(DispatchTime.now().uptimeNanoseconds - beganAt, 500_000_000)
+            wait(for: [drained], timeout: 2)
+            writer = nil // Finalize the native file before reopening it.
+            lock.lock(); let errors = writeErrors; lock.unlock()
+            XCTAssertTrue(errors.isEmpty, errors.joined(separator: ", "))
+            XCTAssertTrue(integrity.isComplete, "\(seconds)-second file lost accepted frames")
+            XCTAssertEqual(integrity.expectedFrameCount, Int64(seconds * sampleRate))
+            let recording = try AVAudioFile(forReading: url)
+            XCTAssertEqual(recording.length, AVAudioFramePosition(seconds * sampleRate))
+            let readBuffer = try XCTUnwrap(AVAudioPCMBuffer(
+                pcmFormat: recording.processingFormat, frameCapacity: 1
+            ))
+            for second in 0..<seconds {
+                recording.framePosition = AVAudioFramePosition(second * sampleRate)
+                try recording.read(into: readBuffer, frameCount: 1)
+                XCTAssertEqual(readBuffer.frameLength, 1)
+                XCTAssertEqual(try XCTUnwrap(readBuffer.floatChannelData?.pointee)[0],
+                               marker(second), accuracy: 0.000_001,
+                               "\(seconds)-second file reordered or reused buffer \(second)")
+            }
+            let ranges = try LongCaptureChunks.plan(
+                frameCount: recording.length, sampleRate: recording.processingFormat.sampleRate
+            )
+            var covered: AVAudioFramePosition = 0
+            for range in ranges {
+                XCTAssertLessThanOrEqual(range.lowerBound, covered)
+                XCTAssertLessThanOrEqual(range.count, sampleRate * 45)
+                covered = range.upperBound
+            }
+            XCTAssertEqual(covered, recording.length)
+        }
+    }
+
+    func testLongModePulseCanFinishWithoutRecognizedWords() {
+        XCTAssertFalse(SpeechTranscriber.allowsManualFinish(
+            transcript: "", mode: .automatic
+        ))
+        XCTAssertTrue(SpeechTranscriber.allowsManualFinish(
+            transcript: "", mode: .longCapture
+        ))
+        XCTAssertTrue(SpeechTranscriber.allowsManualFinish(
+            transcript: "Buy milk", mode: .automatic
+        ))
+        XCTAssertFalse(SpeechTranscriber.hasVerifiedLongFinalTranscript(
+            "  ", receivedFinalResult: true, hasAudioIntegrityFailure: false
+        ))
+        XCTAssertFalse(SpeechTranscriber.hasVerifiedLongFinalTranscript(
+            "Buy milk", receivedFinalResult: false, hasAudioIntegrityFailure: false
+        ))
+        XCTAssertTrue(SpeechTranscriber.hasVerifiedLongFinalTranscript(
+            "Buy milk", receivedFinalResult: true, hasAudioIntegrityFailure: false
+        ))
     }
 
     func testSpeechProtectsTheBetaTestersIncompleteReminderTime() {
@@ -3211,6 +3862,37 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertNil(CaptureDraftStore.draft(id: draft.id))
     }
 
+    func testWholeRecordingRecoveryIdentitySurvivesRelaunchAndStaleCheckpoint() throws {
+        CaptureDraftStore.clear()
+        defer { CaptureDraftStore.clear() }
+
+        let shortDraft = CaptureDraftStore.begin(source: .inAppVoice)
+        XCTAssertFalse(shortDraft.requiresWholeRecordingVerification)
+        XCTAssertEqual(CaptureAudioRecovery.strategy(for: shortDraft), .shortCapture)
+
+        let staleSnapshot = CaptureDraftStore.snapshot()
+        XCTAssertTrue(CaptureDraftStore.requireWholeRecordingVerification(id: shortDraft.id))
+        CaptureDraftStore.restore(staleSnapshot)
+        let restored = try XCTUnwrap(CaptureDraftStore.draft(id: shortDraft.id))
+        XCTAssertTrue(restored.requiresWholeRecordingVerification)
+        XCTAssertEqual(CaptureAudioRecovery.strategy(for: restored), .verifiedWholeRecording)
+
+        var legacyJSON = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(shortDraft)) as? [String: Any]
+        )
+        legacyJSON.removeValue(forKey: "wholeRecordingVerificationRequired")
+        let legacyVoice = try JSONDecoder().decode(
+            CaptureDraftStore.Draft.self,
+            from: JSONSerialization.data(withJSONObject: legacyJSON)
+        )
+        XCTAssertTrue(legacyVoice.requiresWholeRecordingVerification)
+        XCTAssertEqual(CaptureAudioRecovery.strategy(for: legacyVoice), .verifiedWholeRecording)
+
+        let textDraft = CaptureDraftStore.begin(source: .inAppText)
+        XCTAssertFalse(textDraft.requiresWholeRecordingVerification)
+        XCTAssertEqual(CaptureAudioRecovery.strategy(for: textDraft), .shortCapture)
+    }
+
     func testTypedDraftNeverCreatesRecoveryAudio() throws {
         CaptureDraftStore.clear()
         defer { CaptureDraftStore.clear() }
@@ -3372,7 +4054,9 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         // AVAudioEngine reuses its tap memory. Mutating the source after append
         // proves the processor retained an independent buffer for recognition.
         sourceSamples[0] = 1
-        processor.finish()
+        let drained = expectation(description: "accepted audio drained")
+        processor.finish { drained.fulfill() }
+        wait(for: [drained], timeout: 2)
 
         lock.lock()
         let captured = receivedSamples
@@ -3400,9 +4084,11 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         }
 
         processor.append(source)
-        processor.finish()
+        let drained = expectation(description: "accepted audio drained before finish")
+        processor.finish { drained.fulfill() }
         processor.append(source)
         processor.finish()
+        wait(for: [drained], timeout: 2)
 
         lock.lock()
         let count = processedCount
@@ -4631,6 +5317,42 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertEqual(result.temporalIntent.kind, .durationRecurrence)
         XCTAssertEqual(result.recurrenceRule?.intervalSeconds, 24 * 60 * 60)
         XCTAssertTrue(result.recurrenceRule?.repeatsByElapsedTime == true)
+    }
+
+    func testSpokenTwentyFourHourSeriesKeepsElapsedAnchorAcrossFallBack() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Toronto")!
+        let anchor = makeDate(year: 2026, month: 10, day: 31, hour: 9, calendar: calendar)
+        let result = ThoughtOrganizer.organize(
+            "Remind me to check the equipment logger every twenty four hours, starting twenty four hours from now",
+            referenceDate: anchor,
+            calendar: calendar
+        )
+        let first = try XCTUnwrap(result.reminderDate)
+        XCTAssertEqual(first.timeIntervalSince(anchor), 86_400)
+        XCTAssertEqual(result.temporalIntent.kind, .durationRecurrence)
+        let rule = try XCTUnwrap(result.recurrenceRule)
+        XCTAssertEqual(rule.intervalSeconds, 86_400)
+        let second = try XCTUnwrap(rule.nextDate(
+            scheduledDate: first, completedAt: first, calendar: calendar
+        ))
+        XCTAssertEqual(second.timeIntervalSince(first), 86_400)
+        XCTAssertEqual(calendar.component(.hour, from: first), 8)
+
+        let daily = ThoughtOrganizer.organize(
+            "Remind me every day at nine to check the equipment logger",
+            referenceDate: anchor,
+            calendar: calendar
+        )
+        XCTAssertNil(daily.recurrenceRule?.intervalSeconds)
+        for suffix in ["starting tomorrow", "starting twenty four hours from now, until Friday"] {
+            let held = ThoughtOrganizer.organize(
+                "Remind me to check the equipment logger every twenty four hours, " + suffix,
+                referenceDate: anchor, calendar: calendar)
+            XCTAssertTrue(held.needsClarification, suffix)
+            XCTAssertNil(held.reminderDate, suffix)
+            XCTAssertNil(held.recurrenceRule, suffix)
+        }
     }
 
     func testCalendarRecurrenceDoesNotClaimToBeElapsed() {
@@ -6587,3 +7309,1908 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertNil(item.clarificationRequirement)
     }
 }
+
+#if DEBUG && canImport(FoundationModels)
+@available(iOS 26.4, *)
+@MainActor
+final class RuntimeDurablePathTests: XCTestCase {
+    /// Replay the real ON model response logged for DEV-04 through the actual
+    /// repository. Generation occurred on the host; this is not a live phone
+    /// model test or qualification of the model's ephemeral role assignments.
+    func testRecordedExampleConsumingProposalSurvivesFileBackedSaveAndReopen() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("RuntimeRecordedProposal-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let configuration = ModelConfiguration(url: directory.appendingPathComponent("capture.store"))
+        let container = try ModelContainer(for: PersistenceController.schema,
+            migrationPlan: SpeakItMigrationPlan.self, configurations: [configuration])
+        let repository = SwiftDataThoughtRepository(modelContext: container.mainContext,
+            requestsReminderAuthorization: false)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Toronto")!
+        let date = ISO8601DateFormatter().date(from: "2026-10-05T13:00:00Z")!
+        let source = "My nephew said, \"Call Grandma about the lantern repair.\" I haven't agreed to call her; keep his words as a note."
+        let rules = ThoughtExtractionEngine.extractWithRules(source, referenceDate: date, calendar: calendar)
+        // Exact generated DEV-04 ON response, retained in final-authorized-off-on-run.log.
+        let proposed = RuntimeFoundationInterpreter.Proposal(items: [
+            .init(quote: source, sourceContext: [source], purpose: .note, needsReview: false,
+                roles: [.init(role: .quotedSpeaker, literal: "My nephew"),
+                    .init(role: .requester, literal: "I haven't agreed to call her; keep his words as a note."),
+                    .init(role: .owner, literal: "My nephew")])
+        ])
+        let validated = try XCTUnwrap(RuntimeFoundationInterpreter.validate(proposed, source: source,
+            referenceDate: date, calendar: calendar, rules: rules))
+        let runtime = RuntimeExampleConfiguration(libraryURL: directory.appendingPathComponent("unused-replay-library.json"),
+            allowProposed: false, retrievalEnabled: true)
+        let saved = try await RuntimeExampleConfiguration.$testConfiguration.withValue(runtime) {
+            try await RuntimeExampleTestFixtures.withInterpretation(validated) {
+                try await repository.createCaptureResult(text: source, source: .inAppText,
+                    createdAt: date, schedulesReminders: false)
+            }
+        }
+        XCTAssertEqual(saved.items.count, 1)
+        XCTAssertEqual(saved.items.first?.itemType, .note)
+        XCTAssertFalse(try XCTUnwrap(saved.items.first).itemType.isActionable)
+        XCTAssertNil(saved.items.first?.reminderDate)
+        XCTAssertEqual(saved.session.originalTranscription, source)
+        let reopened = try ModelContainer(for: PersistenceController.schema,
+            migrationPlan: SpeakItMigrationPlan.self, configurations: [configuration])
+        let sessions = try reopened.mainContext.fetch(FetchDescriptor<CaptureSession>())
+        let items = try reopened.mainContext.fetch(FetchDescriptor<CapturedItem>())
+        XCTAssertEqual(sessions.count, 1)
+        XCTAssertEqual(items.count, 1)
+        XCTAssertEqual(sessions.first?.originalTranscription, source)
+        XCTAssertEqual(items.first?.id, saved.items.first?.id)
+        XCTAssertEqual(items.first?.itemType, .note)
+        XCTAssertNil(items.first?.reminderDate)
+        XCTAssertEqual(items.first?.originalTextSegment, source)
+    }
+
+    func testValidatedWholeCaptureProposalPersistsOnceAndRetainsSourceOnReplay() async throws {
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try ModelContainer(for: PersistenceController.schema,
+            migrationPlan: SpeakItMigrationPlan.self, configurations: [config])
+        let repository = SwiftDataThoughtRepository(modelContext: container.mainContext,
+            requestsReminderAuthorization: false)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Toronto")!
+        let date = ISO8601DateFormatter().date(from: "2026-10-05T13:00:00Z")!
+        let source = "Call Mom tomorrow. My brother's partner owns the blue suitcase."
+        let rules = ThoughtExtractionEngine.extractWithRules(source, referenceDate: date, calendar: calendar)
+        let proposed = RuntimeFoundationInterpreter.Proposal(items: [
+            .init(quote: "Call Mom tomorrow.", sourceContext: [], purpose: .task, needsReview: false),
+            .init(quote: "My brother's partner owns the blue suitcase.", sourceContext: [], purpose: .note, needsReview: false)
+        ])
+        let validated = try XCTUnwrap(RuntimeFoundationInterpreter.validate(proposed, source: source,
+            referenceDate: date, calendar: calendar, rules: rules))
+        let runtime = RuntimeExampleConfiguration(libraryURL: URL(fileURLWithPath: "/nonexistent-test-library"),
+            allowProposed: false, retrievalEnabled: true)
+        try await RuntimeExampleConfiguration.$testConfiguration.withValue(runtime) {
+            try await RuntimeExampleTestFixtures.withInterpretation(validated) {
+                let first = try await repository.createCaptureResult(text: source, source: .inAppText,
+                    createdAt: date, schedulesReminders: false)
+                XCTAssertEqual(first.session.originalTranscription, source)
+                XCTAssertEqual(first.items.count, 2)
+                XCTAssertTrue(first.items.contains { $0.itemType == .task && $0.originalTextSegment.contains("Mom") })
+                XCTAssertTrue(first.items.contains { $0.itemType == .note && $0.originalTextSegment.contains("brother's partner") })
+                XCTAssertTrue(first.items.allSatisfy { $0.reminderDate == nil })
+                let replay = try await repository.createCaptureResult(text: source, source: .inAppText,
+                    createdAt: date, schedulesReminders: false)
+                XCTAssertEqual(Set(first.items.map(\.id)), Set(replay.items.map(\.id)))
+                XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<CaptureSession>()), 1)
+                XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<CapturedItem>()), 2)
+            }
+        }
+    }
+}
+#endif
+
+// Standalone XCTest fragment for root integration. This file is intentionally
+// outside the Xcode test target until the semantic implementation owner adds it.
+// Baseline mode records SAFE BUT INCOMPLETE behavior. It does not count a held
+// DEV-11 operation as product success, and it does not invent a model response.
+// No live inference, notification scheduling, account, or production store is used.
+
+import CryptoKit
+import Foundation
+import SwiftData
+import XCTest
+@testable import SpeakIt
+
+#if DEBUG && canImport(FoundationModels)
+@available(iOS 26.4, *)
+@MainActor
+final class DEV11DisposableStoreProbe: XCTestCase {
+    private enum Input {
+        static let caseID = "DEV-11"
+        static let alias = "dev_saved_ki1"
+        static let title = "Ask Zélie about the kiln delivery"
+        static let recipient = "Zélie"
+        static let subjects = ["kiln delivery"]
+        static let version = 1 // Manifest metadata: no persisted version column.
+        static let modified = date("2026-10-04T22:00:00Z")
+        static let captureDate = date("2026-10-05T13:00:00Z")
+        static let due = date("2026-10-08T17:00:00Z")
+        static let source = "Change my saved \"Ask Zélie about the kiln delivery\" reminder to ask Idris about the glaze samples instead, October 9 at 4 PM. Keep it one reminder."
+        static let original = title // Declared synthetic fallback: input has no original_text.
+        static let targetID = uuid("DEV-11:dev_saved_ki1")
+        static let sessionID = uuid("DEV-11:dev_saved_ki1:session")
+        static let siblingID = uuid("DEV-11:singleton-distractor")
+        static let siblingSessionID = uuid("DEV-11:singleton-distractor:session")
+        static var calendar: Calendar {
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = TimeZone(identifier: "America/Toronto")!
+            return calendar
+        }
+        static func date(_ text: String) -> Date {
+            // Constants are supplied ISO timestamps, never Date.now.
+            ISO8601DateFormatter().date(from: text)!
+        }
+        static func uuid(_ text: String) -> UUID {
+            // Same alias algorithm as LongCaptureQualificationTests.seedPilot.
+            let hash = SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
+            let value = "\(hash.prefix(8))-\(hash.dropFirst(8).prefix(4))-\(hash.dropFirst(12).prefix(4))-\(hash.dropFirst(16).prefix(4))-\(hash.dropFirst(20).prefix(12))"
+            return UUID(uuidString: value)!
+        }
+    }
+
+    /// Source-derived product meaning is evidence only. No field below is read
+    /// by extraction, used to construct a proposal, or passed to the executor.
+    private struct IntendedMeaning: Encodable {
+        let targetAlias = Input.alias
+        let targetID = Input.targetID
+        let replacementTitle = "Ask Idris about the glaze samples"
+        let replacementRecipient = "Idris"
+        let replacementSubjects = ["glaze samples"]
+        let replacementDue = Input.date("2026-10-09T20:00:00Z")
+        let requestedAlert = true
+        let atomic = true
+        let allOrReview = true
+        let newItemCount = 0
+        let forbidden = ["partial recipient-only update", "extra reminder", "wrong saved target"]
+    }
+
+    /// Full stored row shape. Comparing encoded arrays avoids using display
+    /// rendering or a reduced fixture schema as a proxy for unchanged data.
+    private struct Row: Codable, Equatable {
+        let id: UUID
+        let sessionID: UUID?
+        let original: String
+        let title: String
+        let kind: String
+        let category: String
+        let created: Date
+        let modified: Date
+        let due: Date?
+        let reminder: Date?
+        let priority: Int
+        let person: String?
+        let completed: Date?
+        let archived: Bool
+        let archivedAt: Date?
+        let confidence: Double
+        let needsClarification: Bool
+        let reviewed: Bool
+        let temporalData: Data?
+        let temporalKind: String?
+        let locationData: Data?
+        let triggerKind: String?
+        let semanticState: String?
+        let semanticGap: String?
+
+        init(_ item: CapturedItem) {
+            id = item.id; sessionID = item.captureSession?.id
+            original = item.originalTextSegment; title = item.displayTitle
+            kind = item.itemTypeRawValue; category = item.categoryRawValue
+            created = item.createdAt; modified = item.lastModifiedAt
+            due = item.dueDate; reminder = item.reminderDate
+            priority = item.priorityRawValue; person = item.personName
+            completed = item.completedAt; archived = item.isArchived
+            archivedAt = item.archivedAt; confidence = item.processingConfidence
+            needsClarification = item.needsClarification; reviewed = item.isReviewed
+            temporalData = item.temporalIntentData; temporalKind = item.temporalKindRawValue
+            locationData = item.locationIntentData; triggerKind = item.reminderTriggerKindRawValue
+            semanticState = item.semanticStateRawValue; semanticGap = item.semanticGapRawValue
+        }
+    }
+
+    private struct Session: Encodable {
+        let id: UUID
+        let original: String
+        let created: Date
+        let source: String
+        let processing: String
+        let error: String?
+        let receipt: CaptureOperationState?
+    }
+
+    private struct Reminder: Encodable {
+        let itemID: UUID
+        let parentID: UUID?
+        let stableIdentifier: String
+        let storedReminder: Date?
+        let previewFireDate: Date?
+        let previewDelivery: String?
+        let previewTitle: String?
+        let previewAvailableAtActualWallClock: Bool
+    }
+
+    private struct Trace: Encodable {
+        let label: String
+        let source: String
+        let targetAlias: String
+        let originalPolicy: String
+        let suppliedVersion: Int
+        let inputRecipient: String
+        let inputSubjects: [String]
+        let intended = IntendedMeaning()
+        let observedOutcome: String
+        let currentProductSuccess: Bool
+        let exactSnapshotGuardExercised: Bool
+        let actualCoupledMutationAttempted: Bool
+        let schedulingSuppressed = true
+        let syntheticPendingIdentifiers: [String]
+        let removedSyntheticIdentifiers: [String]
+        let rows: [Row]
+        let sessions: [Session]
+        let reminders: [Reminder]
+    }
+
+    private final class DeliveryRecorder: @unchecked Sendable {
+        var pending: Set<String> = []
+        var removed: [String] = []
+        var cancelledAlarms: [UUID] = []
+        var sink: ReminderDeliverySink {
+            ReminderDeliverySink(
+                removeNotifications: { [self] values in
+                    removed.append(contentsOf: values)
+                    values.forEach { pending.remove($0) }
+                },
+                cancelAlarm: { [self] value in cancelledAlarms.append(value) },
+                pendingIdentifiers: { [self] in Array(pending) }
+            )
+        }
+    }
+
+    private var directories: [URL] = []
+    private var delivery: DeliveryRecorder!
+    private var previousDelivery: ReminderDeliverySink!
+    private var previousRecurrences: [RecurrenceRecordSnapshot] = []
+    private var previousDeletions: [ICloudDeletionRecord] = []
+    private var previousCloudEnabled: Any?
+    private var previousLocalChange: Any?
+
+    override func setUpWithError() throws {
+        XCTAssertEqual(Input.targetID.uuidString, "C27FB57D-DD23-EF16-9E65-EA2FE7E65DD5")
+        previousRecurrences = RecurrenceStore.snapshots()
+        previousDeletions = ICloudDeletionStore.records()
+        previousCloudEnabled = UserDefaults.standard.object(forKey: ICloudSyncState.enabledKey)
+        previousLocalChange = UserDefaults.standard.object(forKey: ICloudSyncState.lastLocalChangeKey)
+        UserDefaults.standard.set(false, forKey: ICloudSyncState.enabledKey)
+        delivery = DeliveryRecorder()
+        previousDelivery = ReminderScheduler.delivery
+        ReminderScheduler.delivery = delivery.sink
+    }
+
+    override func tearDownWithError() throws {
+        ReminderScheduler.delivery = previousDelivery
+        RecurrenceStore.restore(previousRecurrences)
+        ICloudDeletionStore.restore(previousDeletions)
+        restoreDefault(previousCloudEnabled, key: ICloudSyncState.enabledKey)
+        restoreDefault(previousLocalChange, key: ICloudSyncState.lastLocalChangeKey)
+        // Only unique disposable directories created by this fragment are removed.
+        for directory in directories { try? FileManager.default.removeItem(at: directory) }
+        directories = []
+    }
+
+    private func restoreDefault(_ value: Any?, key: String) {
+        if let value { UserDefaults.standard.set(value, forKey: key) }
+        else { UserDefaults.standard.removeObject(forKey: key) }
+    }
+
+    private func storeURL() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("DEV11Disposable-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        directories.append(directory)
+        return directory.appendingPathComponent("capture.store")
+    }
+
+    private func open(_ url: URL, allowsSave: Bool = true) throws -> ModelContainer {
+        let configuration = ModelConfiguration(schema: PersistenceController.schema,
+                                               url: url, allowsSave: allowsSave)
+        return try ModelContainer(for: PersistenceController.schema,
+            migrationPlan: SpeakItMigrationPlan.self, configurations: [configuration])
+    }
+
+    private func repository(_ context: ModelContext) -> SwiftDataThoughtRepository {
+        SwiftDataThoughtRepository(modelContext: context,
+            placeReminderDelivery: { _, _, _, _ in
+                XCTFail("This disposable probe must not deliver a place reminder")
+                return .failed
+            },
+            placeReminderCancellation: { _ in XCTFail("No place trigger exists in this fixture") },
+            requestsReminderAuthorization: false)
+    }
+
+    private func seed(_ context: ModelContext, target: Bool, sibling: Bool) throws {
+        func insert(id: UUID, sessionID: UUID, title: String, person: String) {
+            let source = CaptureSession(id: sessionID, originalTranscription: title,
+                createdAt: Input.modified, captureSource: .inAppText, processingStatus: .complete)
+            let intent = TemporalIntent(kind: .exactDateTime,
+                day: CalendarDay(year: 2026, month: 10, day: 8),
+                time: WallClockTime(hour: 13, minute: 0),
+                timeZoneIdentifier: Input.calendar.timeZone.identifier,
+                timeZoneBehavior: .deviceLocal, sourceText: title)
+            let item = CapturedItem(id: id, originalTextSegment: title, displayTitle: title,
+                itemType: .task, category: .general, createdAt: Input.modified,
+                dueDate: Input.due, reminderDate: Input.due, priority: .normal,
+                personName: person, completedAt: nil, isArchived: false, archivedAt: nil,
+                processingConfidence: 1, needsClarification: false, isReviewed: false,
+                lastModifiedAt: Input.modified, temporalIntent: intent,
+                locationIntent: nil, semanticState: .resolved, captureSession: source)
+            context.insert(source); context.insert(item)
+            delivery.pending.insert(ReminderScheduler.notificationIdentifier(for: id))
+        }
+        if target { insert(id: Input.targetID, sessionID: Input.sessionID,
+                           title: Input.title, person: Input.recipient) }
+        // Separate adversarial fixture extension, not part of locked DEV-11.
+        if sibling { insert(id: Input.siblingID, sessionID: Input.siblingSessionID,
+                            title: "Ask Zélie about the glaze order", person: "Zélie") }
+        try context.save()
+    }
+
+    private func rows(_ context: ModelContext) throws -> [Row] {
+        try context.fetch(FetchDescriptor<CapturedItem>()).map(Row.init)
+            .sorted { $0.id.uuidString < $1.id.uuidString }
+    }
+
+    private func item(_ id: UUID, _ context: ModelContext) throws -> CapturedItem {
+        try XCTUnwrap(try context.fetch(FetchDescriptor<CapturedItem>()).first { $0.id == id })
+    }
+
+    private func json<T: Encodable>(_ value: T) throws -> Data {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
+        return try encoder.encode(value)
+    }
+
+    /// Rules are replayed into the actual async repository call to eliminate
+    /// new inference. This is not a live Foundation Models result or ON score.
+    private func createBaseline(_ saved: SwiftDataThoughtRepository) async throws -> CaptureCreationResult {
+        let oldZone = NSTimeZone.default
+        NSTimeZone.default = Input.calendar.timeZone
+        defer { NSTimeZone.default = oldZone }
+        let reading = ThoughtExtractionEngine.extractWithRules(Input.source,
+            referenceDate: Input.captureDate, calendar: Input.calendar)
+        let request = try XCTUnwrap(reading.pendingOperation,
+                                  "DEV-11 must enter the actual saved-operation branch")
+        XCTAssertEqual(request.operation, .revise)
+        let configuration = RuntimeExampleConfiguration(
+            libraryURL: URL(fileURLWithPath: "/unused-dev11-no-inference-library.json"),
+            allowProposed: false, retrievalEnabled: false)
+        return try await RuntimeExampleConfiguration.$testConfiguration.withValue(configuration) {
+            try await RuntimeExampleTestFixtures.withInterpretation(reading) {
+                try await saved.createCaptureResult(text: Input.source, source: .inAppVoice,
+                    createdAt: Input.captureDate, schedulesReminders: false)
+            }
+        }
+    }
+
+    private func assertSafeIncomplete(_ result: CaptureCreationResult) throws {
+        guard case .ambiguous(operation: .revise, _) = try XCTUnwrap(result.operationOutcome) else {
+            return XCTFail("Current baseline must expose an unresolved revision, not claim success")
+        }
+        XCTAssertEqual(result.session.originalTranscription, Input.source)
+        XCTAssertEqual(result.session.processingStatus, .complete)
+        XCTAssertEqual(result.items.count, 1)
+        let review = try XCTUnwrap(result.items.first)
+        XCTAssertEqual(review.originalTextSegment, Input.source)
+        XCTAssertTrue(review.needsClarification)
+        XCTAssertNil(review.reminderDate)
+        XCTAssertNotEqual(CaptureOperationState.read(from: result.session.operationStateData)?.phase, .performed)
+    }
+
+    private func emit(_ label: String, _ context: ModelContext,
+                      outcome: CaptureOperationOutcome?, source: String = Input.source) throws {
+        let items = try context.fetch(FetchDescriptor<CapturedItem>())
+        let sessions = try context.fetch(FetchDescriptor<CaptureSession>()).map { session in
+            Session(id: session.id, original: session.originalTranscription, created: session.createdAt,
+                    source: session.captureSourceRawValue, processing: session.processingStatusRawValue,
+                    error: session.processingError,
+                    receipt: CaptureOperationState.read(from: session.operationStateData))
+        }.sorted { $0.id.uuidString < $1.id.uuidString }
+        let reminders = items.map { item in
+            let request = ReminderScheduleRequest(item: item)
+            return Reminder(itemID: item.id, parentID: item.captureSession?.id,
+                stableIdentifier: ReminderScheduler.notificationIdentifier(for: item.id),
+                storedReminder: item.reminderDate, previewFireDate: request?.fireDate,
+                previewDelivery: request.map { String(describing: $0.delivery) },
+                previewTitle: request?.title, previewAvailableAtActualWallClock: request != nil)
+        }.sorted { $0.itemID.uuidString < $1.itemID.uuidString }
+        let trace = Trace(label: label, source: source, targetAlias: Input.alias,
+            originalPolicy: "synthetic original equals input title; authentic historical transcript not supplied",
+            suppliedVersion: Input.version, inputRecipient: Input.recipient, inputSubjects: Input.subjects,
+            observedOutcome: String(describing: outcome), currentProductSuccess: false,
+            exactSnapshotGuardExercised: false, actualCoupledMutationAttempted: false,
+            syntheticPendingIdentifiers: delivery.pending.sorted(),
+            removedSyntheticIdentifiers: delivery.removed.sorted(), rows: try rows(context),
+            sessions: sessions, reminders: reminders)
+        let attachment = XCTAttachment(data: try json(trace), uniformTypeIdentifier: "public.json")
+        attachment.name = label
+        attachment.lifetime = .keepAlways
+        add(attachment)
+        print("DEV11-DISPOSABLE \(label) \(String(decoding: try json(trace), as: UTF8.self))")
+    }
+
+    func testDEV11SafeIncompleteBaselineRetainsSeedAcrossRetryAndReopen() async throws {
+        let url = try storeURL()
+        var amendmentID: UUID!
+        var finalRows: [Row] = []
+        do {
+            let store = try open(url)
+            let context = store.mainContext
+            try seed(context, target: true, sibling: false) // Exact locked input.
+            let before = try rows(context)
+            let pendingBefore = delivery.pending
+            let saved = repository(context)
+            let result = try await createBaseline(saved)
+            amendmentID = result.session.id
+            try assertSafeIncomplete(result)
+            XCTAssertEqual(try rows(context).filter { $0.id == Input.targetID }, before)
+            XCTAssertEqual(delivery.pending, pendingBefore)
+            finalRows = try rows(context)
+            try emit("DEV11-locked-input-current-safe-incomplete", context, outcome: result.operationOutcome)
+            let retry = try await createBaseline(saved)
+            XCTAssertTrue(retry.isDuplicate)
+            XCTAssertEqual(retry.session.id, amendmentID)
+            XCTAssertEqual(try rows(context), finalRows)
+        }
+        let reopened = try open(url)
+        let context = reopened.mainContext
+        XCTAssertEqual(try rows(context), finalRows)
+        let retry = try await createBaseline(repository(context))
+        XCTAssertTrue(retry.isDuplicate)
+        XCTAssertEqual(retry.session.id, amendmentID)
+        XCTAssertEqual(try rows(context), finalRows)
+        XCTAssertEqual(try item(Input.targetID, context).captureSession?.originalTranscription, Input.original)
+        try emit("DEV11-reopened-current-safe-incomplete", context, outcome: retry.operationOutcome)
+    }
+
+    func testDEV11AbsentTargetDoesNotUseTheSingletonDistractor() async throws {
+        let store = try open(storeURL())
+        let context = store.mainContext
+        try seed(context, target: false, sibling: true)
+        let before = try rows(context)
+        let result = try await createBaseline(repository(context))
+        try assertSafeIncomplete(result)
+        XCTAssertEqual(try rows(context).filter { $0.id == Input.siblingID }, before)
+        XCTAssertFalse(try rows(context).contains { $0.id == Input.targetID })
+        XCTAssertFalse(try rows(context).contains { !$0.needsClarification && $0.person == "Idris" })
+        try emit("DEV11-absent-intended-target-singleton-distractor", context, outcome: result.operationOutcome)
+    }
+
+    func testDEV11SiblingIsByteIdenticalAndChangedSnapshotIsSafelyHeld() async throws {
+        let store = try open(storeURL())
+        let context = store.mainContext
+        try seed(context, target: true, sibling: true)
+        let capturedSnapshot = Row(try item(Input.targetID, context))
+        let siblingBefore = try json(Row(item(Input.siblingID, context)))
+        // Simulate an edit after the snapshot, but BEFORE the spoken capture.
+        // A mere modifiedAt <= captureDate guard cannot reject this stale snapshot.
+        let target = try item(Input.targetID, context)
+        target.displayTitle = "Ask Zélie about the kiln delivery status"
+        target.lastModifiedAt = Input.date("2026-10-04T23:00:00Z")
+        try context.save() // Fixture concurrency event; no external service.
+        let newerSnapshot = Row(target)
+        XCTAssertNotEqual(capturedSnapshot, newerSnapshot)
+        XCTAssertLessThan(newerSnapshot.modified, Input.captureDate)
+        let result = try await createBaseline(repository(context))
+        try assertSafeIncomplete(result)
+        XCTAssertEqual(Row(try item(Input.targetID, context)), newerSnapshot)
+        XCTAssertEqual(try json(Row(item(Input.siblingID, context))), siblingBefore)
+        try emit("DEV11-changed-exact-snapshot-current-hold-guard-not-yet-exercised",
+                 context, outcome: result.operationOutcome)
+        // Integration requirement: once a typed coupled request carries a frozen
+        // snapshot, pass capturedSnapshot into that boundary. Re-run this case
+        // through it and require the complete delta to be held. This baseline
+        // deliberately records exactSnapshotGuardExercised=false, not a pass.
+    }
+
+    /// A supported timing amendment is a calibration of the actual atomic save
+    /// boundary. It is not a substitute DEV-11 pass or coupled-revision proof.
+    func testTimingCalibrationSecondSaveFailureKeepsRawAndAllSavedFields() throws {
+        let url = try storeURL()
+        let calibration = "Change the saved Ask Zélie about the kiln delivery reminder from October 8 at 1 PM to October 9 at 4 PM. Keep the recipient and subject."
+        let rawID = Input.uuid("DEV-11:calibration-raw-amendment")
+        var durableBefore: [Row] = []
+        do {
+            let writable = try open(url)
+            let context = writable.mainContext
+            try seed(context, target: true, sibling: true)
+            // Mirror createPendingCapture's exact persisted raw/placeholder shape.
+            // It is private: this insertion is explicitly a committed fixture,
+            // while the subsequent mutation calls the real operation executor.
+            let raw = CaptureSession(id: rawID, originalTranscription: calibration,
+                createdAt: Input.captureDate, captureSource: .inAppVoice, processingStatus: .pending)
+            let placeholder = CapturedItem(
+                originalTextSegment: calibration,
+                displayTitle: ThoughtTitleFormatter.polished(calibration, itemType: .unclear),
+                createdAt: Input.captureDate, processingConfidence: 0,
+                needsClarification: true, isReviewed: false,
+                lastModifiedAt: Input.captureDate, captureSession: raw)
+            context.insert(raw); context.insert(placeholder)
+            try context.save()
+            durableBefore = try rows(context)
+        }
+        let readOnly = try open(url, allowsSave: false)
+        let context = readOnly.mainContext
+        let raw = try XCTUnwrap(try context.fetch(FetchDescriptor<CaptureSession>()).first { $0.id == rawID })
+        XCTAssertEqual(raw.originalTranscription, calibration) // Raw is already durable.
+        let request = CaptureOperationRequest(operation: .reschedule, polarity: .positive,
+            target: Input.title, sourceQuote: calibration, needsReview: false,
+            newTimingText: "October 9 at 4 PM", expectedOldTimingText: "October 8 at 1 PM")
+        let oldZone = NSTimeZone.default
+        NSTimeZone.default = Input.calendar.timeZone
+        let outcome: CaptureOperationOutcome
+        do {
+            defer { NSTimeZone.default = oldZone }
+            outcome = try repository(context).applyCaptureOperation(request, session: raw,
+                                                                    schedulesReminders: false)
+        }
+        guard case .ambiguous(operation: .reschedule, _) = outcome else {
+            return XCTFail("Failed second save cannot claim that the timing amendment was performed")
+        }
+        XCTAssertEqual(try rows(context), durableBefore)
+        XCTAssertNil(raw.operationStateData)
+        XCTAssertEqual(raw.processingStatus, .pending)
+        XCTAssertTrue(delivery.removed.isEmpty)
+        XCTAssertTrue(delivery.cancelledAlarms.isEmpty)
+        try emit("DEV11-timing-only-calibration-second-save-failure", context,
+                 outcome: outcome, source: calibration)
+        let verification = try open(url)
+        XCTAssertEqual(try rows(verification.mainContext), durableBefore)
+        let durableRaw = try XCTUnwrap(try verification.mainContext.fetch(FetchDescriptor<CaptureSession>())
+            .first { $0.id == rawID })
+        XCTAssertEqual(durableRaw.originalTranscription, calibration)
+        XCTAssertNil(durableRaw.operationStateData)
+    }
+}
+#endif
+
+#if DEBUG
+@MainActor
+final class RuntimeAtomicRevisionTests: XCTestCase {
+    private let source = "Change my saved \"Ask Zélie about the kiln delivery\" reminder to ask Idris about the glaze samples instead, October 9 at 4 PM. Keep it one reminder."
+    private let targetID = UUID(uuidString: "C27FB57D-DD23-EF16-9E65-EA2FE7E65DD5")!
+    private var calendar: Calendar {
+        var result = Calendar(identifier: .gregorian)
+        result.timeZone = TimeZone(identifier: "America/Toronto")!
+        return result
+    }
+    private func date(_ text: String) -> Date { ISO8601DateFormatter().date(from: text)! }
+    private var reference: Date { date("2026-10-05T13:00:00Z") }
+    private var urls: [URL] = []
+    private var priorCloud: Any?
+    override func setUp() {
+        priorCloud = UserDefaults.standard.object(forKey: ICloudSyncState.enabledKey)
+        UserDefaults.standard.set(false, forKey: ICloudSyncState.enabledKey)
+    }
+    override func tearDown() {
+        if let priorCloud { UserDefaults.standard.set(priorCloud, forKey: ICloudSyncState.enabledKey) }
+        else { UserDefaults.standard.removeObject(forKey: ICloudSyncState.enabledKey) }
+        for url in urls { try? FileManager.default.removeItem(at: url) }
+    }
+    private func location() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("RuntimeAtomic-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        urls.append(directory)
+        return directory.appendingPathComponent("capture.store")
+    }
+    private func open(_ url: URL, writable: Bool = true) throws -> ModelContainer {
+        try ModelContainer(for: PersistenceController.schema, migrationPlan: SpeakItMigrationPlan.self,
+            configurations: [ModelConfiguration(schema: PersistenceController.schema, url: url, allowsSave: writable)])
+    }
+    private func repository(_ context: ModelContext) -> SwiftDataThoughtRepository {
+        SwiftDataThoughtRepository(modelContext: context, requestsReminderAuthorization: false)
+    }
+    private func seed(_ context: ModelContext, title: String = "Ask Zélie about the kiln delivery",
+                      id: UUID? = nil, segment: String? = nil, parentSource: String? = nil) throws -> CapturedItem {
+        let old = date("2026-10-04T22:00:00Z")
+        let parent = CaptureSession(originalTranscription: parentSource ?? title, createdAt: old,
+                                    captureSource: .inAppText, processingStatus: .complete)
+        let item = CapturedItem(id: id ?? targetID, originalTextSegment: segment ?? title, displayTitle: title,
+            itemType: .task, category: .general, createdAt: old,
+            dueDate: date("2026-10-08T17:00:00Z"), reminderDate: date("2026-10-08T17:00:00Z"),
+            personName: "Zélie", processingConfidence: 1, needsClarification: false,
+            isReviewed: false, lastModifiedAt: old,
+            temporalIntent: TemporalIntent(kind: .exactDateTime, day: CalendarDay(year: 2026, month: 10, day: 8),
+                time: WallClockTime(hour: 13, minute: 0), timeZoneIdentifier: "America/Toronto",
+                timeZoneBehavior: .deviceLocal, sourceText: title),
+            semanticState: .resolved, captureSession: parent)
+        context.insert(parent); context.insert(item); try context.save()
+        return item
+    }
+    private func raw(_ context: ModelContext, source: String? = nil) throws -> CaptureSession {
+        let source = source ?? self.source
+        let result = CaptureSession(originalTranscription: source, createdAt: reference,
+                                    captureSource: .inAppText, processingStatus: .pending)
+        let placeholder = CapturedItem(originalTextSegment: source, displayTitle: source,
+            createdAt: reference, processingConfidence: 0, needsClarification: true, captureSession: result)
+        context.insert(result); context.insert(placeholder); try context.save()
+        return result
+    }
+    private func request(_ snapshot: SavedAtomicRevision.Snapshot, source: String? = nil) throws -> CaptureOperationRequest {
+        let source = source ?? self.source
+        let revision = try XCTUnwrap(SavedAtomicRevision.read(source, snapshots: [snapshot],
+                                                              referenceDate: reference, calendar: calendar))
+        var request = CaptureOperationRequest(operation: .revise, polarity: .positive,
+                                              target: snapshot.title, sourceQuote: source, needsReview: false)
+        request.savedAtomicRevision = revision
+        return request
+    }
+    private func actualCreate(_ repository: SwiftDataThoughtRepository, text: String? = nil,
+                              createdAt: Date? = nil, schedulesReminders: Bool = false) async throws -> CaptureCreationResult {
+        let previousZone = NSTimeZone.default; NSTimeZone.default = calendar.timeZone
+        defer { NSTimeZone.default = previousZone }
+        let config = RuntimeExampleConfiguration(libraryURL: URL(fileURLWithPath: "/unused-OFF-coupled-probe"),
+                                                allowProposed: false, retrievalEnabled: false)
+        return try await RuntimeExampleConfiguration.$testConfiguration.withValue(config) {
+            try await repository.createCaptureResult(text: text ?? source, source: .inAppText,
+                                                     createdAt: createdAt ?? reference, schedulesReminders: schedulesReminders)
+        }
+    }
+    func testActualAccountFallbackRetainsUnknownCommandsAndWithdrawalsForReview() async throws {
+        let url = try location(),store = try open(url),repository = repository(store.mainContext)
+        let config = RuntimeExampleConfiguration(libraryURL:URL(fileURLWithPath:"/unused-account-safety.sqlite"),allowProposed:false,retrievalEnabled:false)
+        let sources = ["Save one account of the trial: rinse the gauge tomorrow.",
+            "Save one account of the trial: rinse the gauge tomorrow",
+            "  Save one account of the trial: rinse the gauge tomorrow?",
+            "Save one account of the trial: the panel dried unevenly; rinse the gauge tomorrow.",
+            "Buy two cloth bags. Save one account of the trial: we are no longer buying the bags.",
+            "Remind me tomorrow at 10 AM to call Mom about the sail cover. Save one account of the plan: no timed alerts for any of this.",
+            "Save one account of the trial: Nori owns the prism. Rinse the gauge tomorrow.",
+            "Keep this as one account of the trial: rinse the gauge tomorrow.",
+            "Save one account: rinse the gauge tomorrow.",
+            "Preserve the following as one memory: rinse the gauge tomorrow."]
+        var allIDs = Set<UUID>()
+        for (i,text) in sources.enumerated() {
+            let moment = reference.addingTimeInterval(Double(i) * 60)
+            let prior = NSTimeZone.default;NSTimeZone.default = calendar.timeZone
+            let result: CaptureCreationResult
+            do { result = try await RuntimeExampleConfiguration.$testConfiguration.withValue(config) {
+                try await repository.createCaptureResult(text:text,source:.inAppText,createdAt:moment,schedulesReminders:false)
+            } } catch { NSTimeZone.default = prior;throw error }
+            NSTimeZone.default = prior
+            XCTAssertEqual(result.session.originalTranscription,text.trimmingCharacters(in:.whitespacesAndNewlines))
+            XCTAssertEqual(result.items.count,1,text)
+            XCTAssertTrue(result.items.allSatisfy { $0.needsClarification && !$0.itemType.isActionable && $0.itemType != .shopping && $0.reminderDate == nil },text)
+            XCTAssertEqual(result.items.first?.originalTextSegment,text.trimmingCharacters(in:.whitespacesAndNewlines))
+            let retry = try await RuntimeExampleConfiguration.$testConfiguration.withValue(config) {
+                try await repository.createCaptureResult(text:text,source:.inAppText,createdAt:moment,schedulesReminders:false)
+            }
+            XCTAssertTrue(retry.isDuplicate);XCTAssertEqual(Set(retry.items.map(\.id)),Set(result.items.map(\.id)))
+            allIDs.formUnion(result.items.map(\.id))
+        }
+        let reopened = try open(url),saved = try reopened.mainContext.fetch(FetchDescriptor<CaptureSession>())
+        XCTAssertEqual(Set(saved.map(\.originalTranscription)),Set(sources.map { $0.trimmingCharacters(in:.whitespacesAndNewlines) }));XCTAssertEqual(Set(saved.flatMap { $0.items.map(\.id) }),allIDs)
+    }
+    func testActualCompleteSourceProofSurvivesUnavailableReferenceAsset() async throws {
+        let url = try location(),store = try open(url),repository = repository(store.mainContext)
+        let config = RuntimeExampleConfiguration(libraryURL:URL(fileURLWithPath:"/missing-source-only-reference.sqlite"),allowProposed:false,retrievalEnabled:true,expectedSHA256:String(repeating:"0",count:64))
+        let text = RuntimeIndependentFramePlanTests.mixed,moment = reference
+        let prior = NSTimeZone.default;NSTimeZone.default = calendar.timeZone
+        let result: CaptureCreationResult
+        do { result = try await RuntimeExampleConfiguration.$testConfiguration.withValue(config) {
+            try await repository.createCaptureResult(text:text,source:.inAppText,createdAt:moment,schedulesReminders:false)
+        } } catch { NSTimeZone.default = prior;throw error }
+        NSTimeZone.default = prior
+        XCTAssertEqual(result.items.count,5);XCTAssertTrue(result.items.allSatisfy { !$0.needsClarification })
+        XCTAssertEqual(result.session.originalTranscription,text)
+        XCTAssertEqual(result.items.map(\.itemType),[.note,.task,.shopping,.task,.idea])
+        XCTAssertTrue(result.items.allSatisfy { $0.reminderDate == nil })
+        let retry = try await RuntimeExampleConfiguration.$testConfiguration.withValue(config) {
+            try await repository.createCaptureResult(text:text,source:.inAppText,createdAt:moment,schedulesReminders:false)
+        }
+        XCTAssertTrue(retry.isDuplicate);XCTAssertEqual(Set(retry.items.map(\.id)),Set(result.items.map(\.id)))
+        let reopened = try open(url),saved = try reopened.mainContext.fetch(FetchDescriptor<CaptureSession>())
+        XCTAssertEqual(saved.first?.originalTranscription,text);XCTAssertEqual(saved.first?.items.count,5)
+    }
+    func testActualComposedPurposesAndClocksKeepCompleteSourceAcrossRetryAndReopen() async throws {
+        let url = try location(),store = try open(url),repository = repository(store.mainContext)
+        let sources = [RuntimeIndependentFramePlanTests.clocks,RuntimeIndependentFramePlanTests.mixed,RuntimeIndependentFramePlanTests.quoted]
+        var allIDs = Set<UUID>()
+        for (i,text) in sources.enumerated() {
+            let moment = date("2026-11-16T14:0\(i):00Z")
+            let previous = NSTimeZone.default;NSTimeZone.default = calendar.timeZone
+            let result: CaptureCreationResult
+            do { result = try await actualCreate(repository, text: text, createdAt: moment) }
+            catch { NSTimeZone.default = previous;throw error }
+            NSTimeZone.default = previous
+            XCTAssertEqual(result.session.originalTranscription,text);XCTAssertEqual(result.session.processingStatus,.complete)
+            XCTAssertEqual(result.items.count,[3,5,1][i]);XCTAssertTrue(RuntimeProposalGuard.covers(text,quotes:result.items.map(\.originalTextSegment)))
+            XCTAssertTrue(result.items.allSatisfy { !$0.needsClarification })
+            if i == 0 {
+                XCTAssertEqual(result.items.filter { $0.reminderDate != nil }.count,2)
+                XCTAssertEqual(Set(result.items.compactMap(\.reminderDate)),Set([date("2026-11-17T15:00:00Z"),date("2026-11-21T20:00:00Z")]))
+                XCTAssertEqual(Set(result.items.compactMap(\.personName)),Set(["Mom","my granddad"]))
+                XCTAssertTrue(result.items.filter { $0.itemType == .note }.allSatisfy { $0.dueDate == nil && $0.reminderDate == nil })
+            } else if i == 1 {
+                XCTAssertEqual(result.items.filter { $0.itemType == .shopping }.count,1)
+                XCTAssertEqual(result.items.filter { $0.itemType == .idea }.count,1)
+                XCTAssertTrue(result.items.contains { $0.displayTitle.contains("our existing kneepad and my sister’s apron") && $0.itemType == .task })
+                XCTAssertEqual(result.items.first { $0.personName != nil }?.personName,"my aunt’s husband")
+                XCTAssertEqual(result.items.first { $0.personName != nil }?.dueDate,date("2026-11-17T05:00:00Z"))
+                XCTAssertTrue(result.items.allSatisfy { $0.reminderDate == nil })
+            } else { XCTAssertEqual(result.items.first?.itemType,.note);XCTAssertNil(result.items.first?.personName);XCTAssertNil(result.items.first?.reminderDate) }
+            let retry = try await actualCreate(repository, text: text, createdAt: moment)
+            XCTAssertTrue(retry.isDuplicate);XCTAssertEqual(Set(retry.items.map(\.id)),Set(result.items.map(\.id)));allIDs.formUnion(result.items.map(\.id))
+        }
+        let reopened = try open(url),saved = try reopened.mainContext.fetch(FetchDescriptor<CaptureSession>())
+        XCTAssertEqual(Set(saved.map(\.originalTranscription)),Set(sources));XCTAssertEqual(Set(saved.flatMap { $0.items.map(\.id) }),allIDs)
+        XCTAssertEqual(saved.flatMap(\.items).count,9)
+    }
+
+    func testActualChoiceAndPrerequisitePreserveCompleteSpeechAcrossRetryAndReopen() async throws {
+        let url = try location(),store = try open(url),repository = repository(store.mainContext)
+        let sources = [RuntimeExplicitDecisionCertificateTests.choice,RuntimeExplicitDecisionCertificateTests.condition]
+        var allIDs = Set<UUID>()
+        for (i,text) in sources.enumerated() {
+            let moment = date(i == 0 ? "2026-11-16T14:00:00Z" : "2026-11-16T14:01:00Z")
+            let result = try await actualCreate(repository, text: text, createdAt: moment)
+            XCTAssertEqual(result.session.processingStatus,.complete);XCTAssertEqual(result.session.originalTranscription,text)
+            XCTAssertEqual(result.items.count,i == 0 ? 2 : 3);XCTAssertTrue(result.items.allSatisfy { !$0.needsClarification && $0.dueDate == nil && $0.reminderDate == nil })
+            XCTAssertTrue(RuntimeProposalGuard.covers(text,quotes:result.items.map(\.originalTextSegment)))
+            if i == 0 {
+                XCTAssertTrue(result.items.allSatisfy { $0.itemType == .shopping })
+                XCTAssertEqual(Set(result.items.map(\.displayTitle)),Set(["Buy two metres of red elastic braid for the exhibition","Buy one snap clasp for the exhibition"]))
+            } else {
+                XCTAssertEqual(Set(result.items.compactMap(\.personName)),Set(["Ruvin","Odea"]))
+                XCTAssertEqual(result.items.filter { $0.itemType == .task }.count,2)
+                XCTAssertTrue(result.items.filter { $0.itemType == .task }.allSatisfy { $0.displayTitle.contains("after Ayla confirms the dimensions") })
+            }
+            let retry = try await actualCreate(repository, text: text, createdAt: moment)
+            XCTAssertTrue(retry.isDuplicate);XCTAssertEqual(Set(retry.items.map(\.id)),Set(result.items.map(\.id)));allIDs.formUnion(result.items.map(\.id))
+        }
+        let reopened = try open(url),saved = try reopened.mainContext.fetch(FetchDescriptor<CaptureSession>())
+        XCTAssertEqual(Set(saved.map(\.originalTranscription)),Set(sources));XCTAssertEqual(Set(saved.flatMap { $0.items.map(\.id) }),allIDs)
+        XCTAssertEqual(saved.flatMap(\.items).count,5)
+    }
+
+    func testActualMixedPurposeExampleSavesCurrentRolesClocksAndMembersThroughRetryAndReopen() async throws {
+        let url = try location(),store = try open(url),repository = repository(store.mainContext)
+        let text = RuntimeMixedPurposeCertificateTests.current,moment = date("2026-11-16T14:00:00Z")
+        var cfg = try XCTUnwrap(RuntimeExampleTestFixtures.reviewed)
+        XCTAssertFalse(Task.isCancelled, "Capture fixture must start with a live caller task")
+        cfg.excludedBlueprints = ["cap_mixed_kinds","fam_owner_and_recipient","fam_unaccepted_offer","note_inventory"]
+        let proof = RuntimeConsumptionProof()
+        func create() async throws -> CaptureCreationResult {
+            let previous = NSTimeZone.default;NSTimeZone.default = calendar.timeZone
+            defer { NSTimeZone.default = previous }
+            return try await RuntimeExampleLibrary.$developmentObserver.withValue({ proof.append($0) }) {
+                try await RuntimeExampleConfiguration.$testConfiguration.withValue(cfg) {
+                    try await repository.createCaptureResult(text:text,source:.inAppText,createdAt:moment,schedulesReminders:false)
+                }
+            }
+        }
+        let result = try await create()
+        XCTAssertEqual(result.session.originalTranscription,text);XCTAssertEqual(result.session.processingStatus,.complete)
+        XCTAssertEqual(result.items.count,4)
+        XCTAssertEqual(result.items.filter { $0.itemType == .task }.count,2)
+        XCTAssertEqual(result.items.filter { $0.itemType == .note }.count,2)
+        XCTAssertTrue(result.items.allSatisfy { !$0.needsClarification })
+        let transfer = try XCTUnwrap(result.items.first { $0.personName == "my partner" })
+        XCTAssertEqual(transfer.displayTitle,"Return Evin’s magnifier to my partner")
+        XCTAssertEqual(transfer.reminderDate,calendar.date(from:DateComponents(year:2026,month:11,day:21,hour:9)))
+        XCTAssertEqual(transfer.dueDate,transfer.reminderDate)
+        XCTAssertEqual(try XCTUnwrap(transfer.temporalIntent).time,WallClockTime(hour:9,minute:0))
+        XCTAssertEqual(try XCTUnwrap(transfer.temporalIntent).kind,.exactDateTime)
+        let own = try XCTUnwrap(result.items.first { $0.originalTextSegment.hasPrefix("My task is to adjust the crate runner") })
+        XCTAssertTrue(own.displayTitle.localizedCaseInsensitiveContains("adjust the crate runner"))
+        XCTAssertEqual(own.dueDate,calendar.date(from:DateComponents(year:2026,month:11,day:20)))
+        XCTAssertNil(own.reminderDate);XCTAssertEqual(try XCTUnwrap(own.temporalIntent).kind,.dateOnly)
+        XCTAssertTrue(result.items.contains { $0.itemType == .note && $0.displayTitle.contains("one amber viewing lens, two wooden shims and seven brass spacers") })
+        XCTAssertTrue(result.items.contains { $0.itemType == .note && $0.displayTitle == "Rhea offered to polish the lenses; offer not accepted" })
+        let consumed = proof.lines().filter { $0.contains("analogy consumed=SIR1-509678 program=mixed-purpose-adoption") || $0.contains("analogy consumed=SIR1-509678 program=composed-mixed-purpose-adoption") }
+        XCTAssertFalse(consumed.isEmpty)
+        XCTAssertTrue(consumed.allSatisfy { $0.contains("inputSHA=") && $0.contains("solutionSHA=") && $0.contains("current-source-bound=true") })
+        let retry = try await create()
+        XCTAssertTrue(retry.isDuplicate);XCTAssertEqual(retry.session.id,result.session.id)
+        XCTAssertEqual(Set(retry.items.map(\.id)),Set(result.items.map(\.id)))
+        XCTAssertEqual(proof.lines().filter { $0.contains("analogy consumed=SIR1-509678 program=mixed-purpose-adoption") || $0.contains("analogy consumed=SIR1-509678 program=composed-mixed-purpose-adoption") }.count,consumed.count)
+        let reopened = try open(url)
+        let saved = try XCTUnwrap(try reopened.mainContext.fetch(FetchDescriptor<CaptureSession>()).first { $0.id == result.session.id })
+        XCTAssertEqual(saved.originalTranscription,text);XCTAssertEqual(Set(saved.items.map(\.id)),Set(result.items.map(\.id)))
+        XCTAssertEqual(Set(saved.items.map(\.originalTextSegment)),Set(result.items.map(\.originalTextSegment)))
+        XCTAssertEqual(saved.items.first { $0.id == transfer.id }?.personName,"my partner")
+        XCTAssertEqual(saved.items.first { $0.id == transfer.id }?.reminderDate,transfer.reminderDate)
+        XCTAssertEqual(saved.items.first { $0.id == own.id }?.dueDate,own.dueDate)
+    }
+    func testActualRecipientReplacementExamplePreservesAllIntentionsThroughSaveRetryAndReopen() async throws {
+        let url = try location();let store = try open(url);let repository = repository(store.mainContext)
+        let text = RuntimeRecipientReplacementTests.current
+        let moment = date("2026-11-16T14:00:00Z")
+        var cfg = try XCTUnwrap(RuntimeExampleTestFixtures.reviewed)
+        XCTAssertFalse(Task.isCancelled, "Capture fixture must start with a live caller task")
+        cfg.excludedBlueprints = ["fam_inventory_ownership","fam_recipient_repair","fam_third_party_possessive","ramble_fragments"]
+        let proof = RuntimeConsumptionProof()
+        func create() async throws -> CaptureCreationResult {
+            let previous = NSTimeZone.default;NSTimeZone.default = calendar.timeZone
+            defer { NSTimeZone.default = previous }
+            return try await RuntimeExampleLibrary.$developmentObserver.withValue({ proof.append($0) }) {
+                try await RuntimeExampleConfiguration.$testConfiguration.withValue(cfg) {
+                    try await repository.createCaptureResult(text:text,source:.inAppText,createdAt:moment,schedulesReminders:false)
+                }
+            }
+        }
+        let result = try await create()
+        XCTAssertEqual(result.session.originalTranscription,text);XCTAssertEqual(result.session.processingStatus,.complete)
+        XCTAssertEqual(result.items.count,6)
+        XCTAssertEqual(result.items.filter { $0.itemType == .task }.count,3)
+        XCTAssertEqual(result.items.filter { $0.itemType == .note }.count,2)
+        XCTAssertEqual(result.items.filter { $0.itemType == .idea }.count,1)
+        XCTAssertTrue(result.items.allSatisfy { !$0.needsClarification && $0.reminderDate == nil })
+        XCTAssertEqual(result.items.first { $0.personName == "my cousin" }?.displayTitle,"Ask my cousin about the frost cover")
+        XCTAssertEqual(result.items.first { $0.personName == "Yaren" }?.displayTitle,"Tell Yaren to ask their grandfather about the eyepiece sleeve")
+        let firm = try XCTUnwrap(result.items.first { $0.displayTitle.localizedCaseInsensitiveContains("test the tripod brake") })
+        XCTAssertEqual(firm.dueDate,calendar.date(from:DateComponents(year:2026,month:11,day:19)))
+        XCTAssertEqual(proof.lines().filter { $0.contains("program=direct-recipient-replacement") }.count,1)
+        XCTAssertTrue(proof.lines().contains { $0.contains("analogy consumed=SIR1-509678 program=direct-recipient-replacement") })
+        XCTAssertFalse(proof.lines().contains { $0.contains("source certificate consumed=no-references") })
+        let retry = try await create()
+        XCTAssertTrue(retry.isDuplicate);XCTAssertEqual(retry.session.id,result.session.id)
+        XCTAssertEqual(Set(retry.items.map(\.id)),Set(result.items.map(\.id)))
+        XCTAssertEqual(proof.lines().filter { $0.contains("program=direct-recipient-replacement") }.count,1)
+        let reopened = try open(url)
+        let saved = try XCTUnwrap(try reopened.mainContext.fetch(FetchDescriptor<CaptureSession>()).first { $0.id == result.session.id })
+        XCTAssertEqual(saved.originalTranscription,text);XCTAssertEqual(Set(saved.items.map(\.id)),Set(result.items.map(\.id)))
+        XCTAssertEqual(Set(saved.items.map(\.originalTextSegment)),Set(result.items.map(\.originalTextSegment)))
+        XCTAssertEqual(saved.items.first { $0.personName == "my cousin" }?.displayTitle,"Ask my cousin about the frost cover")
+        XCTAssertEqual(saved.items.first { $0.id == firm.id }?.dueDate,firm.dueDate)
+    }
+    func testActualExampleAssistedQuantityRepairSavesAllCurrentAllocationsAndSurvivesRelaunch() async throws {
+        let url = try location(); let store = try open(url); let context = store.mainContext; let repository = repository(context)
+        let text = "Buy five cartons of resin beads for my godmother and two for my neighbor. Each carton has twelve beads. Actually my godmother needs three cartons, not five; my neighbor's two stay. Add one spool of silver cord for me. The quantities are separate allocations, not shared totals."
+        var configuration = try XCTUnwrap(RuntimeExampleTestFixtures.reviewed)
+        XCTAssertFalse(Task.isCancelled, "Capture fixture must start with a live caller task")
+        configuration.excludedBlueprints = ["fam_purchase_allocation","shop_add_quantity","shop_allocation","shop_package","shop_replace_quantity"]
+        let proof = RuntimeConsumptionProof()
+        func create() async throws -> CaptureCreationResult {
+            try await RuntimeExampleLibrary.$developmentObserver.withValue({ proof.append($0) }) {
+                try await RuntimeExampleConfiguration.$testConfiguration.withValue(configuration) {
+                    try await repository.createCaptureResult(text:text,source:.inAppText,createdAt:reference,schedulesReminders:false)
+                }
+            }
+        }
+        let result = try await create()
+        let consumed = proof.lines().filter { $0.hasPrefix("analogy consumed=") }
+        XCTAssertEqual(consumed.count,1)
+        XCTAssertTrue(consumed.first?.contains("consumed=SIR1-509678 program=quantity-replacement") == true)
+        XCTAssertTrue(consumed.first?.contains("current-source-bound=true") == true)
+        XCTAssertTrue(proof.lines().contains { $0.contains("pool=59 eligibleApproved=59") })
+        XCTAssertFalse(proof.lines().contains { $0.contains("source certificate consumed=no-references") })
+        XCTAssertEqual(result.session.originalTranscription,text)
+        XCTAssertEqual(result.session.processingStatus,.complete)
+        XCTAssertEqual(result.items.count,3)
+        let expected = Set(["Buy three cartons of resin beads for my godmother (Each carton has twelve beads)",
+            "Buy two cartons of resin beads for my neighbor (Each carton has twelve beads)","Buy one spool of silver cord for me"])
+        XCTAssertEqual(Set(result.items.map(\.displayTitle)),expected)
+        XCTAssertTrue(result.items.allSatisfy { $0.itemType == .shopping && !$0.needsClarification && $0.reminderDate == nil
+            && $0.dueDate == nil && $0.personName == nil && $0.originalTextSegment == text })
+        let retry = try await create()
+        XCTAssertEqual(proof.lines().filter { $0.hasPrefix("analogy consumed=") }.count,1,"Retry must reuse the saved capture before interpretation")
+        XCTAssertEqual(retry.session.id,result.session.id); XCTAssertEqual(Set(retry.items.map(\.id)),Set(result.items.map(\.id)))
+        let reopened = try open(url)
+        let saved = try XCTUnwrap(try reopened.mainContext.fetch(FetchDescriptor<CaptureSession>()).first { $0.id == result.session.id })
+        XCTAssertEqual(saved.originalTranscription,text); XCTAssertEqual(Set(saved.items.map(\.displayTitle)),expected)
+        XCTAssertEqual(saved.items.count,3)
+    }
+    func testActualExampleAssistedCommitmentFramesSaveOwnTaskAndAttributedMemoryAcrossRelaunch() async throws {
+        let url = try location(); let store = try open(url); let context = store.mainContext; let repository = repository(context)
+        let text = "Leto asked Mayra to reserve the wind tunnel. I am recording their conversation and have not taken over Mayra’s job. My own task is to weigh the glider fuselage tomorrow. Mayra’s note was \"Discard the spare fin\"; I am not adopting that either."
+        var configuration = try XCTUnwrap(RuntimeExampleTestFixtures.reviewed)
+        XCTAssertFalse(Task.isCancelled, "Capture fixture must start with a live caller task")
+        configuration.excludedBlueprints = ["action_report","fam_report_no_adoption","ramble_report_own","shop_quoted"]
+        let result = try await RuntimeExampleConfiguration.$testConfiguration.withValue(configuration) {
+            try await repository.createCaptureResult(text:text,source:.inAppText,createdAt:reference,schedulesReminders:false)
+        }
+        XCTAssertEqual(result.items.count,3); XCTAssertEqual(result.session.originalTranscription,text)
+        XCTAssertEqual(result.items.filter { $0.itemType == .task }.count,1)
+        XCTAssertEqual(result.items.filter { $0.itemType == .note }.count,2)
+        let own = try XCTUnwrap(result.items.first { $0.itemType == .task })
+        XCTAssertEqual(own.displayTitle,"Weigh the glider fuselage tomorrow")
+        XCTAssertTrue(result.items.allSatisfy { !$0.needsClarification && $0.personName == nil && $0.reminderDate == nil })
+        XCTAssertTrue(result.items.filter { $0.itemType == .note }.allSatisfy { $0.dueDate == nil })
+        let retry = try await RuntimeExampleConfiguration.$testConfiguration.withValue(configuration) {
+            try await repository.createCaptureResult(text:text,source:.inAppText,createdAt:reference,schedulesReminders:false)
+        }
+        XCTAssertEqual(retry.session.id,result.session.id); XCTAssertEqual(Set(retry.items.map(\.id)),Set(result.items.map(\.id)))
+        let reopened = try open(url)
+        let saved = try XCTUnwrap(try reopened.mainContext.fetch(FetchDescriptor<CaptureSession>()).first { $0.id == result.session.id })
+        XCTAssertEqual(saved.originalTranscription,text); XCTAssertEqual(Set(saved.items.map(\.id)),Set(result.items.map(\.id)))
+        XCTAssertEqual(Set(saved.items.map(\.originalTextSegment)),Set(result.items.map(\.originalTextSegment)))
+    }
+    func testActualCertifiedLongCapturePreservesEveryMeaningAcrossRetryAndRelaunch() async throws {
+        let url = try location(); let store = try open(url); let repository = repository(store.mainContext)
+        let text = RuntimeDiscourseCertificateTests.actualFullSource
+        let configuration = RuntimeExampleConfiguration(libraryURL:URL(fileURLWithPath:"/nonexistent-durable-certificate-" + UUID().uuidString),allowProposed:false,retrievalEnabled:true)
+        func create() async throws -> CaptureCreationResult {
+            let previous = NSTimeZone.default; NSTimeZone.default = calendar.timeZone
+            defer { NSTimeZone.default = previous }
+            return try await RuntimeExampleConfiguration.$testConfiguration.withValue(configuration) {
+                try await repository.createCaptureResult(text:text,source:.inAppText,createdAt:reference,schedulesReminders:false)
+            }
+        }
+        let result = try await create()
+        XCTAssertEqual(result.session.originalTranscription,text); XCTAssertEqual(result.session.processingStatus,.complete)
+        XCTAssertEqual(result.items.count,6); XCTAssertTrue(result.items.allSatisfy { !$0.needsClarification && $0.reminderDate == nil })
+        let communication = try XCTUnwrap(result.items.first { $0.personName == "June" })
+        XCTAssertEqual(communication.displayTitle,"Email June the final volunteer rota once Priya has approved it")
+        XCTAssertTrue(communication.originalTextSegment.contains("email Jonah the final volunteer rota once Priya has approved it"))
+        XCTAssertTrue(communication.originalTextSegment.contains("She has looked at it, but she has not said it is approved"))
+        XCTAssertTrue(communication.originalTextSegment.contains("June, not Jonah")); XCTAssertNil(communication.dueDate)
+        let caretaker = try XCTUnwrap(result.items.first { $0.displayTitle.localizedCaseInsensitiveContains("ask the caretaker") })
+        XCTAssertEqual(caretaker.temporalIntent?.day,CalendarDay(year:2026,month:10,day:6))
+        let sign = try XCTUnwrap(result.items.first { $0.displayTitle.localizedCaseInsensitiveContains("direction sign") })
+        XCTAssertEqual(sign.temporalIntent?.day,CalendarDay(year:2026,month:10,day:9)); XCTAssertNil(sign.temporalIntent?.time)
+        let location = try XCTUnwrap(result.items.first { $0.itemType == .note && $0.originalTextSegment.contains("orange envelope") })
+        XCTAssertTrue(location.originalTextSegment.contains("inside the supplies bag")); XCTAssertTrue(location.originalTextSegment.contains("little black marker"))
+        XCTAssertEqual(result.items.filter { $0.itemType == .idea }.count,1)
+        XCTAssertTrue(result.items.contains { $0.itemType == .note && $0.originalTextSegment.contains("I have not agreed to send that message") })
+        let retry = try await create()
+        XCTAssertEqual(retry.session.id,result.session.id); XCTAssertEqual(Set(retry.items.map(\.id)),Set(result.items.map(\.id)))
+        let reopened = try open(url)
+        let saved = try XCTUnwrap(try reopened.mainContext.fetch(FetchDescriptor<CaptureSession>()).first { $0.id == result.session.id })
+        XCTAssertEqual(saved.originalTranscription,text); XCTAssertEqual(saved.items.count,6)
+        XCTAssertEqual(Set(saved.items.map(\.id)),Set(result.items.map(\.id)))
+        XCTAssertEqual(Set(saved.items.map(\.originalTextSegment)),Set(result.items.map(\.originalTextSegment)))
+        XCTAssertTrue(saved.items.allSatisfy { !$0.needsClarification && $0.reminderDate == nil })
+    }
+    func testActualCurrentWithdrawalSavesOnlySurvivingActionAcrossRetryAndRelaunch() async throws {
+        let url = try location(); let store = try open(url); let context = store.mainContext; let repository = repository(context)
+        let text = "Add a job to dust the weather vane. Wait, leave that off. I still need to clean the rain gauge."
+        let configuration = try XCTUnwrap(RuntimeExampleTestFixtures.reviewed)
+        let result = try await RuntimeExampleConfiguration.$testConfiguration.withValue(configuration) {
+            try await repository.createCaptureResult(text:text,source:.inAppText,createdAt:reference,schedulesReminders:false)
+        }
+        XCTAssertEqual(result.session.originalTranscription,text); XCTAssertEqual(result.session.processingStatus,.complete)
+        XCTAssertEqual(result.items.count,2)
+        XCTAssertEqual(result.items.filter { $0.itemType.isActionable }.map(\.displayTitle),["Clean the rain gauge"])
+        let note = try XCTUnwrap(result.items.first { $0.itemType == .note })
+        XCTAssertEqual(note.originalTextSegment,"Add a job to dust the weather vane. Wait, leave that off.")
+        XCTAssertTrue(result.items.allSatisfy { !$0.needsClarification && $0.reminderDate == nil && $0.dueDate == nil })
+        let retry = try await RuntimeExampleConfiguration.$testConfiguration.withValue(configuration) {
+            try await repository.createCaptureResult(text:text,source:.inAppText,createdAt:reference,schedulesReminders:false)
+        }
+        XCTAssertEqual(retry.session.id,result.session.id); XCTAssertEqual(Set(retry.items.map(\.id)),Set(result.items.map(\.id)))
+        let reopened = try open(url)
+        let saved = try XCTUnwrap(try reopened.mainContext.fetch(FetchDescriptor<CaptureSession>()).first { $0.id == result.session.id })
+        XCTAssertEqual(saved.originalTranscription,text); XCTAssertEqual(saved.items.count,2)
+        XCTAssertEqual(saved.items.filter { $0.itemType.isActionable }.map(\.displayTitle),["Clean the rain gauge"])
+        XCTAssertEqual(Set(saved.items.map(\.id)),Set(result.items.map(\.id)))
+    }
+    func testActualAsyncCoupledRevisionIsAtomicAndDurableAcrossRetryAndRelaunch() async throws {
+        let url = try location()
+        let store = try open(url); let context = store.mainContext; let repository = repository(context)
+        let target = try seed(context)
+        let sibling = try seed(context, title: "Scan the kiln handbook", id: UUID())
+        let siblingBefore = repository.atomicSnapshot(sibling)
+        let before = try XCTUnwrap(repository.atomicSnapshot(target))
+        let result = try await actualCreate(repository)
+        guard case .performed(operation: .revise, itemID: targetID, _) = result.operationOutcome else {
+            return XCTFail("Complete coupled revision must execute, not hold or create replacement tasks")
+        }
+        XCTAssertEqual(result.items.count, 0)
+        XCTAssertEqual(result.session.originalTranscription, source)
+        XCTAssertEqual(result.session.processingStatus, .complete)
+        XCTAssertEqual(target.id, before.id); XCTAssertEqual(target.captureSession?.id, before.parentID)
+        XCTAssertEqual(target.originalTextSegment, before.original)
+        XCTAssertEqual(target.displayTitle, "Ask Idris about the glaze samples")
+        XCTAssertEqual(target.personName, "Idris")
+        XCTAssertEqual(target.dueDate, date("2026-10-09T20:00:00Z"))
+        XCTAssertEqual(target.reminderDate, target.dueDate)
+        XCTAssertGreaterThan(target.lastModifiedAt, before.modified)
+        XCTAssertEqual(target.isReviewed, before.reviewed)
+        XCTAssertEqual(repository.atomicSnapshot(sibling), siblingBefore)
+        let state = try XCTUnwrap(CaptureOperationState.read(from: result.session.operationStateData))
+        XCTAssertEqual(state.atomicRevision?.before, before)
+        XCTAssertEqual(state.atomicRevision?.after, repository.atomicSnapshot(target))
+        XCTAssertEqual(state.reminderSynchronizationPending, true) // Scheduling deliberately suppressed.
+        let retry = try await actualCreate(repository)
+        XCTAssertTrue(retry.isDuplicate); XCTAssertEqual(retry.session.id, result.session.id)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<CapturedItem>()), 2)
+        let reopened = try open(url); let reopenedRepository = self.repository(reopened.mainContext)
+        let items = try reopened.mainContext.fetch(FetchDescriptor<CapturedItem>())
+        let saved = try XCTUnwrap(items.first { $0.id == targetID })
+        XCTAssertEqual(reopenedRepository.atomicSnapshot(saved), state.atomicRevision?.after)
+        let relaunched = try await actualCreate(reopenedRepository)
+        XCTAssertTrue(relaunched.isDuplicate); XCTAssertEqual(relaunched.session.id, result.session.id)
+        XCTAssertEqual(try reopened.mainContext.fetchCount(FetchDescriptor<CapturedItem>()), 2)
+    }
+    private func createSynthetic(_ text: String, repository: SwiftDataThoughtRepository, schedules: Bool = false) async throws -> CaptureCreationResult {
+        let oldZone = NSTimeZone.default; NSTimeZone.default = calendar.timeZone
+        defer { NSTimeZone.default = oldZone }
+        let config = RuntimeExampleConfiguration(libraryURL: URL(fileURLWithPath: "/unused-saved-source-OFF"),allowProposed: false,retrievalEnabled: false)
+        return try await RuntimeExampleConfiguration.$testConfiguration.withValue(config) {
+            try await repository.createCaptureResult(text: text,source: .inAppText,createdAt: reference,schedulesReminders: schedules)
+        }
+    }
+    func testAlertOnlyRemovalPreservesExactDeadlineTitlePersonAndSiblingAcrossRelaunch() async throws {
+        let url = try location(); let store = try open(url); let context = store.mainContext; let repository = repository(context)
+        let target = try seed(context,title: "Check the greenhouse humidity")
+        let sibling = try seed(context,title: "Check the ventilation latch",id: UUID())
+        let before = try XCTUnwrap(repository.atomicSnapshot(target)); let siblingBefore = repository.atomicSnapshot(sibling)
+        let text = #"Cancel only the timed alert on my saved "Check the greenhouse humidity" task. Keep the task and its October 8 due day. I still want to do it."#
+        let result = try await createSynthetic(text,repository: repository)
+        guard case .performed(operation: .revise,itemID: targetID,_) = result.operationOutcome else { return XCTFail("Alert-only removal must update the actual saved task") }
+        XCTAssertEqual(result.items.count,0); XCTAssertNil(target.reminderDate)
+        XCTAssertEqual(target.dueDate,before.due); XCTAssertEqual(target.displayTitle,before.title)
+        XCTAssertEqual(target.personName,before.person); XCTAssertEqual(target.temporalIntentData,before.temporal)
+        XCTAssertEqual(target.originalTextSegment,before.original); XCTAssertEqual(target.captureSession?.id,before.parentID)
+        XCTAssertEqual(repository.atomicSnapshot(sibling),siblingBefore)
+        let receipt = try XCTUnwrap(CaptureOperationState.read(from: result.session.operationStateData))
+        XCTAssertEqual(receipt.reminderSynchronizationStatus,"cancellationPending")
+        XCTAssertEqual(receipt.atomicRevision?.before,before)
+        XCTAssertEqual(receipt.atomicRevision?.after,repository.atomicSnapshot(target))
+        let reopened = try open(url); let saved = try XCTUnwrap(try reopened.mainContext.fetch(FetchDescriptor<CapturedItem>()).first { $0.id == targetID })
+        XCTAssertEqual(saved.dueDate,before.due); XCTAssertNil(saved.reminderDate)
+        let retry = try await createSynthetic(text,repository: self.repository(reopened.mainContext))
+        XCTAssertTrue(retry.isDuplicate); XCTAssertEqual(try reopened.mainContext.fetchCount(FetchDescriptor<CapturedItem>()),2)
+    }
+    func testMissingExactTargetKeepsItsDeltaAndIndependentGrandmaReminderWithoutGuessingDistractor() async throws {
+        let url = try location(); let store = try open(url); let context = store.mainContext; let repository = repository(context)
+        let wrong = try seed(context,title: "Send Hadi the rehearsal invoice"); let before = repository.atomicSnapshot(wrong)
+        let text = #"Change my saved "Send Hadi the observatory sketch" task to ask for the mount diameter instead. Also remind me November 20 at 8 AM to call Grandma about the rain cover."#
+        let result = try await createSynthetic(text,repository: repository)
+        XCTAssertEqual(repository.atomicSnapshot(wrong),before)
+        XCTAssertEqual(result.items.count,2)
+        let active = try XCTUnwrap(result.items.first { !$0.needsClarification })
+        XCTAssertEqual(active.personName,"Grandma"); XCTAssertNotNil(active.reminderDate)
+        let state = try XCTUnwrap(CaptureOperationState.read(from: result.session.operationStateData))
+        XCTAssertEqual(state.phase,.pendingChoice); XCTAssertTrue(state.candidateIDs.isEmpty)
+        XCTAssertEqual(state.pendingSavedRevision?.targetWords,"Send Hadi the observatory sketch")
+        XCTAssertEqual(state.pendingSavedRevision?.replacementAction,"ask for the mount diameter")
+        XCTAssertEqual(state.pendingSavedRevision?.captureSource,text)
+        XCTAssertFalse(result.items.contains { $0.displayTitle.lowercased().hasPrefix("also") && $0.personName == nil })
+        let reopened = try open(url); let sessions = try reopened.mainContext.fetch(FetchDescriptor<CaptureSession>())
+        let savedCapture = try XCTUnwrap(sessions.first { $0.id == result.session.id })
+        XCTAssertEqual(CaptureOperationState.read(from: savedCapture.operationStateData)?.pendingSavedRevision,state.pendingSavedRevision)
+        XCTAssertEqual(savedCapture.items.count,2)
+    }
+    func testAmbiguousSavedMoveRequiresVersionCheckedReplyAndRetainsIndependentMomTask() async throws {
+        let url = try location(); let store = try open(url); let context = store.mainContext; let repository = repository(context)
+        let chosen = try seed(context,title: "Ask Rami about the canopy permit at the morning meeting")
+        let other = try seed(context,title: "Ask Rami about the canopy permit at the evening meeting",id: UUID())
+        let otherBefore = repository.atomicSnapshot(other)
+        let text = "Move my saved task to ask Rami about the canopy permit to November 24. There are two versions in my list and I have not specified which one. Separately, ask Mom about the train platform tomorrow."
+        let result = try await createSynthetic(text,repository: repository)
+        XCTAssertEqual(result.items.count,2)
+        let review = try XCTUnwrap(result.items.first { $0.needsClarification })
+        XCTAssertEqual(ItemPresentation.savedChangeReviewPrompt(for:review),"Choose which saved item to change")
+        let mom = try XCTUnwrap(result.items.first { !$0.needsClarification })
+        XCTAssertEqual(mom.personName,"Mom"); XCTAssertNil(mom.reminderDate)
+        let state = try XCTUnwrap(CaptureOperationState.read(from: result.session.operationStateData))
+        XCTAssertEqual(Set(state.candidateIDs),[chosen.id,other.id]); XCTAssertEqual(state.pendingSavedRevision?.timingText,"November 24")
+        let recorder = RuntimeRevisionScheduleRecorder(result: .scheduled)
+        let oldZone = NSTimeZone.default; NSTimeZone.default = calendar.timeZone
+        defer { NSTimeZone.default = oldZone }
+        try await ReminderScheduler.$testNotificationScheduling.withValue({ identifier,requests in await recorder.deliver(identifier,requests) }) {
+            try repository.choosePendingCaptureOperation(review,targetID: chosen.id)
+            await ReminderScheduler.waitForPendingSynchronization()
+        }
+        XCTAssertEqual(chosen.dueDate,date("2026-11-24T18:00:00Z")); XCTAssertEqual(chosen.reminderDate,chosen.dueDate)
+        XCTAssertEqual(repository.atomicSnapshot(other),otherBefore)
+        XCTAssertEqual(result.session.items.map(\.id),[mom.id])
+        XCTAssertEqual(CaptureOperationState.read(from: result.session.operationStateData)?.phase,.performed)
+        let reopened = try open(url); let savedCapture = try XCTUnwrap(try reopened.mainContext.fetch(FetchDescriptor<CaptureSession>()).first { $0.id == result.session.id })
+        XCTAssertEqual(savedCapture.items.map(\.id),[mom.id]); XCTAssertEqual(savedCapture.originalTranscription,text)
+    }
+    func testConfirmedDateOnlyMovePreservesDistinctDeadlineAndEarlierReminderClocks() async throws {
+        let store = try open(location()); let context = store.mainContext; let repository = repository(context)
+        let first = try seed(context,title: "Inspect the valve on the upper line")
+        _ = try seed(context,title: "Inspect the valve on the lower line",id: UUID())
+        first.dueDate = date("2026-10-20T21:00:00Z"); first.reminderDate = date("2026-10-19T13:00:00Z")
+        first.temporalIntent = TemporalIntent(kind: .exactDateTime,day: CalendarDay(year: 2026,month: 10,day: 20),time: WallClockTime(hour: 17,minute: 0),
+            timeZoneIdentifier: "America/Toronto",timeZoneBehavior: .deviceLocal,sourceText: first.originalTextSegment)
+        try context.save()
+        let result = try await createSynthetic("Move my saved task to inspect the valve to November 21. There are two versions in my list and I have not specified which one.",repository: repository)
+        let review = try XCTUnwrap(result.items.first { $0.needsClarification })
+        let oldZone = NSTimeZone.default; NSTimeZone.default = calendar.timeZone; defer { NSTimeZone.default = oldZone }
+        let recorder = RuntimeRevisionScheduleRecorder(result: .scheduled)
+        try await ReminderScheduler.$testNotificationScheduling.withValue({ id,requests in await recorder.deliver(id,requests) }) {
+            try repository.choosePendingCaptureOperation(review,targetID: first.id)
+            await ReminderScheduler.waitForPendingSynchronization()
+        }
+        XCTAssertEqual(first.dueDate,date("2026-11-21T22:00:00Z"))
+        XCTAssertEqual(first.reminderDate,date("2026-11-20T14:00:00Z"))
+        XCTAssertEqual(first.temporalIntent?.kind,.exactDateTime)
+    }
+    func testAmbiguousAlertRemovalRetainsPurchaseAndChangesOnlyConfirmedClockVersion() async throws {
+        let url = try location(); let store = try open(url); let context = store.mainContext; let repository = repository(context)
+        let first = try seed(context, title: "Inspect the sump valve")
+        let other = try seed(context, title: "Inspect the sump valve", id: UUID())
+        other.dueDate = date("2026-10-08T21:00:00Z"); other.reminderDate = other.dueDate
+        try context.save()
+        let firstBefore = try XCTUnwrap(repository.atomicSnapshot(first)); let otherBefore = repository.atomicSnapshot(other)
+        XCTAssertNotEqual(ItemPresentation.savedTargetDetail(for: first), ItemPresentation.savedTargetDetail(for: other))
+        let text = #"Remove the alert from my saved "Inspect the sump valve" task. Keep the task. Also buy tape."#
+        let result = try await createSynthetic(text, repository: repository)
+        let review = try XCTUnwrap(result.items.first { $0.needsClarification }); let reviewID = review.id
+        let purchase = try XCTUnwrap(result.items.first { !$0.needsClarification })
+        XCTAssertEqual(purchase.itemType, .shopping); XCTAssertTrue(purchase.displayTitle.lowercased().contains("tape"))
+        let pending = try XCTUnwrap(CaptureOperationState.read(from: result.session.operationStateData))
+        XCTAssertEqual(pending.pendingSavedRevision?.removesAlert, true)
+        XCTAssertEqual(Set(try repository.pendingCaptureOperationChoices(for: review).map(\.id)), [first.id, other.id])
+        let recorder = RuntimeRevisionScheduleRecorder(result: .scheduled)
+        try await ReminderScheduler.$testNotificationScheduling.withValue({ id, requests in await recorder.deliver(id, requests) }) {
+            try repository.choosePendingCaptureOperation(review, targetID: first.id)
+            await ReminderScheduler.waitForPendingSynchronization()
+        }
+        XCTAssertNil(first.reminderDate); XCTAssertEqual(first.dueDate, firstBefore.due)
+        XCTAssertEqual(first.temporalIntentData, firstBefore.temporal); XCTAssertEqual(first.displayTitle, firstBefore.title)
+        XCTAssertEqual(repository.atomicSnapshot(other), otherBefore); XCTAssertEqual(result.session.items.map(\.id), [purchase.id])
+        let after = repository.atomicSnapshot(first)
+        let reopened = try open(url); let relaunched = self.repository(reopened.mainContext)
+        try relaunched.choosePendingCaptureOperation(captureSessionID: result.session.id, reviewItemID: reviewID, targetID: first.id)
+        await ReminderScheduler.waitForPendingSynchronization()
+        let saved = try XCTUnwrap(try reopened.mainContext.fetch(FetchDescriptor<CapturedItem>()).first { $0.id == first.id })
+        XCTAssertEqual(relaunched.atomicSnapshot(saved), after)
+        XCTAssertThrowsError(try relaunched.choosePendingCaptureOperation(captureSessionID: result.session.id, reviewItemID: UUID(), targetID: first.id))
+    }
+    func testChangedSavedChoiceIsOmittedAndReplyCannotApplyAnOldDelta() async throws {
+        let store = try open(location()); let context = store.mainContext; let repository = repository(context)
+        let first = try seed(context, title: "Inspect the valve on the upper line")
+        let other = try seed(context, title: "Inspect the valve on the lower line", id: UUID())
+        let result = try await createSynthetic("Move my saved task to inspect the valve to November 21. There are two versions in my list and I have not specified which one.", repository: repository)
+        // Both suggestions must match the actual requested phrase; use a genuine common phrase.
+        if result.items.first(where: { $0.needsClarification }).flatMap({ CaptureOperationState.read(from: $0.captureSession?.operationStateData) })?.candidateIDs.isEmpty == true {
+            return XCTFail("Fixture must offer actual saved choices")
+        }
+        let review = try XCTUnwrap(result.items.first { $0.needsClarification })
+        first.personName = "New recipient"; try context.save(); let changed = repository.atomicSnapshot(first)
+        XCTAssertFalse(try repository.pendingCaptureOperationChoices(for: review).contains { $0.id == first.id })
+        XCTAssertThrowsError(try repository.choosePendingCaptureOperation(review, targetID: first.id))
+        XCTAssertEqual(repository.atomicSnapshot(first), changed)
+        XCTAssertEqual(CaptureOperationState.read(from: result.session.operationStateData)?.phase, .pendingChoice)
+        XCTAssertNotNil(other.reminderDate)
+    }
+    func testNotificationOnlyAcknowledgmentCannotProveParentAlarmCancellation() async throws {
+        let store = try open(location()); let context = store.mainContext; let repository = repository(context)
+        let target = try seed(context, title: "Test the brake", segment: "Test the brake tomorrow at 8 AM",
+            parentSource: "Set an alarm at 8 AM tomorrow. Test the brake.")
+        let before = try XCTUnwrap(repository.atomicSnapshot(target))
+        XCTAssertEqual(ItemPresentation.effectiveReminderDelivery(for: target), .alarm)
+        let result = try await createSynthetic(#"Remove the alert from my saved "Test the brake" task. Keep the task."#, repository: repository)
+        XCTAssertNil(target.reminderDate)
+        repository.acknowledgeAtomicRevisionRemindersForTesting(.init(cancelledItemIDs: [target.id]))
+        let state = try XCTUnwrap(CaptureOperationState.read(from: result.session.operationStateData))
+        XCTAssertEqual(state.reminderSynchronizationPending, true); XCTAssertEqual(state.reminderSynchronizationStatus, "cancellationPending")
+        XCTAssertEqual(state.atomicRevision?.before.parentOriginal, before.parentOriginal)
+        XCTAssertEqual(state.atomicRevision?.before.parentCreated, before.parentCreated)
+        repository.acknowledgeAtomicRevisionRemindersForTesting(.init(cancelledItemIDs: [target.id], cancelledAlarmItemIDs: [target.id]))
+        XCTAssertEqual(CaptureOperationState.read(from: result.session.operationStateData)?.reminderSynchronizationPending, false)
+        XCTAssertEqual(CaptureOperationState.read(from: result.session.operationStateData)?.reminderSynchronizationStatus, "cancelled")
+    }
+    private final class RuntimeConsumptionProof: @unchecked Sendable {
+        private let lock = NSLock()
+        private var values: [String] = []
+        func append(_ line: String) {
+            print("RUNTIME_ATOMIC_SYNTHETIC_PROOF " + line)
+            lock.withLock { values.append(line) }
+        }
+        func lines() -> [String] { lock.withLock { values } }
+    }
+    private final class CancellationProofRecorder: @unchecked Sendable {
+        private let lock = NSLock()
+        private var alarms: Set<UUID>
+        private let refusesCancellation: Bool
+        init(id: UUID, refusesCancellation: Bool) { alarms = [id]; self.refusesCancellation = refusesCancellation }
+        func cancel(_ id: UUID) { lock.withLock { if !refusesCancellation { alarms.remove(id) } } }
+        func armed() -> Set<UUID> { lock.withLock { alarms } }
+        var sink: ReminderDeliverySink {
+            ReminderDeliverySink(removeNotifications: { _ in }, cancelAlarm: { [self] in cancel($0) },
+                pendingIdentifiers: { [] }, armedAlarmIDs: { [self] in armed() })
+        }
+    }
+    private func observeCancellation(_ id: UUID) async throws -> ReminderBatchAcknowledgment {
+        var acknowledgment: ReminderBatchAcknowledgment?
+        ReminderScheduler.synchronize([], requestAuthorizationIfNeeded: false,
+            scope: ReminderSynchronizationScope(itemIDs: [id], captureSessionIDs: []),
+            onAcknowledgment: { acknowledgment = $0 })
+        await ReminderScheduler.waitForPendingSynchronization()
+        return try XCTUnwrap(acknowledgment)
+    }
+    func testSchedulerAcknowledgesOnlyObservedAlarmAbsenceAndKeepsFailedCancellationPending() async throws {
+        let old = ReminderScheduler.delivery; defer { ReminderScheduler.delivery = old }
+        for refuses in [false, true] {
+            let id = UUID(); let recorder = CancellationProofRecorder(id: id, refusesCancellation: refuses)
+            ReminderScheduler.delivery = recorder.sink
+            let report = try await observeCancellation(id)
+            XCTAssertEqual(report.cancelledItemIDs, [id])
+            XCTAssertEqual(report.cancelledAlarmItemIDs.contains(id), !refuses)
+        }
+        let id = UUID(); var unavailable = CancellationProofRecorder(id: id, refusesCancellation: false).sink
+        unavailable.armedAlarmIDs = { nil }; ReminderScheduler.delivery = unavailable
+        let report = try await observeCancellation(id)
+        XCTAssertTrue(report.cancelledAlarmItemIDs.isEmpty)
+    }
+    func testEmptyCancellationAcknowledgmentRetainsPendingAndExactNotificationProofClearsIt() async throws {
+        let store = try open(location()); let context = store.mainContext; let repository = repository(context)
+        let target = try seed(context, title: "Test the indicator")
+        let result = try await createSynthetic(#"Remove the alert from my saved "Test the indicator" task. Keep the task."#, repository: repository)
+        repository.acknowledgeAtomicRevisionRemindersForTesting(.init())
+        XCTAssertEqual(CaptureOperationState.read(from: result.session.operationStateData)?.reminderSynchronizationPending, true)
+        repository.acknowledgeAtomicRevisionRemindersForTesting(.init(cancelledItemIDs: [target.id]))
+        XCTAssertEqual(CaptureOperationState.read(from: result.session.operationStateData)?.reminderSynchronizationPending, false)
+        XCTAssertEqual(CaptureOperationState.read(from: result.session.operationStateData)?.reminderSynchronizationStatus, "cancelled")
+    }
+    func testExplicitDayAnswerPreservesDateOnlyAndOriginalAfterRelaunch() throws {
+        let url = try location(); let store = try open(url); let context = store.mainContext; let repository = repository(context)
+        let item = try seed(context,title: "Inspect the hinge")
+        item.reminderDate = nil; item.dueDate = date("2026-11-19T05:00:00Z")
+        item.temporalIntent = TemporalIntent(kind: .dateOnly,day: CalendarDay(year: 2026,month: 11,day: 19),time: nil,
+            timeZoneIdentifier: "America/Toronto",timeZoneBehavior: .deviceLocal,sourceText: "Inspect the hinge on November 19 or November 20.")
+        item.semanticState = .underspecified(.ambiguousTemporalScope); item.needsClarification = true
+        try context.save(); let original = item.originalTextSegment; let oldZone = NSTimeZone.default
+        NSTimeZone.default = calendar.timeZone; defer { NSTimeZone.default = oldZone }
+        try repository.update(item,with: ItemEdits(title: item.displayTitle,itemType: .task,category: item.category,dueDate: item.dueDate,
+            reminderDate: nil,priority: item.priority,personName: item.personName,needsClarification: false,dueDateHasTime: false,
+            clarifiedGap: .ambiguousTemporalScope))
+        XCTAssertEqual(item.semanticState,.resolved); XCTAssertEqual(item.temporalIntent?.kind,.dateOnly)
+        XCTAssertNil(item.reminderDate); XCTAssertEqual(item.originalTextSegment,original)
+        let reopened = try open(url); let saved = try XCTUnwrap(try reopened.mainContext.fetch(FetchDescriptor<CapturedItem>()).first { $0.id == item.id })
+        XCTAssertEqual(saved.temporalIntent?.kind,.dateOnly); XCTAssertNil(saved.reminderDate)
+        XCTAssertEqual(saved.semanticState,.resolved); XCTAssertEqual(saved.originalTextSegment,original)
+    }
+    func testExactPreInferenceSnapshotRejectsChangedFieldsEvenWithoutTimestampChange() throws {
+        let store = try open(location()); let context = store.mainContext; let repository = repository(context)
+        let target = try seed(context); let frozen = try XCTUnwrap(repository.atomicSnapshot(target))
+        let operation = try request(frozen)
+        target.personName = "Émile" // Adversarial edit with same timestamp: whole snapshot still protects it.
+        try context.save(); let newer = repository.atomicSnapshot(target)
+        let session = try raw(context)
+        let outcome = try repository.applyCaptureOperation(operation, session: session, schedulesReminders: false)
+        guard case .ambiguous(operation: .revise, _) = outcome else { return XCTFail("Stale frozen state must hold") }
+        XCTAssertEqual(repository.atomicSnapshot(target), newer)
+        XCTAssertNil(CaptureOperationState.read(from: session.operationStateData)?.atomicRevision)
+        XCTAssertEqual(session.items.count, 1)
+    }
+    func testDuplicateExactTitlesAreNotResolvedToTheSnapshotSingleton() throws {
+        let store = try open(location()); let context = store.mainContext; let repository = repository(context)
+        let target = try seed(context); let frozen = try XCTUnwrap(repository.atomicSnapshot(target))
+        _ = try seed(context, id: UUID())
+        let session = try raw(context)
+        let outcome = try repository.applyCaptureOperation(request(frozen), session: session, schedulesReminders: false)
+        guard case .ambiguous(operation: .revise, _) = outcome else { return XCTFail("Duplicate target titles must hold") }
+        XCTAssertEqual(repository.atomicSnapshot(target), frozen)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<CapturedItem>()), 3)
+    }
+    func testCoupledSecondSaveFailureRetainsRawAndAllSeedFields() throws {
+        let url = try location(); var frozen: SavedAtomicRevision.Snapshot!; var rawID: UUID!
+        do {
+            let writable = try open(url); let repository = repository(writable.mainContext)
+            frozen = try XCTUnwrap(repository.atomicSnapshot(seed(writable.mainContext)))
+            rawID = try raw(writable.mainContext).id
+        }
+        let readOnly = try open(url, writable: false); let context = readOnly.mainContext
+        let repository = repository(context)
+        let session = try XCTUnwrap(try context.fetch(FetchDescriptor<CaptureSession>()).first { $0.id == rawID })
+        XCTAssertThrowsError(try repository.applyCaptureOperation(request(frozen), session: session, schedulesReminders: false))
+        let target = try XCTUnwrap(try context.fetch(FetchDescriptor<CapturedItem>()).first { $0.id == targetID })
+        XCTAssertEqual(repository.atomicSnapshot(target), frozen)
+        XCTAssertEqual(session.processingStatus, .pending); XCTAssertNil(session.operationStateData)
+        XCTAssertEqual(session.originalTranscription, source)
+        XCTAssertEqual(session.items.count, 1)
+        let reopened = try open(url)
+        let durable = try XCTUnwrap(try reopened.mainContext.fetch(FetchDescriptor<CaptureSession>()).first { $0.id == rawID })
+        XCTAssertEqual(durable.processingStatus, .pending); XCTAssertNil(durable.operationStateData)
+    }
+    func testPerformedReceiptReplaysWithoutRepeatingTheMutation() throws {
+        let store = try open(location()); let context = store.mainContext; let repository = repository(context)
+        let target = try seed(context); let frozen = try XCTUnwrap(repository.atomicSnapshot(target))
+        let session = try raw(context); let operation = try request(frozen)
+        _ = try repository.applyCaptureOperation(operation, session: session, schedulesReminders: false)
+        let after = repository.atomicSnapshot(target); let receipt = session.operationStateData
+        _ = try repository.applyCaptureOperation(operation, session: session, schedulesReminders: false)
+        XCTAssertEqual(repository.atomicSnapshot(target), after)
+        XCTAssertEqual(session.operationStateData, receipt)
+        XCTAssertEqual(try context.fetchCount(FetchDescriptor<CapturedItem>()), 1)
+    }
+    func testReminderFailureThenLaunchReconciliationAcknowledgesTheExactTarget() async throws {
+        try await ReminderSchedulingClock.$testNow.withValue(reference) {
+        let url = try location(); let store = try open(url); let context = store.mainContext
+        let repository = repository(context); let target = try seed(context)
+        let before = try XCTUnwrap(repository.atomicSnapshot(target)); let session = try raw(context)
+        let recorder = RuntimeRevisionScheduleRecorder(result: .failed)
+        try await ReminderScheduler.$testNotificationScheduling.withValue({ id, requests in
+            await recorder.deliver(id, requests)
+        }) {
+            _ = try repository.applyCaptureOperation(request(before), session: session, schedulesReminders: true)
+            _ = await ReminderScheduler.synchronizeAndVerify([], requestAuthorizationIfNeeded: false)
+        }
+        let failed = try XCTUnwrap(CaptureOperationState.read(from: session.operationStateData))
+        XCTAssertEqual(failed.reminderSynchronizationPending, true)
+        XCTAssertEqual(failed.reminderSynchronizationStatus, "failed")
+        let after = repository.atomicSnapshot(target)
+        let reopened = try open(url); let relaunched = self.repository(reopened.mainContext)
+        await recorder.setResult(.scheduled)
+        await ReminderScheduler.$testNotificationScheduling.withValue({ id, requests in
+            await recorder.deliver(id, requests)
+        }) {
+            relaunched.reconcilePendingReminders()
+            _ = await ReminderScheduler.synchronizeAndVerify([], requestAuthorizationIfNeeded: false)
+        }
+        let amendment = try XCTUnwrap(try reopened.mainContext.fetch(FetchDescriptor<CaptureSession>()).first { $0.id == session.id })
+        let acknowledged = try XCTUnwrap(CaptureOperationState.read(from: amendment.operationStateData))
+        XCTAssertEqual(acknowledged.reminderSynchronizationPending, false)
+        XCTAssertEqual(acknowledged.reminderSynchronizationStatus, "scheduled")
+        let saved = try XCTUnwrap(try reopened.mainContext.fetch(FetchDescriptor<CapturedItem>()).first { $0.id == targetID })
+        XCTAssertEqual(relaunched.atomicSnapshot(saved), after)
+        let requests = await recorder.recordedRequests()
+        XCTAssertEqual(requests.count, 2)
+        XCTAssertTrue(requests.allSatisfy { $0.itemID == targetID && $0.captureSessionID == before.parentID && $0.fireDate == date("2026-10-09T20:00:00Z") })
+            }
+    }
+    func testFailedDeliveryRetriesThroughDuplicateCaptureWithoutRepeatingTheMutation() async throws {
+        try await ReminderSchedulingClock.$testNow.withValue(reference) {
+        let store = try open(location()); let context = store.mainContext; let repository = repository(context)
+        let target = try seed(context); let recorder = RuntimeRevisionScheduleRecorder(result: .failed)
+        try await ReminderScheduler.$testNotificationScheduling.withValue({ id, requests in
+            await recorder.deliver(id, requests)
+        }) {
+            let result = try await actualCreate(repository, schedulesReminders: true)
+            _ = await ReminderScheduler.synchronizeAndVerify([], requestAuthorizationIfNeeded: false)
+            let after = repository.atomicSnapshot(target)
+            XCTAssertEqual(CaptureOperationState.read(from: result.session.operationStateData)?.reminderSynchronizationStatus, "failed")
+            await recorder.setResult(.scheduled)
+            let retry = try await actualCreate(repository, schedulesReminders: true)
+            _ = await ReminderScheduler.synchronizeAndVerify([], requestAuthorizationIfNeeded: false)
+            XCTAssertTrue(retry.isDuplicate); XCTAssertEqual(retry.session.id, result.session.id)
+            XCTAssertEqual(repository.atomicSnapshot(target), after)
+            XCTAssertEqual(try context.fetchCount(FetchDescriptor<CapturedItem>()), 1)
+            let state = try XCTUnwrap(CaptureOperationState.read(from: result.session.operationStateData))
+            XCTAssertEqual(state.reminderSynchronizationPending, false)
+            XCTAssertEqual(state.reminderSynchronizationStatus, "scheduled")
+            let requests = await recorder.recordedRequests()
+            XCTAssertEqual(requests.count, 2)
+            XCTAssertTrue(requests.allSatisfy { $0.itemID == targetID && $0.fireDate == date("2026-10-09T20:00:00Z") })
+        }
+            }
+    }
+    func testReplacementCannotLeaveAnIncompatibleSavedClassUnchanged() throws {
+        let store = try open(location()); let context = store.mainContext; let repository = repository(context)
+        let target = try seed(context); let before = try XCTUnwrap(repository.atomicSnapshot(target))
+        let changed = "Change my saved \"Ask Zélie about the kiln delivery\" task to buy four bags of charcoal."
+        let session = try raw(context, source: changed)
+        let outcome = try repository.applyCaptureOperation(request(before, source: changed), session: session, schedulesReminders: false)
+        guard case .ambiguous = outcome else { return XCTFail("A class change needs a complete supported delta") }
+        XCTAssertEqual(repository.atomicSnapshot(target), before)
+        XCTAssertNil(CaptureOperationState.read(from: session.operationStateData)?.atomicRevision)
+    }
+    func testOlderSuccessfulCallbackCannotAcknowledgeANewerFailedRevision() async throws {
+        try await ReminderSchedulingClock.$testNow.withValue(reference) {
+        let store = try open(location()); let context = store.mainContext; let repository = repository(context)
+        let target = try seed(context); let before = try XCTUnwrap(repository.atomicSnapshot(target))
+        let first = try raw(context)
+        let recorder = RuntimeRevisionScheduleRecorder(result: .failed, holdFirst: true)
+        try await ReminderScheduler.$testNotificationScheduling.withValue({ id, requests in
+            await recorder.deliver(id, requests)
+        }) {
+            _ = try repository.applyCaptureOperation(request(before), session: first, schedulesReminders: true)
+            try await recorder.waitForFirst()
+            let nextSource = "Change my saved \"Ask Idris about the glaze samples\" reminder to ask Sora about the engraving proofs instead, October 10 at 11 AM. Keep it one reminder."
+            let second = try raw(context, source: nextSource)
+            let middle = try XCTUnwrap(repository.atomicSnapshot(target))
+            _ = try repository.applyCaptureOperation(request(middle, source: nextSource), session: second, schedulesReminders: true)
+            await recorder.releaseFirst()
+            _ = await ReminderScheduler.synchronizeAndVerify([], requestAuthorizationIfNeeded: false)
+            _ = await ReminderScheduler.synchronizeAndVerify([], requestAuthorizationIfNeeded: false)
+            let old = try XCTUnwrap(CaptureOperationState.read(from: first.operationStateData))
+            let current = try XCTUnwrap(CaptureOperationState.read(from: second.operationStateData))
+            XCTAssertEqual(old.reminderSynchronizationStatus, "superseded")
+            XCTAssertEqual(current.reminderSynchronizationPending, true)
+            XCTAssertEqual(current.reminderSynchronizationStatus, "failed")
+            XCTAssertEqual(target.personName, "Sora")
+            XCTAssertEqual(target.reminderDate, date("2026-10-10T15:00:00Z"))
+        }
+            }
+    }
+    func testOneReminderInvariantSentenceKeepsCompleteCoupledDelta() throws {
+        let store = try open(location()); let context = store.mainContext; let repository = repository(context)
+        let target = try seed(context); let before = try XCTUnwrap(repository.atomicSnapshot(target))
+        let changed = source.replacingOccurrences(of: "Keep it one reminder.", with: "It must remain one reminder.")
+        let session = try raw(context, source: changed)
+        let outcome = try repository.applyCaptureOperation(request(before, source: changed), session: session, schedulesReminders: false)
+        guard case .performed = outcome else { return XCTFail("One-reminder invariant belongs to the same complete edit") }
+        XCTAssertEqual(target.personName, "Idris"); XCTAssertEqual(target.dueDate, date("2026-10-09T20:00:00Z"))
+        XCTAssertEqual(target.reminderDate, target.dueDate); XCTAssertEqual(target.id, before.id)
+        XCTAssertEqual(target.originalTextSegment, before.original); XCTAssertEqual(session.items.count, 0)
+        XCTAssertEqual(CaptureOperationState.read(from: session.operationStateData)?.atomicRevision?.before, before)
+        XCTAssertNil(SavedAtomicRevision.read(changed + " Also buy paint.", snapshots: [before], referenceDate: reference, calendar: calendar))
+    }
+    func testReplacementClockWithoutInsteadSeparatorIsNotPartiallyApplied() throws {
+        let store = try open(location()); let context = store.mainContext; let repository = repository(context)
+        let target = try seed(context); let before = try XCTUnwrap(repository.atomicSnapshot(target))
+        let changed = "Change my saved \"Ask Zélie about the kiln delivery\" reminder to ask Idris about the glaze samples tomorrow at 4 PM."
+        let session = try raw(context, source: changed)
+        let outcome = try repository.applyCaptureOperation(request(before, source: changed), session: session, schedulesReminders: false)
+        guard case .performed = outcome else { return XCTFail("Complete clock in replacement should update with the other fields") }
+        XCTAssertEqual(target.personName, "Idris")
+        XCTAssertEqual(target.reminderDate, date("2026-10-06T20:00:00Z"))
+        XCTAssertEqual(target.dueDate, target.reminderDate)
+    }
+    func testIndependentActionInTimingTailCannotBeClaimedHandled() throws {
+        let store = try open(location()); let repository = repository(store.mainContext)
+        let target = try seed(store.mainContext); let before = try XCTUnwrap(repository.atomicSnapshot(target))
+        let changed = "Change my saved \"Ask Zélie about the kiln delivery\" reminder to ask Idris about the glaze samples instead, October 9 at 4 PM. Also buy paint."
+        XCTAssertNil(SavedAtomicRevision.read(changed, snapshots: [before], referenceDate: reference, calendar: calendar))
+        XCTAssertEqual(repository.atomicSnapshot(target), before)
+    }
+    func testDifferentDeadlineAndEarlierReminderAreNotCollapsed() throws {
+        let store = try open(location()); let context = store.mainContext; let repository = repository(context)
+        let target = try seed(context); target.reminderDate = date("2026-10-08T16:00:00Z"); try context.save()
+        let before = try XCTUnwrap(repository.atomicSnapshot(target)); let session = try raw(context)
+        let outcome = try repository.applyCaptureOperation(request(before), session: session, schedulesReminders: false)
+        guard case .ambiguous = outcome else { return XCTFail("An undisclosed partial timing change must hold") }
+        XCTAssertEqual(repository.atomicSnapshot(target), before)
+    }
+    func testGenericRecoveryCannotReExecuteAPerformedSavedChange() throws {
+        let store = try open(location()); let context = store.mainContext; let repository = repository(context)
+        let target = try seed(context); let before = try XCTUnwrap(repository.atomicSnapshot(target)); let session = try raw(context)
+        _ = try repository.applyCaptureOperation(request(before), session: session, schedulesReminders: false)
+        let after = repository.atomicSnapshot(target); let record = session.operationStateData
+        XCTAssertThrowsError(try repository.reorganize(session)); XCTAssertThrowsError(try repository.undoOrganization(session))
+        XCTAssertEqual(repository.atomicSnapshot(target), after); XCTAssertEqual(session.operationStateData, record)
+        XCTAssertEqual(session.items.count, 0)
+    }
+    func testDeclared20And25And30TasksRetainAllMembersWithoutEchoGeneration() throws {
+        let objects = (1...30).map { "label the storage bin \($0)" }
+        for count in [20,25,30] {
+            let source = "These are separate jobs for when I have time, with no timed alerts: " + objects.prefix(count).joined(separator: "; ") + "."
+            let reading = try XCTUnwrap(RuntimeSourceInterpreter.interpret(source, referenceDate: reference,
+                calendar: calendar, context: .empty, examples: []))
+            XCTAssertEqual(reading.items.count, count)
+            XCTAssertTrue(reading.items.allSatisfy { $0.organization.itemType == .task && !$0.needsReview && $0.organization.reminderDate == nil })
+            XCTAssertTrue(RuntimeProposalGuard.covers(source, quotes: reading.items.map(\.sourceQuote)))
+            XCTAssertTrue(reading.items.last?.analysisText.contains("storage bin \(count)") == true)
+        }
+    }
+    func testListWithLateWithdrawalDoesNotExecuteBeforeReconciliation() {
+        let source = "These are separate jobs for when I have time, with no timed alerts: label the red bin; label the green bin; actually cancel the first one."
+        XCTAssertNil(RuntimeSourceInterpreter.interpret(source, referenceDate: reference, calendar: calendar, context: .empty, examples: []))
+    }
+    func testQuotedNonAdoptionWordsDoNotOverrideAnActualCommitment() {
+        let source = "My cousin wrote, \"I haven't agreed; keep this as a note.\" I will call Dad tonight."
+        XCTAssertNil(RuntimeSourceInterpreter.interpret(source, referenceDate: reference, calendar: calendar, context: .empty, examples: []))
+    }
+}
+#endif
+
+#if DEBUG
+private actor RuntimeRevisionScheduleRecorder {
+    private var result: ReminderSchedulingResult
+    private let holdFirst: Bool
+    private var records: [ReminderScheduleRequest] = []
+    private var calls = 0
+    private var first: CheckedContinuation<ReminderSchedulingResult, Never>?
+    init(result: ReminderSchedulingResult, holdFirst: Bool = false) { self.result = result; self.holdFirst = holdFirst }
+    func deliver(_ id: String, _ requests: [ReminderScheduleRequest]) async -> ReminderSchedulingResult {
+        calls += 1; records.append(contentsOf: requests)
+        if calls == 1 && holdFirst { return await withCheckedContinuation { first = $0 } }
+        return result
+    }
+    func waitForFirst() async throws {
+        for _ in 0..<300 { if first != nil { return }; try await Task.sleep(for: .milliseconds(10)) }
+        throw RepositoryError.saveFailed("Synthetic scheduling callback did not start")
+    }
+    func releaseFirst() { first?.resume(returning: .scheduled); first = nil }
+    func setResult(_ result: ReminderSchedulingResult) { self.result = result }
+    func recordedRequests() -> [ReminderScheduleRequest] { records }
+}
+#endif
+
+#if DEBUG && canImport(FoundationModels)
+@available(iOS 26.4, *)
+@MainActor
+final class RuntimeDownstreamDiagnosticTests: XCTestCase {
+    // Independently input-first checked semantic fixtures; no generation or
+    // evaluation credit. Intermediate validation and durable effects separate.
+    private let authorization = LocationAuthorization(status:.always,isPrecise:true,isRegionMonitoringAvailable:true)
+    private var calendar: Calendar { var c = Calendar(identifier:.gregorian);c.timeZone = TimeZone(identifier:"America/Toronto")!;return c }
+    private var moment: Date { ISO8601DateFormatter().date(from:"2026-11-16T14:00:00Z")! }
+    private func open(_ url: URL) throws -> ModelContainer {
+        try ModelContainer(for:PersistenceController.schema,migrationPlan:SpeakItMigrationPlan.self,
+            configurations:[ModelConfiguration(schema:PersistenceController.schema,url:url)])
+    }
+    private func injected(_ reading: ThoughtExtractionResult, source: String,
+                          repository: SwiftDataThoughtRepository) async throws -> CaptureCreationResult {
+        let oldZone = NSTimeZone.default;NSTimeZone.default = calendar.timeZone;defer { NSTimeZone.default = oldZone }
+        let cfg = RuntimeExampleConfiguration(libraryURL:URL(fileURLWithPath:"/unused-independent-correct-proposal"),allowProposed:false,retrievalEnabled:false)
+        return try await RuntimeExampleConfiguration.$testConfiguration.withValue(cfg) {
+            try await RuntimeExampleTestFixtures.withInterpretation(reading) {
+                try await repository.createCaptureResult(text:source,source:.inAppText,createdAt:moment,schedulesReminders:false)
+            }
+        }
+    }
+    private func persistAndPresent(_ reading: ThoughtExtractionResult, source: String,
+                                   expected: [(ItemType,String?,CalendarDay?)], label: String, expectedReminders:[Int:Date] = [:], expectedReviews: Set<Int> = []) async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("CheckedSemanticDiagnostic-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:true)
+        defer { try? FileManager.default.removeItem(at:directory) }
+        let url = directory.appendingPathComponent("capture.store"),store = try open(url)
+        let repo = SwiftDataThoughtRepository(modelContext:store.mainContext,requestsReminderAuthorization:false)
+        let result = try await injected(reading,source:source,repository:repo)
+        XCTAssertEqual(result.session.originalTranscription,source,label)
+        XCTAssertEqual(result.session.processingStatus,.complete,label)
+        XCTAssertEqual(result.items.count,expected.count,label)
+        let rows = result.items.sorted { a,b in
+            (source.range(of:a.originalTextSegment)?.lowerBound ?? source.endIndex) < (source.range(of:b.originalTextSegment)?.lowerBound ?? source.endIndex)
+        }
+        for (row, wanted) in zip(rows,expected) {
+            XCTAssertEqual(row.itemType,wanted.0,label);XCTAssertEqual(row.personName,wanted.1,label)
+            XCTAssertEqual(row.temporalIntent?.day,wanted.2,label)
+            let index = rows.firstIndex(where: { $0.id == row.id })!
+            let held = expectedReviews.contains(index)
+            XCTAssertEqual(row.needsClarification,held,label)
+            XCTAssertEqual(row.requiresReview(authorization:authorization),held,label)
+            let expectedReminder = expectedReminders[index]
+            XCTAssertEqual(row.reminderDate,expectedReminder,label)
+            let presentation = ItemPresentation.make(for:row,authorization:authorization,now:moment,calendar:calendar)
+            XCTAssertEqual(presentation.destination == .memory,!wanted.0.isActionable,label)
+            XCTAssertEqual(presentation.destination == .needsReview,held,label)
+            XCTAssertEqual(presentation.reviewRequirement,held ? "Trigger not supported" : nil,label)
+            XCTAssertEqual(presentation.reminderState.isArmed,expectedReminder != nil,label)
+            if let title = reading.items[rows.firstIndex(where: { $0.id == row.id })!].suggestedTitle {
+                XCTAssertEqual(row.displayTitle,ThoughtTitleFormatter.polished(title,itemType:row.itemType,personName:row.personName),label)
+            }
+            print("DOWNSTREAM_SAVED id=\(label) type=\(row.itemType.rawValue) title=\(row.displayTitle) person=\(row.personName ?? "") destination=\(presentation.destination) original=\(row.originalTextSegment)")
+        }
+        let retry = try await injected(reading,source:source,repository:repo)
+        XCTAssertEqual(Set(retry.items.map(\.id)),Set(result.items.map(\.id)),label)
+        let reopened = try open(url),items = try reopened.mainContext.fetch(FetchDescriptor<CapturedItem>())
+        XCTAssertEqual(items.count,expected.count,label)
+        XCTAssertEqual(Set(items.map(\.id)),Set(result.items.map(\.id)),label)
+        XCTAssertEqual(Set(items.map(\.originalTextSegment)),Set(result.items.map(\.originalTextSegment)),label)
+        XCTAssertEqual(try reopened.mainContext.fetch(FetchDescriptor<CaptureSession>()).first?.originalTranscription,source,label)
+        let heldIDs = Set(expectedReviews.map { rows[$0].id })
+        XCTAssertEqual(Set(items.filter { $0.requiresReview(authorization:authorization) }.map(\.id)),heldIDs,label)
+        XCTAssertEqual(items.filter { $0.reminderDate != nil }.count,expectedReminders.count,label)
+        print("DOWNSTREAM_DIAGNOSTIC id=\(label) boundaries=executed model_evaluation=false verdict=see_XCTest_assertions")
+    }
+    func testCheckedMM02KnowledgeThroughValidationSaveReopenAndDisplay() async throws {
+        let source = MM02
+        let units = RuntimeIndexedSource(source)
+        var roles = Dictionary(uniqueKeysWithValues:units.units.indices.map { ($0,RuntimeAccountOwnership.Disposition.fact) });roles[0] = .routing
+        let rules = ThoughtExtractionEngine.extractWithRules(source,referenceDate:moment,calendar:calendar)
+        let reading = try XCTUnwrap(RuntimeAccountOwnership.validate(roles,source:source,units:units,rules:rules),"Correct MM02 must pass the actual ownership validator")
+        XCTAssertEqual(reading.items.first?.sourceQuote,source)
+        try await persistAndPresent(reading,source:source,expected:[(.note,nil,nil)],label:"D48-MM-02")
+    }
+    func testCheckedMX01IntermediateValidationThenSavingAndDisplay() async throws {
+        let source = MX01,units = RuntimeIndexedSource(source)
+        let mx01 = RuntimeFoundationInterpreter.IndexedProposal(items: [
+    .init(evidence: [0], anchor: "", purpose: .note, currentMeaning: "", directContact: "", needsReview: false),
+    .init(evidence: [1], anchor: "", purpose: .task, currentMeaning: "", directContact: "my aunt’s husband", needsReview: false),
+    .init(evidence: [2], anchor: "", purpose: .shopping, currentMeaning: "", directContact: "", needsReview: false),
+    .init(evidence: [3, 4], anchor: "", purpose: .packing, currentMeaning: "", directContact: "", needsReview: false),
+    .init(evidence: [5], anchor: "", purpose: .idea, currentMeaning: "", directContact: "", needsReview: false)
+])
+
+        let rules = ThoughtExtractionEngine.extractWithRules(source,referenceDate:moment,calendar:calendar)
+        let lowered = RuntimeFoundationInterpreter.$developmentObserver.withValue({ print("DOWNSTREAM_DIAGNOSTIC " + $0) }) { RuntimeFoundationInterpreter.validateIndexed(mx01,source:source,units:units,
+            referenceDate:moment,calendar:calendar,rules:rules,context:.empty) }
+        XCTAssertNotNil(lowered,"Correct independently checked MX01 rejected at indexed validation")
+        guard let lowered else { return }
+        XCTAssertEqual(lowered.items.count,5)
+        try await persistAndPresent(lowered,source:source,expected:[(.note,nil,nil),(.task,"my aunt’s husband",CalendarDay(year:2026,month:11,day:17)),(.shopping,nil,nil),(.task,nil,nil),(.idea,nil,nil)],label:"D48-MX-01")
+        XCTAssertTrue(lowered.items[3].sourceQuote.contains("kneepad") && lowered.items[3].sourceQuote.contains("sister’s apron"))
+    }
+    func testCheckedNR03IntermediateValidationThenSavingAndDisplay() async throws {
+        let source = NR03,units = RuntimeIndexedSource(source)
+        let nr03 = RuntimeFoundationInterpreter.IndexedProposal(items: [
+    .init(evidence: [0, 1, 2], anchor: "", purpose: .note, currentMeaning: "", directContact: "", needsReview: false),
+    .init(evidence: [3], anchor: "", purpose: .task, currentMeaning: "Ask my cousin about the frost cover.", directContact: "my cousin", needsReview: false),
+    .init(evidence: [4, 5, 6], anchor: "", purpose: .task, currentMeaning: "", directContact: "Yaren", needsReview: false),
+    .init(evidence: [7], anchor: "", purpose: .idea, currentMeaning: "", directContact: "", needsReview: false),
+    .init(evidence: [8, 9], anchor: "", purpose: .task, currentMeaning: "", directContact: "", needsReview: false)
+])
+
+        let rules = ThoughtExtractionEngine.extractWithRules(source,referenceDate:moment,calendar:calendar)
+        let lowered = RuntimeFoundationInterpreter.$developmentObserver.withValue({ print("DOWNSTREAM_DIAGNOSTIC " + $0) }) { RuntimeFoundationInterpreter.validateIndexed(nr03,source:source,units:units,
+            referenceDate:moment,calendar:calendar,rules:rules,context:.empty) }
+        XCTAssertNotNil(lowered,"Correct independently checked NR03 rejected at indexed validation")
+        guard let lowered else { return }
+        try await persistAndPresent(lowered,source:source,expected:[(.note,nil,nil),(.task,"my cousin",nil),(.task,"Yaren",nil),(.idea,nil,nil),(.task,nil,CalendarDay(year:2026,month:11,day:19))],label:"D48-NR-03")
+        XCTAssertTrue(lowered.items[2].sourceQuote.contains("their grandfather"))
+        XCTAssertTrue(lowered.items[2].sourceQuote.contains("Yaren’s grandfather, not mine"))
+    }
+    func testCheckedCO04AtomicSavedRevisionUsesActualSnapshotAndReopens() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("CheckedSavedDiagnostic-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at:directory,withIntermediateDirectories:true)
+        defer { try? FileManager.default.removeItem(at:directory) }
+        let url = directory.appendingPathComponent("capture.store"),store = try open(url)
+        let repo = SwiftDataThoughtRepository(modelContext:store.mainContext,requestsReminderAuthorization:false)
+        let old = ISO8601DateFormatter().date(from:"2026-11-15T23:30:00Z")!,oldDue = ISO8601DateFormatter().date(from:"2026-11-18T16:00:00Z")!
+        let parent = CaptureSession(originalTranscription:"Send Iskra the theatre-seat diagram",createdAt:old,captureSource:.inAppText,processingStatus:.complete)
+        let target = CapturedItem(originalTextSegment:parent.originalTranscription,displayTitle:parent.originalTranscription,
+            itemType:.task,category:.general,createdAt:old,dueDate:oldDue,reminderDate:oldDue,personName:"Iskra",processingConfidence:1,needsClarification:false,
+            isReviewed:false,lastModifiedAt:old,temporalIntent:TemporalIntent(kind:.exactDateTime,day:CalendarDay(year:2026,month:11,day:18),time:WallClockTime(hour:11,minute:0),timeZoneIdentifier:"America/Toronto",timeZoneBehavior:.deviceLocal,sourceText:parent.originalTranscription),semanticState:.resolved,captureSession:parent)
+        store.mainContext.insert(parent);store.mainContext.insert(target);try store.mainContext.save()
+        let before = try XCTUnwrap(repo.atomicSnapshot(target)),source = CO04
+        let atomic = try XCTUnwrap(SavedAtomicRevision.read(source,snapshots:[before],referenceDate:moment,calendar:calendar))
+        XCTAssertEqual(atomic.replacementAction,"ask Sorrel for the rigging clearance")
+        var request = CaptureOperationRequest(operation:.revise,polarity:.positive,target:before.title,sourceQuote:source,needsReview:false)
+        request.savedAtomicRevision = atomic
+        let reading = ThoughtExtractionResult(items:[],operations:[request],method:.appleIntelligence)
+        let result = try await injected(reading,source:source,repository:repo)
+        guard case .performed = result.operationOutcome else { return XCTFail("Checked atomic request must commit") }
+        let due = ISO8601DateFormatter().date(from:"2026-11-20T21:00:00Z")!
+        XCTAssertEqual(target.personName,"Sorrel");XCTAssertEqual(target.dueDate,due);XCTAssertEqual(target.reminderDate,due)
+        XCTAssertEqual(target.originalTextSegment,before.original);XCTAssertEqual(parent.originalTranscription,before.parentOriginal)
+        let presentation = ItemPresentation.make(for:target,authorization:authorization,now:moment,calendar:calendar)
+        XCTAssertEqual(presentation.destination,.comingUp);XCTAssertNotNil(presentation.triggerSummary)
+        let retry = try await injected(reading,source:source,repository:repo)
+        XCTAssertEqual(retry.session.id,result.session.id);XCTAssertEqual(target.id,before.id)
+        let reopened = try open(url),rows = try reopened.mainContext.fetch(FetchDescriptor<CapturedItem>())
+        let after = try XCTUnwrap(rows.first { $0.id == before.id })
+        XCTAssertEqual(after.personName,"Sorrel");XCTAssertEqual(after.dueDate,due);XCTAssertEqual(after.reminderDate,due)
+        XCTAssertEqual(after.originalTextSegment,before.original)
+        XCTAssertEqual(after.captureSession?.originalTranscription,before.parentOriginal)
+        print("DOWNSTREAM_DIAGNOSTIC id=D48-CO-04 validation=passed atomic_saving=passed retry=passed reopen=passed presentation=passed model_evaluation=false notification_delivery=UNOBSERVED")
+    }
+
+    private func checkedStaged(_ source: String, rows: [RuntimeFoundationInterpreter.FirstOutlineRow],
+                               revisions: [RuntimeFoundationInterpreter.IndexedRevision]) throws -> ThoughtExtractionResult {
+        let units = RuntimeIndexedSource(source)
+        print("DOWNSTREAM_STAGED current_units=" + units.units.enumerated().map { "u\($0.offset):\($0.element.text)" }.joined(separator:"|"))
+        let plan = try XCTUnwrap(RuntimeFoundationInterpreter.stagedOutlinePlan(rows,units:units),"checked complete current ownership")
+        let complete = try XCTUnwrap(RuntimeFoundationInterpreter.completingStagedPlan(plan.items,revisions:revisions,
+            requestedRows:Set(revisions.map(\.row)),sharedRows:plan.sharedRows,units:units),"checked staged completion")
+        let rules = ThoughtExtractionEngine.extractWithRules(source,referenceDate:moment,calendar:calendar)
+        return try RuntimeFoundationInterpreter.$developmentObserver.withValue({ print("DOWNSTREAM_STAGED " + $0) }) {
+            try XCTUnwrap(RuntimeFoundationInterpreter.validateIndexed(.init(items:complete),source:source,units:units,
+                referenceDate:moment,calendar:calendar,rules:rules,context:.empty),"checked meaning must pass actual indexed validator")
+        }
+    }
+    func testCheckedCO01RecipientCorrectionAfterGenerationThroughSaveAndDisplay() async throws {
+        let source = "Ask Mom about the astronomy booklet tomorrow. Actually ask my great-uncle; same booklet."
+        let units = RuntimeIndexedSource(source)
+        let reading = try checkedStaged(source,rows:[.init(evidence:Array(units.units.indices),purpose:.task,requiresRewrite:true,needsReview:false)],
+            revisions:[.init(row:0,anchor:"",currentMeaning:"Ask my great-uncle about the astronomy booklet tomorrow.",directContact:"my great-uncle")])
+        XCTAssertEqual(reading.items.first?.suggestedTitle.map(RuntimeRecipientReplacement.normalize),"ask my great uncle about the astronomy booklet tomorrow")
+        try await persistAndPresent(reading,source:source,expected:[(.task,"my great-uncle",CalendarDay(year:2026,month:11,day:17))],label:"D48-CO-01")
+    }
+    func testCheckedBE03CompleteCorrectedAllocationsAfterGenerationThroughSaveAndDisplay() async throws {
+        let source = "first job weigh the kite frame tomorrow keep the fact that Rivo supplied the fabric but the seam repair date is unknown middle job buy four coils of orange twine for Jani no make Jani three coils and add two coils for me those allocations stay separate another middle note the field gate sign is coded AIR-0006 do not turn it into a date last job tell Luma to ask their uncle about the launch whistle on November 24 i am contacting Luma not that uncle no timed alerts"
+        let reading = try checkedStaged(source,rows:[
+            .init(evidence:[0],purpose:.task,requiresRewrite:false,needsReview:false),
+            .init(evidence:[1],purpose:.note,requiresRewrite:false,needsReview:false),
+            .init(evidence:[2],purpose:.shopping,requiresRewrite:true,needsReview:false),
+            .init(evidence:[3],purpose:.note,requiresRewrite:false,needsReview:false),
+            .init(evidence:[4],purpose:.task,requiresRewrite:false,needsReview:false)],
+            revisions:[.init(row:2,anchor:"",currentMeaning:"Buy three coils of orange twine for Jani and two coils of orange twine for me.",directContact:"")])
+        XCTAssertEqual(reading.items[2].suggestedTitle,"Buy three coils of orange twine for Jani and two coils of orange twine for me.")
+        XCTAssertEqual(RuntimeAllocationReading.entries(try XCTUnwrap(reading.items[2].suggestedTitle))?.map(\.quantity),[3,2])
+        // One usable shopping group retains two distinct beneficiary entries;
+        // six semantic intentions do not require six cards under this product.
+        try await persistAndPresent(reading,source:source,expected:[(.task,nil,CalendarDay(year:2026,month:11,day:17)),(.note,nil,nil),(.shopping,nil,nil),(.note,nil,nil),(.task,"Luma",CalendarDay(year:2026,month:11,day:24))],label:"D48-BE-03")
+        XCTAssertTrue(reading.items[4].sourceQuote.contains("their uncle"))
+        XCTAssertTrue(reading.items[3].sourceQuote.contains("AIR-0006"))
+    }
+    func testCheckedAL04JointCallAfterGenerationThroughSaveAndDisplay() async throws {
+        let source = "I thought of separate calls to Mom and my stepdad about the holiday seating. Actually make it one call with both of them together on November 22. That joint call is the final choice, no timed alert. A seating map with movable magnets is just another possible idea."
+        let reading = try checkedStaged(source,rows:[
+            .init(evidence:[0,1,2],purpose:.task,requiresRewrite:true,needsReview:false),
+            .init(evidence:[3],purpose:.idea,requiresRewrite:false,needsReview:false)],
+            revisions:[.init(row:0,anchor:"",currentMeaning:"One joint call with Mom and my stepdad about the holiday seating on November 22, no timed alert.",directContact:"")])
+        XCTAssertEqual(reading.items[0].suggestedTitle.map(RuntimeRecipientReplacement.normalize),"one joint call with mom and my stepdad about the holiday seating on november 22, no timed alert")
+        try await persistAndPresent(reading,source:source,expected:[(.task,nil,CalendarDay(year:2026,month:11,day:22)),(.idea,nil,nil)],label:"D48-AL-04")
+    }
+
+    // Independent fixtures sealed before this diagnostic. These inject an
+    // already-correct proposal AFTER generation, never score model accuracy.
+    private func checkedPartition(_ source:String, expectedUnits:[String], proposal:[RuntimeFoundationInterpreter.IndexedItem]) throws -> ThoughtExtractionResult {
+        let units = RuntimeIndexedSource(source)
+        XCTAssertEqual(units.units.map(\.text),expectedUnits,"independent current-unit mapping must match actual splitter")
+        let rules = ThoughtExtractionEngine.extractWithRules(source,referenceDate:moment,calendar:calendar)
+        return try RuntimeFoundationInterpreter.$developmentObserver.withValue({ print("DOWNSTREAM_PARTITION " + $0) }) {
+            try XCTUnwrap(RuntimeFoundationInterpreter.validateIndexed(.init(items:proposal),source:source,units:units,
+                referenceDate:moment,calendar:calendar,rules:rules,context:.empty),"independently correct complete proposal must pass actual validator")
+        }
+    }
+    func testCheckedCO03CurrentPartitionThroughValidationSaveAndDisplay() async throws {
+        let source = #"Make a task to email Deya about the terrarium vent on November 18. No, replace that whole plan: phone Oren about the heat mat on November 22 instead. Keep only that final task; no timed alert."#
+        let reading = try checkedPartition(source,expectedUnits:[#"Make a task to email Deya about the terrarium vent on November 18."#,
+#"No, replace that whole plan: phone Oren about the heat mat on November 22 instead."#,
+#"Keep only that final task;"#,
+#"no timed alert."#],proposal:[
+            .init(evidence:[0, 1, 2, 3],anchor:#""#,purpose:.task,currentMeaning:#"Phone Oren about the heat mat on November 22, no timed alert."#,directContact:#"Oren"#,needsReview:false),
+        ])
+        try await persistAndPresent(reading,source:source,expected:[(.task,"Oren",CalendarDay(year:2026,month:11,day:22))],label:"D48-CO-03")
+    }
+    func testCheckedMD02CurrentPartitionThroughValidationSaveAndDisplay() async throws {
+        let source = #"Ask my stepmother’s sister about the rehearsal pass on November 18. Tell Rida to ask their brother about the spare baton on November 20; I am contacting Rida, not that brother. Return Umi’s shoulder rest to my niece November 23. Umi remains owner and my niece is only recipient."#
+        let reading = try checkedPartition(source,expectedUnits:[#"Ask my stepmother’s sister about the rehearsal pass on November 18."#,
+#"Tell Rida to ask their brother about the spare baton on November 20;"#,
+#"I am contacting Rida, not that brother."#,
+#"Return Umi’s shoulder rest to my niece November 23."#,
+#"Umi remains owner and my niece is only recipient."#],proposal:[
+            .init(evidence:[0],anchor:#""#,purpose:.task,currentMeaning:#""#,directContact:#"my stepmother’s sister"#,needsReview:false),
+            .init(evidence:[1, 2],anchor:#""#,purpose:.task,currentMeaning:#""#,directContact:#"Rida"#,needsReview:false),
+            .init(evidence:[3, 4],anchor:#""#,purpose:.task,currentMeaning:#""#,directContact:#""#,needsReview:false),
+        ])
+        try await persistAndPresent(reading,source:source,expected:[(.task,"my stepmother’s sister",CalendarDay(year:2026,month:11,day:18)),(.task,"Rida",CalendarDay(year:2026,month:11,day:20)),(.task,nil,CalendarDay(year:2026,month:11,day:23))],label:"D48-MD-02")
+    }
+    func testCheckedBE01CurrentPartitionThroughValidationSaveAndDisplay() async throws {
+        let source = #"Start with my task to photograph the sundial gnomon tomorrow. The gnomon was lent by Jessa, and Miro remembers the base being scratched before delivery; nobody has verified that memory. Keep the loan and uncertainty as one account. I am not promising to polish or replace it. In the middle of this capture, buy two packets of adhesive studs for my own display. The existing acrylic cover stays with Jessa and is not on that list. Near the end, after Halin confirms the stand is stable, ask Feri for the viewing height. Halin has inspected a photo but has not confirmed stability. Last, remind me November 25 at 6 PM to return Jessa’s measuring square to Tena. Jessa still owns it."#
+        let reading = try checkedPartition(source,expectedUnits:[#"Start with my task to photograph the sundial gnomon tomorrow."#,
+#"The gnomon was lent by Jessa, and Miro remembers the base being scratched before delivery;"#,
+#"nobody has verified that memory."#,
+#"Keep the loan and uncertainty as one account."#,
+#"I am not promising to polish or replace it."#,
+#"In the middle of this capture, buy two packets of adhesive studs for my own display."#,
+#"The existing acrylic cover stays with Jessa and is not on that list."#,
+#"Near the end, after Halin confirms the stand is stable, ask Feri for the viewing height."#,
+#"Halin has inspected a photo but has not confirmed stability."#,
+#"Last, remind me November 25 at 6 PM to return Jessa’s measuring square to Tena."#,
+#"Jessa still owns it."#],proposal:[
+            .init(evidence:[0],anchor:#""#,purpose:.task,currentMeaning:#""#,directContact:#""#,needsReview:false),
+            .init(evidence:[1, 2, 3, 4],anchor:#""#,purpose:.note,currentMeaning:#""#,directContact:#""#,needsReview:false),
+            .init(evidence:[5],anchor:#""#,purpose:.shopping,currentMeaning:#""#,directContact:#""#,needsReview:false),
+            .init(evidence:[6],anchor:#""#,purpose:.note,currentMeaning:#""#,directContact:#""#,needsReview:false),
+            .init(evidence:[7, 8],anchor:#""#,purpose:.task,currentMeaning:#""#,directContact:#"Feri"#,needsReview:false),
+            .init(evidence:[9, 10],anchor:#""#,purpose:.task,currentMeaning:#""#,directContact:#""#,needsReview:false),
+        ])
+        try await persistAndPresent(reading,source:source,expected:[(.task,nil,CalendarDay(year:2026,month:11,day:17)),(.note,nil,nil),(.shopping,nil,nil),(.note,nil,nil),(.task,"Feri",nil),(.task,nil,CalendarDay(year:2026,month:11,day:25))],label:"D48-BE-01",expectedReminders:[5:ISO8601DateFormatter().date(from:"2026-11-25T23:00:00Z")!],expectedReviews:[4])
+    }
+    func testCheckedBE04CurrentPartitionThroughValidationSaveAndDisplay() async throws {
+        let source = #"My opening intention is a note, not work: the lens pavilion was named by Inara, who did not design its roof. I need to inspect the drain lip. Dovan will trim the shade cloth; that remains Dovan’s job. Around the middle, give me two distinct tasks, to trace the roof rib and to photograph the pivot socket. Also retain one reference account that the bronze insert came from my cousin, the ceramic ring was already in the cabinet, and Enzo only suspects that the rim chip happened in transit. Toward the end, buy one packet of felt buttons and one bottle of sealant. Do not buy the existing bronze insert. At the very end, remind me November 27 at 7 PM not to store the sealant beside the display heater. That is a deliberate negative reminder, separate from the purchase."#
+        let reading = try checkedPartition(source,expectedUnits:[#"My opening intention is a note, not work: the lens pavilion was named by Inara, who did not design its roof."#,
+#"I need to inspect the drain lip."#,
+#"Dovan will trim the shade cloth;"#,
+#"that remains Dovan’s job."#,
+#"Around the middle, give me two distinct tasks, to trace the roof rib and to photograph the pivot socket."#,
+#"Also retain one reference account that the bronze insert came from my cousin, the ceramic ring was already in the cabinet, and Enzo only suspects that the rim chip happened in transit."#,
+#"Toward the end, buy one packet of felt buttons and one bottle of sealant."#,
+#"Do not buy the existing bronze insert."#,
+#"At the very end, remind me November 27 at 7 PM not to store the sealant beside the display heater."#,
+#"That is a deliberate negative reminder, separate from the purchase."#],proposal:[
+            .init(evidence:[0],anchor:#""#,purpose:.note,currentMeaning:#""#,directContact:#""#,needsReview:false),
+            .init(evidence:[1],anchor:#""#,purpose:.task,currentMeaning:#""#,directContact:#""#,needsReview:false),
+            .init(evidence:[2, 3],anchor:#""#,purpose:.note,currentMeaning:#""#,directContact:#""#,needsReview:false),
+            .init(evidence:[4],anchor:#"trace the roof rib"#,purpose:.task,currentMeaning:#"Trace the roof rib."#,directContact:#""#,needsReview:false),
+            .init(evidence:[4],anchor:#"photograph the pivot socket"#,purpose:.task,currentMeaning:#"Photograph the pivot socket."#,directContact:#""#,needsReview:false),
+            .init(evidence:[5],anchor:#""#,purpose:.note,currentMeaning:#""#,directContact:#""#,needsReview:false),
+            .init(evidence:[6, 7],anchor:#""#,purpose:.shopping,currentMeaning:#""#,directContact:#""#,needsReview:false),
+            .init(evidence:[8, 9],anchor:#""#,purpose:.task,currentMeaning:#""#,directContact:#""#,needsReview:false),
+        ])
+        try await persistAndPresent(reading,source:source,expected:[(.note,nil,nil),(.task,nil,nil),(.note,nil,nil),(.task,nil,nil),(.task,nil,nil),(.note,nil,nil),(.shopping,nil,nil),(.task,nil,CalendarDay(year:2026,month:11,day:27))],label:"D48-BE-04",expectedReminders:[7:ISO8601DateFormatter().date(from:"2026-11-28T00:00:00Z")!])
+        XCTAssertTrue(try XCTUnwrap(reading.items.last).sourceQuote.contains("not to store"))
+    }
+
+    private let MM02 = #"Save this as one coherent Memory of the lantern puppet production called The Quiet Orchard. I am keeping the account so I can understand how the production developed, not asking for another performance to be arranged. The central image was a child finding an orchard by following the light carried by a moth. At the early workshop, the moth was represented by a paper silhouette on a long wire. By the final performance it was a small lantern puppet with a fabric wing. Those were successive versions of the same character, not two separate characters who appeared together.\#n\#nThe story outline was written by Edda. Sorel designed the moth’s wing, and my cousin Lune made the first paper silhouette. Edda did not make the wing merely because she wrote the story. Lune is my cousin, while the child narrator was performed by Kest, who is Lune’s partner. Kest is not my partner. These relationships are useful context for the production record and do not resolve anyone to a telephone contact. I operated the dimmer at the final performance. That is a completed historical responsibility, not a fresh task to operate it now.\#n\#nThe wing material belonged to Sorel and was lent to the group. The lantern housing belonged to the theatre cooperative. We borrowed a narrow rehearsal table from Nivan, and it remained Nivan’s table even while Kest carried it between rooms. Four small counterweights were kept in the lantern housing, but only one was used during the final scene. The other three were stored as existing spares. Those counts describe the arrangement at the time and do not request buying, packing or discarding any weights. Carrying, using and owning should stay distinct in the account.\#n\#nThe first rehearsal was on February 12, 2020. At that rehearsal the paper moth crossed the screen too quickly for the narrator’s last line. Sorel recalls that Edda shortened the line the following week, while Edda recalls slowing the crossing instead. We have no dated rehearsal video that settles which change came first. Both recollections should remain attributed and uncertain. The performance on March 7, 2020 used the lantern moth and included a longer pause beside the orchard gate. The historical pause is a staging detail, not an instruction for an app timer or a future reminder.\#n\#nA notebook drawing labels the lantern housing QO-0012-L. The numeral twelve in that code is not the number of puppets, weights or tickets. Arven copied the code from a fading tag, and I have not checked the final letter myself. A separate sketch calls the wing olive, which describes its colour under rehearsal lighting. The fabric was not necessarily olive coloured in daylight. We should not rewrite that observation as a permanent material specification. The housing code belongs to the housing, while the uncertain colour description belongs to the wing; the rehearsal table inherits neither detail.\#n\#nDuring a discussion after the show, Nivan said, "Cut the final orchard scene and sell the old lantern." I did not agree to either suggestion, and the conversation was not an instruction to act. Edda preferred keeping the final scene because the quiet pause gave the narrator room to breathe. Kest thought the pause had been too long, but Kest was describing their experience rather than volunteering to rewrite the production. These are three different perspectives. The account should not assign a decision to the whole group merely because those people spoke in the same room.\#n\#nThere are still unanswered reference questions about who painted the gate silhouette, whether the original wire was spring steel, and which recording contains the clearest final line. I am not nominating a person to investigate them. An idea of presenting the story with projected rain came up later, but nobody adopted it or scheduled another version. I want that possibility retained within the production’s history rather than turned into a new project. The reason this Memory matters is that its changes grew from conversations, uncertain recollections and shared materials. A shortened task list would lose who contributed what and why the final image felt quiet."#
+    private let MX01 = #"Save one account of the winter mural trial: Lami supplied the stencil design, the north panel dried unevenly, and we do not know whether the heater caused it. Separately, ask my aunt’s husband about the varnish smell tomorrow. Buy one roll of low-tack edging tape. Pack our existing kneepad and my sister’s apron; do not buy those. An idea for later is a mural made entirely of leaf silhouettes, not something I have agreed to build."#
+    private let NR03 = #"About the community telescope, I keep mixing up who I need to speak to. My stepbrother has the finder bracket; that is a fact about possession, not a return request. I first thought I should ask my stepbrother about the frost cover, but it should be my cousin instead, same frost-cover question. Tell Yaren to ask their grandfather about the eyepiece sleeve. That is Yaren’s grandfather, not mine; I am contacting Yaren. I might sketch a rain hood someday, with no commitment. The firm part is to test the tripod brake on November 19. There is no timed alert in this capture."#
+    private let CO04 = #"Change my saved "Send Iskra the theatre-seat diagram" reminder to ask Sorrel for the rigging clearance instead, November 20 at 4 PM. It must remain one reminder."#
+}
+#endif
+
+#if DEBUG
+/// Checked post-generation proposal injection is a downstream diagnostic only.
+/// Actual source-path outcomes are separately recorded against synthetic stores.
+@MainActor
+final class RuntimeQuotedRevisionBoundaryDiagnosticTests:XCTestCase {
+    private var calendar:Calendar { var c=Calendar(identifier:.gregorian);c.timeZone=TimeZone(identifier:"America/Toronto")!;return c }
+    private var reference:Date { ISO8601DateFormatter().date(from:"2026-11-16T14:00:00Z")! }
+    private func record(_ text:String,name:String) { let a=XCTAttachment(string:text);a.name=name;a.lifetime = .keepAlways;add(a) }
+    private func runBoundary(checked:Bool,rowNounAfterOldQuote:Bool=false) async throws {
+        let priorZone=NSTimeZone.default;NSTimeZone.default=calendar.timeZone;defer { NSTimeZone.default=priorZone }
+        let cases=[("Buy two bottles of olive oil","Buy one bottle of olive oil"),
+                   ("Call Maya tomorrow at nine","Call Tessa"),
+                   ("Call Maya tomorrow at nine","Call Tessa next Monday")]
+        for (i,fixture) in cases.enumerated() {
+            let url=FileManager.default.temporaryDirectory.appendingPathComponent("Quoted-boundary-\(UUID().uuidString).store")
+            defer { try? FileManager.default.removeItem(at:url) }
+            func open() throws -> ModelContainer { try ModelContainer(for:PersistenceController.schema,migrationPlan:SpeakItMigrationPlan.self,configurations:[ModelConfiguration(schema:PersistenceController.schema,url:url)]) }
+            var before:SavedAtomicRevision.Snapshot!
+            var targetID:UUID!,amendmentID:UUID!
+            var spoken:String!
+            do {
+            var store:ModelContainer?=try open()
+            var repository:SwiftDataThoughtRepository?=SwiftDataThoughtRepository(modelContext:store!.mainContext,requestsReminderAuthorization:false)
+            let parent=CaptureSession(originalTranscription:fixture.0,createdAt:reference.addingTimeInterval(-60),captureSource:.inAppText,processingStatus:.complete)
+            let organized=ThoughtOrganizer.organize(fixture.0,referenceDate:reference,calendar:calendar)
+            XCTAssertFalse(organized.needsClarification)
+            let target=CapturedItem(originalTextSegment:fixture.0,displayTitle:fixture.0,itemType:organized.itemType,category:organized.category,createdAt:parent.createdAt,dueDate:organized.dueDate,reminderDate:organized.reminderDate,personName:organized.personName,lastModifiedAt:parent.createdAt,temporalIntent:organized.temporalIntent,semanticState:.resolved,captureSession:parent)
+            store!.mainContext.insert(parent);store!.mainContext.insert(target);try store!.mainContext.save()
+            before=try XCTUnwrap(repository!.atomicSnapshot(target));targetID=target.id
+            spoken = rowNounAfterOldQuote
+                ? "Change my saved “\(target.displayTitle)” reminder to “\(fixture.1)”"
+                : "Change the existing task “\(target.displayTitle)” to “\(fixture.1)”"
+            let snapshotContext=RuntimeCaptureContext(savedItems:[.init(id:target.id.uuidString,title:target.displayTitle,modifiedAt:target.lastModifiedAt,snapshot:before)])
+            let actual=RuntimeSourceInterpreter.interpret(spoken,referenceDate:reference,calendar:calendar,context:snapshotContext,examples:[])
+            record("source=\(String(describing:spoken))\nlocal-plan=\(String(describing:actual))",name:"Quoted-boundary-\(i)-actual-local-proposal")
+            func checkedProposal() throws -> ThoughtExtractionResult {
+            var request=CaptureOperationRequest(operation:.revise,polarity:.positive,target:target.displayTitle,sourceQuote:spoken,needsReview:true)
+            request.savedItemRevision=try XCTUnwrap(SavedItemRevision.read(spoken))
+            request.sourceUnitIDs=Set(SourceUnitLedger(spoken).words.indices)
+            return ThoughtExtractionResult(items:[],operations:[request],method:.rules)
+            }
+            let config=RuntimeExampleConfiguration(libraryURL:URL(fileURLWithPath:"/unused-synthetic-quoted-boundary"),allowProposed:false,retrievalEnabled:false)
+            var result:CaptureCreationResult?=try await RuntimeExampleConfiguration.$testConfiguration.withValue(config) {
+                if checked {
+                    return try await RuntimeExampleTestFixtures.withInterpretation(try checkedProposal()) {
+                        try await repository!.createCaptureResult(text:spoken,source:.inAppText,createdAt:reference,schedulesReminders:false)
+                    }
+                }
+                return try await repository!.createCaptureResult(text:spoken,source:.inAppText,createdAt:reference,schedulesReminders:false)
+            }
+            let after=try XCTUnwrap(repository!.atomicSnapshot(target));amendmentID=result!.session.id
+            record("checked=\(checked)\noutcome=\(String(describing:result!.operationOutcome))\nbefore=\(String(decoding:try JSONEncoder().encode(before),as:UTF8.self))\nafter=\(String(decoding:try JSONEncoder().encode(after),as:UTF8.self))\nreceipt=\(result!.session.operationStateData.map { String(decoding:$0,as:UTF8.self) } ?? "null")",name:"Quoted-boundary-\(i)-\(checked ? "checked" : "actual")-saved-state")
+            if case .ambiguous(operation:.revise,candidateIDs:let ids)=result!.operationOutcome { XCTAssertEqual(ids,[targetID]) }
+            else { XCTFail("Untyped quoted replacement must remain review: \(String(describing:result!.operationOutcome))") }
+            XCTAssertEqual(after,before);XCTAssertEqual(result!.session.originalTranscription,spoken)
+            XCTAssertTrue(result!.items.contains { ItemPresentation.make(for:$0,authorization:LocationAuthorization(status:.denied,isPrecise:true,isRegionMonitoringAvailable:true),now:reference,calendar:calendar).destination == .needsReview && $0.originalTextSegment == spoken })
+            let retry=try await RuntimeExampleConfiguration.$testConfiguration.withValue(config) {
+                try await repository!.createCaptureResult(text:spoken,source:.inAppText,createdAt:reference,schedulesReminders:false)
+            }
+            XCTAssertTrue(retry.isDuplicate);XCTAssertEqual(retry.session.id,amendmentID)
+            result=nil;repository=nil;store=nil
+            } // release original model/context/seed/result handles before reopening
+            let reopened=try open(),reopenedRepository=SwiftDataThoughtRepository(modelContext:reopened.mainContext,requestsReminderAuthorization:false)
+            let saved=try XCTUnwrap(reopened.mainContext.fetch(FetchDescriptor<CapturedItem>()).first { $0.id == targetID })
+            XCTAssertEqual(reopenedRepository.atomicSnapshot(saved),before)
+            let amendment=try XCTUnwrap(reopened.mainContext.fetch(FetchDescriptor<CaptureSession>()).first { $0.id == amendmentID })
+            XCTAssertEqual(amendment.originalTranscription,spoken)
+            XCTAssertTrue(amendment.items.contains { ItemPresentation.make(for:$0,authorization:LocationAuthorization(status:.denied,isPrecise:true,isRegionMonitoringAvailable:true),now:reference,calendar:calendar).destination == .needsReview && $0.originalTextSegment == spoken })
+        }
+    }
+    func testQuotedReplacementCannotBecomeAtomicByPunctuationClockOrOneReminderSuffix() throws {
+        let store = try ModelContainer(for: PersistenceController.schema,
+            migrationPlan: SpeakItMigrationPlan.self,
+            configurations: [ModelConfiguration(schema: PersistenceController.schema, isStoredInMemoryOnly: true)])
+        let repository = SwiftDataThoughtRepository(modelContext: store.mainContext, requestsReminderAuthorization: false)
+        let title = "Call Maya tomorrow at nine"
+        let parent = CaptureSession(originalTranscription: title, createdAt: reference, captureSource: .inAppText, processingStatus: .complete)
+        let reading = ThoughtOrganizer.organize(title, referenceDate: reference, calendar: calendar)
+        let target = CapturedItem(originalTextSegment: title, displayTitle: title, itemType: reading.itemType,
+            category: reading.category, createdAt: reference, dueDate: reading.dueDate,
+            personName: reading.personName, temporalIntent: reading.temporalIntent, semanticState: .resolved, captureSession: parent)
+        store.mainContext.insert(parent); store.mainContext.insert(target); try store.mainContext.save()
+        let before = try XCTUnwrap(repository.atomicSnapshot(target))
+        for source in [
+            #"Change my saved "Call Maya tomorrow at nine" reminder to "Call Tessa""#,
+            #"Change my saved "Call Maya tomorrow at nine" reminder to "Call Tessa"."#,
+            #"Change my saved "Call Maya tomorrow at nine" reminder to “Call Tessa” instead."#,
+            #"Change my saved "Call Maya tomorrow at nine" reminder to “Call Tessa”. Keep it one reminder."#,
+            #"Change my saved "Call Maya tomorrow at nine" reminder to “Call Tessa” instead, November 20 at 4 PM. Keep it one reminder."#,
+            #"Change my saved "Call Maya tomorrow at nine" reminder to “Call Tessa next Monday”"#
+        ] {
+            XCTAssertNil(SavedAtomicRevision.read(source, snapshots: [before], referenceDate: reference, calendar: calendar), source)
+            XCTAssertEqual(CaptureOperationDetector.detect(source)?.operation, .revise, source)
+        }
+        for source in [
+            #"Change my saved "Call Maya tomorrow at nine" to "Call Tessa next Monday""#,
+            #"Change "Call Maya tomorrow at nine" task to "Call Tessa next Monday""#
+        ] {
+            let revision = try XCTUnwrap(SavedItemRevision.read(source))
+            XCTAssertEqual(revision.oldTitle, title)
+            XCTAssertEqual(revision.replacementAction, "Call Tessa next Monday")
+            XCTAssertTrue(revision.oldTitleUnitIDs.isDisjoint(with: revision.replacementUnitIDs))
+            XCTAssertEqual(CaptureOperationDetector.detect(source)?.operation, .revise)
+        }
+        XCTAssertNil(SavedItemRevision.read(#"Change "the existing filter" to "the new filter""#), "A marker inside an action title cannot license a saved-row edit")
+        XCTAssertFalse(SavedItemRevision.hasQuotedReplacement(#"Change "the existing filter" to "the new filter""#))
+        let qualified = #"Change my saved "Call Maya tomorrow at nine" reminder to call Tessa instead, November 20 at 4 PM. Keep it one reminder."#
+        let accepted = try XCTUnwrap(SavedAtomicRevision.read(qualified, snapshots: [before], referenceDate: reference, calendar: calendar))
+        XCTAssertEqual(accepted.replacementAction, "call Tessa")
+        XCTAssertEqual(accepted.timingText, "November 20 at 4 PM")
+        XCTAssertEqual(repository.atomicSnapshot(target), before)
+    }
+    func testQuotedSavedRowNounAfterOldTitlePreservesSeedAndAmendmentThroughReopen() async throws {
+        try await runBoundary(checked:false,rowNounAfterOldQuote:true)
+    }
+    func testCheckedQuotedRevisionProposalPassesActualSavingRetryColdReopenAndReviewPresentation() async throws { try await runBoundary(checked:true) }
+    func testActualQuotedRevisionBoundaryRecordsUntypedMutationAndMustPreserveSeed() async throws { try await runBoundary(checked:false) }
+}
+#endif

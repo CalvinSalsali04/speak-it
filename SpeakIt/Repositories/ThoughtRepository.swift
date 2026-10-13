@@ -29,6 +29,58 @@ struct ItemEdits {
     /// time. `false` keeps a spoken or edited day as a day instead of silently
     /// converting its storage midnight into a real 12:00 AM deadline.
     var dueDateHasTime: Bool = true
+    /// Explicit answer from the highlighted review field, separate from an unrelated edit.
+    var clarifiedGap: SemanticGap? = nil
+}
+
+/// A narrow, grounded reply to a saved bare-hour question. The day is taken
+/// from the stored intent, so answering after a relaunch or after midnight
+/// cannot reinterpret "tomorrow" against the answer time.
+struct BareHourQuestion {
+    enum Answer { case morning, evening }
+
+    let hour: Int
+    let day: CalendarDay
+    let calendar: Calendar
+
+    init?(item: CapturedItem) {
+        guard item.needsClarification,
+              item.semanticState == .underspecified(.ambiguousTemporalScope),
+              let intent = item.temporalIntent,
+              intent.kind == .dateOnly, let day = intent.day,
+              item.reminderDate == nil else { return nil }
+        let source = item.originalTextSegment
+        let pattern = #"(?i)\b(?:at|for|by|around|about)\s+(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b"#
+        guard let regex = NSRegularExpression.speakItCached(pattern) else { return nil }
+        let matches = regex.matches(in: source,
+                                    range: NSRange(location: 0, length: (source as NSString).length))
+        guard matches.count == 1,
+              let range = Range(matches[0].range(at: 1), in: source) else { return nil }
+        let word = String(source[range]).lowercased()
+        let names = ["one": 1, "two": 2, "three": 3, "four": 4,
+                     "five": 5, "six": 6, "seven": 7, "eight": 8,
+                     "nine": 9, "ten": 10, "eleven": 11, "twelve": 12]
+        guard let hour = Int(word) ?? names[word], (1...12).contains(hour) else { return nil }
+        self.hour = hour
+        self.day = day
+        self.calendar = intent.calendar(default: .autoupdatingCurrent)
+    }
+
+    func date(for answer: Answer) -> Date? {
+        let resolvedHour: Int
+        switch answer {
+        case .morning: resolvedHour = hour == 12 ? 0 : hour
+        case .evening: resolvedHour = hour == 12 ? 12 : hour + 12
+        }
+        let components = DateComponents(
+            year: day.year, month: day.month, day: day.day,
+            hour: resolvedHour, minute: 0
+        )
+        guard let date = calendar.date(from: components),
+              calendar.component(.hour, from: date) == resolvedHour,
+              CalendarDay(from: date, calendar: calendar) == day else { return nil }
+        return date
+    }
 }
 
 struct ReconciledItemSemantics: Equatable {
@@ -201,9 +253,9 @@ struct CaptureCreationResult {
     /// Whether this capture should spend one of the ten free captures.
     ///
     /// Managing existing content is not creating a thought, so cancel, complete
-    /// and retract are free. A request that produced a review row still counts
-    /// as a stored thought, because that row is real and the person can act on
-    /// it.
+    /// and retract are free. A failed lookup keeps a review row but remains
+    /// free: the person asked to manage an existing item and got no match.
+    /// Other reviewable captures still count because they create a thought.
     var consumesFreeCapture: Bool {
         // Practice has to be complimentary at the source. The allowance is a
         // monotonic Keychain-backed ledger, so spending and then "refunding"
@@ -211,8 +263,10 @@ struct CaptureCreationResult {
         if session.captureSource == .tutorial { return false }
         guard let operationOutcome else { return true }
         switch operationOutcome {
-        case .performed, .notFound:
+        case .performed, .performedMany:
             return !items.isEmpty
+        case .notFound:
+            return items.contains { $0.itemType != .unclear || !$0.needsClarification }
         case .retracted:
             return false
         case .ambiguous, .needsConfirmation:
@@ -267,7 +321,7 @@ struct CaptureCreationResult {
             // reach here as `.type` or `.confirmation` before version 4 stored
             // the real reason.
             case .missingAction, .ambiguousPerson, .reportedSpeech,
-                 .ambiguousActor, .ambiguousTemporalScope:
+                 .ambiguousActor, .ambiguousObject, .ambiguousTemporalScope:
                 return true
             // An unfinished thought is the clearest case there is for offering
             // to hear it again: there is nothing to confirm, because nothing
@@ -400,6 +454,8 @@ protocol ThoughtRepository: AnyObject, Sendable {
     func delete(_ item: CapturedItem) throws
     func confirmPendingOperation(_ item: CapturedItem) throws
     func dismissPendingOperation(_ item: CapturedItem) throws
+    func pendingCaptureOperationChoices(for item: CapturedItem) throws -> [CapturedItem]
+    func choosePendingCaptureOperation(_ item: CapturedItem, targetID: UUID) throws
     func split(_ item: CapturedItem, into parts: [String]) throws
     func merge(_ items: [CapturedItem]) throws
     func undoOrganization(_ session: CaptureSession) throws
@@ -407,6 +463,10 @@ protocol ThoughtRepository: AnyObject, Sendable {
 }
 
 extension ThoughtRepository {
+    func pendingCaptureOperationChoices(for item: CapturedItem) throws -> [CapturedItem] { [] }
+    func choosePendingCaptureOperation(_ item: CapturedItem, targetID: UUID) throws {
+        throw RepositoryError.saveFailed("That saved-item choice is unavailable.")
+    }
     func refreshMorningBrief() {}
 
     @discardableResult

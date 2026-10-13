@@ -20,6 +20,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     private let placeReminderDelivery: PlaceReminderDelivery
     private let placeReminderCancellation: PlaceReminderCancellation
     private let requestsReminderAuthorization: Bool
+    private let permitsOnDeviceIntelligence: Bool
     private var isApplyingCloudSnapshot = false
     private var lastPublishedToday: SharedTodaySnapshot?
     private var iCloudReconciliationTask: Task<Void, Never>?
@@ -29,10 +30,12 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         modelContext: ModelContext,
         placeReminderDelivery: PlaceReminderDelivery? = nil,
         placeReminderCancellation: PlaceReminderCancellation? = nil,
-        requestsReminderAuthorization: Bool = true
+        requestsReminderAuthorization: Bool = true,
+        permitsOnDeviceIntelligence: Bool = true
     ) {
         self.modelContext = modelContext
         self.requestsReminderAuthorization = requestsReminderAuthorization
+        self.permitsOnDeviceIntelligence = permitsOnDeviceIntelligence
         self.placeReminderDelivery = placeReminderDelivery ?? { itemID, title, place, identifier in
             await ReminderScheduler.deliverPlaceReminder(
                 itemID: itemID,
@@ -86,9 +89,13 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         // be rebuilt into an item by recovery. Re-reading the operation
         // is safe: the words have not changed, so the reading has not
         // either.
-        var creating = extraction
+        var creating = extraction.reviewingMultipleOperations()
         if let request = extraction.pendingOperation {
-            let outcome = applyCaptureOperation(request, session: session)
+            guard let outcome = try? applyCaptureOperation(request, session: session) else {
+                // The pending capture remains durable and can be retried on
+                // another launch; never claim a choice hold was saved here.
+                return
+            }
             if case .notFound = outcome, !extraction.items.isEmpty {
                 creating = ThoughtExtractionEngine.extractWithRules(
                     session.originalTranscription,
@@ -97,7 +104,10 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 )
             } else {
                 if case .notFound = outcome {
-                    discardCaptureItems(for: session)
+                    // The lookup failed, but the words still belong to this
+                    // capture. Keep its pending review row for later recovery.
+                    ensureFallbackItem(for: session)
+                    closeSession(session)
                 }
                 return
             }
@@ -184,7 +194,10 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
 
         // Only rows that have no intent at all. A user-edited one is never
         // revisited, and neither is one already reconstructed.
-        for item in items where item.temporalIntent == nil {
+        // An unresolved row does not authorize adopting timing from its words.
+        // In particular a missing-target revision must remain the same held
+        // request after launch; its "tomorrow" is not a new task's date.
+        for item in items where item.temporalIntent == nil && item.itemType != .unclear {
             item.temporalIntent = reconstructedIntent(for: item)
             changed = true
         }
@@ -296,7 +309,10 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 itemIDs: Set(refreshedItems.map(\.id)),
                 captureSessionIDs: Set(refreshedItems.compactMap { $0.captureSession?.id }),
                 replacesAllSpeakItReminders: true
-            )
+            ),
+            onAcknowledgment: { [weak self] report in
+                self?.acknowledgeAtomicRevisionReminders(report)
+            }
         )
     }
 
@@ -464,7 +480,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         // non-actionable, which is a different and much larger change than
         // "stop watching this place".
         let live = items.filter {
-            !$0.isArchived && !$0.isCompleted
+            !$0.isArchived && !$0.isCompleted && !$0.needsClarification
                 && $0.isLocationTriggered && !$0.constrainsBothPlaceAndTime
                 && $0.locationIntent?.isRetired != true
         }
@@ -512,7 +528,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         // was recognised would otherwise still deliver at the wrong time.
         guard let item = try? findItem(withID: itemID),
               let intent = item.locationIntent,
-              !item.isArchived, !item.isCompleted,
+              !item.isArchived, !item.isCompleted, !item.needsClarification,
               !item.constrainsBothPlaceAndTime else {
             // Nothing live wants this region. Reconciling removes it.
             LocationReminderMonitor.shared.stopMonitoring(itemID: itemID)
@@ -572,7 +588,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         // explicitly withdrawn before it can appear.
         guard let current = try? findItem(withID: itemID),
               var currentIntent = current.locationIntent,
-              !current.isArchived, !current.isCompleted,
+              !current.isArchived, !current.isCompleted, !current.needsClarification,
               !current.constrainsBothPlaceAndTime,
               currentIntent.event == event,
               currentIntent.triggerRevision == intent.triggerRevision,
@@ -946,6 +962,13 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             source: source,
             createdAt: createdAt
         ) {
+            if schedulesReminder { retryPendingAtomicRevisionDelivery(duplicate.session) }
+            if (duplicate.operationOutcome?.operation == .cancel
+                || duplicate.operationOutcome?.operation == .complete
+                || duplicate.operationOutcome?.operation == .revise),
+               duplicate.items.isEmpty {
+                return .operationHandled
+            }
             return .created(duplicate.primaryItem)
         }
 
@@ -958,8 +981,30 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             normalizedText,
             referenceDate: createdAt
         )
-        var creating = extraction
+        var creating = extraction.reviewingMultipleOperations()
         if let request = extraction.pendingOperation {
+            // A revision spoken alongside independent new content organizes
+            // that content first, below, and then edits the saved item while
+            // preserving it.
+            // A revision spoken beside independent content edits the saved
+            // item and keeps that content only when the edit can actually be
+            // resolved; otherwise the whole capture stays one visible review
+            // row, so an unresolved edit never leaves loose new rows behind.
+            let editable = request.savedFieldRevision.map {
+                if case .resolved = resolveSavedFieldRevision($0, session: pending.session) { return true }
+                return false
+            } ?? false
+            let sourceSeparated = request.captureSource == normalizedText
+                && !request.independentCreationUnitIDs.isEmpty
+                && request.independentCreationUnitIDs == extraction.items.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) }
+                && request.independentCreationUnitIDs.isDisjoint(with: request.sourceUnitIDs)
+                && RuntimeProposalGuard.covers(normalizedText, quotes: [request.sourceQuote] + extraction.items.map(\.sourceQuote))
+            if request.operation == .revise, extraction.items.isEmpty || (!editable && !sourceSeparated) {
+                let outcome = try applyCaptureOperation(request, session: pending.session,
+                                                    schedulesReminders: schedulesReminder)
+                if case .performed = outcome { return .operationHandled }
+                return .created(orderedItems(in: pending.session).first ?? pending.placeholder)
+            }
             let retained = extraction.items.isEmpty ? [] : organizePersistedCapture(
                 session: pending.session,
                 extraction: extraction,
@@ -968,8 +1013,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             guard extraction.items.isEmpty || pending.session.processingStatus == .complete else {
                 return .created(retained.first ?? pending.placeholder)
             }
-            let outcome = applyCaptureOperation(
-                request, session: pending.session, preservingItemIDs: Set(retained.map(\.id))
+            let outcome = try applyCaptureOperation(
+                request, session: pending.session, preservingItemIDs: Set(retained.map(\.id)),
+                schedulesReminders: schedulesReminder
             )
             if case .notFound = outcome, !extraction.items.isEmpty {
                 creating = ThoughtExtractionEngine.extractWithRules(
@@ -979,7 +1025,10 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 )
             } else {
                 if case .notFound = outcome {
-                    discardCaptureItems(for: pending.session)
+                    // A transient not-found receipt is not a durable home for
+                    // the person's words. The pending row stays in review.
+                    ensureFallbackItem(for: pending.session)
+                    closeSession(pending.session)
                 }
                 guard let survivor = orderedItems(in: pending.session).first else {
                     return .operationHandled
@@ -1069,6 +1118,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             source: source,
             createdAt: createdAt
         ) {
+            if schedulesReminders { retryPendingAtomicRevisionDelivery(duplicate.session) }
             return duplicate
         }
 
@@ -1084,7 +1134,18 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         ) {
             await ThoughtExtractionEngine.extract(
                 normalizedText,
-                referenceDate: createdAt
+                referenceDate: createdAt,
+                permitsOnDeviceIntelligence: permitsOnDeviceIntelligence,
+                runtimeContext: !permitsOnDeviceIntelligence || RuntimeExampleConfiguration.current == nil ? .empty : RuntimeCaptureContext(savedItems:
+                    ((try? modelContext.fetch(FetchDescriptor<CapturedItem>())) ?? [])
+                        .filter { $0.captureSession?.id != pending.session.id }
+                        .map { RuntimeCaptureContext.SavedItem(id: $0.id.uuidString, title: $0.displayTitle, modifiedAt: $0.lastModifiedAt,
+                            originalText: $0.originalTextSegment, itemType: $0.itemType.rawValue,
+                            personName: $0.personName, dueDate: $0.dueDate, reminderDate: $0.reminderDate,
+                            isReviewed: $0.isReviewed, isArchived: $0.isArchived, isCompleted: $0.completedAt != nil,
+                            snapshot: atomicSnapshot($0)) },
+                    hasHome: SavedPlaceStore.place(for: .home) != nil,
+                    hasWork: SavedPlaceStore.place(for: .work) != nil)
             )
         }
         performance?.finishSemanticParsing()
@@ -1093,8 +1154,31 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         // Commit the independent creations before acting on an existing row.
         // A failed organization must never leave the operation performed but
         // the new thoughts unsaved. A retry sees the durable capture via dedup.
-        var creating = extraction
+        var creating = extraction.reviewingMultipleOperations()
         if let request = extraction.pendingOperation {
+            // A revision spoken beside independent content edits the saved
+            // item and keeps that content only when the edit can actually be
+            // resolved; otherwise the whole capture stays one visible review
+            // row, so an unresolved edit never leaves loose new rows behind.
+            let editable = request.savedFieldRevision.map {
+                if case .resolved = resolveSavedFieldRevision($0, session: pending.session) { return true }
+                return false
+            } ?? false
+            let sourceSeparated = request.captureSource == normalizedText
+                && !request.independentCreationUnitIDs.isEmpty
+                && request.independentCreationUnitIDs == extraction.items.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) }
+                && request.independentCreationUnitIDs.isDisjoint(with: request.sourceUnitIDs)
+                && RuntimeProposalGuard.covers(normalizedText, quotes: [request.sourceQuote] + extraction.items.map(\.sourceQuote))
+            if request.operation == .revise, extraction.items.isEmpty || (!editable && !sourceSeparated) {
+                let outcome = try applyCaptureOperation(request, session: pending.session,
+                                                    schedulesReminders: schedulesReminders)
+                performance?.finishPersistence()
+                return CaptureCreationResult(
+                    session: pending.session,
+                    items: orderedItems(in: pending.session),
+                    operationOutcome: outcome
+                )
+            }
             let retained = extraction.items.isEmpty ? [] : organizePersistedCapture(
                 session: pending.session,
                 extraction: extraction,
@@ -1105,17 +1189,22 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 performance?.finishPersistence()
                 return CaptureCreationResult(session: pending.session, items: retained)
             }
-            let outcome = applyCaptureOperation(
-                request, session: pending.session, preservingItemIDs: Set(retained.map(\.id))
+            let outcome = try applyCaptureOperation(
+                request, session: pending.session, preservingItemIDs: Set(retained.map(\.id)),
+                schedulesReminders: schedulesReminders
             )
             if case .notFound = outcome, !extraction.items.isEmpty {
                 // An unmatched cancellation can itself be an errand. Preserve
                 // the established full-transcript fallback in that case.
                 creating = await ThoughtExtractionEngine.extract(
-                    normalizedText, referenceDate: createdAt, permitsOperations: false
+                    normalizedText, referenceDate: createdAt,
+                    permitsOnDeviceIntelligence: permitsOnDeviceIntelligence, permitsOperations: false
                 )
             } else {
-                if case .notFound = outcome { discardCaptureItems(for: pending.session) }
+                if case .notFound = outcome {
+                    ensureFallbackItem(for: pending.session)
+                    closeSession(pending.session)
+                }
                 performance?.finishPersistence()
                 return CaptureCreationResult(
                     session: pending.session,
@@ -1156,12 +1245,34 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     func applyCaptureOperation(
         _ request: CaptureOperationRequest,
         session: CaptureSession,
-        preservingItemIDs: Set<UUID> = []
-    ) -> CaptureOperationOutcome {
+        preservingItemIDs: Set<UUID> = [],
+        schedulesReminders: Bool = true
+    ) throws -> CaptureOperationOutcome {
         // A retraction withdraws the capture outright.
         if request.operation == .retract {
+            if request.needsReview {
+                holdOperation(request, in: session, preserving: preservingItemIDs)
+                return .ambiguous(operation: .retract, candidateIDs: [])
+            }
             discardCaptureItems(for: session, preserving: preservingItemIDs)
             return .retracted
+        }
+
+        // A semantic revision may change the title, object, person, quantity,
+        // timing, or constraints together. Even an exact old/new title pair
+        // lacks a durable link from this amendment capture to the saved row.
+        // Keep the full source visible and leave existing rows untouched.
+        if request.operation == .revise {
+            if let revision = request.savedAtomicRevision {
+                return try applyAtomicRevision(revision, request: request, session: session,
+                    preservingItemIDs: preservingItemIDs, schedulesReminders: schedulesReminders)
+            }
+            if let intent = request.savedRevisionIntent {
+                return try holdSavedRevision(intent, request: request, session: session, preservingItemIDs: preservingItemIDs)
+            }
+            return applySavedItemRevision(request, session: session,
+                                          preservingItemIDs: preservingItemIDs,
+                                          schedulesReminders: schedulesReminders)
         }
 
         let existing = (try? modelContext.fetch(FetchDescriptor<CapturedItem>())) ?? []
@@ -1197,7 +1308,19 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             )
         }
 
-        let candidates = CaptureTargetMatcher.candidates(for: target, in: searchable)
+        let candidates = CaptureTargetMatcher.candidates(
+            for: target, in: searchable, referenceDate: session.createdAt
+        )
+
+        if request.operation == .cancel,
+           let alternatives = explicitSpokenAlternatives(
+               in: session.originalTranscription, among: searchable
+           ) {
+            return try holdAlternativeChoice(
+                request, in: session, candidateIDs: alternatives.map(\.id),
+                preserving: preservingItemIDs
+            )
+        }
 
         switch candidates.count {
         case 0:
@@ -1218,17 +1341,36 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             let item = candidates[0]
             let itemID = item.id
             let title = item.displayTitle
+            if request.operation == .cancel {
+                return applyGroundedSavedCancellation(
+                    request, to: item, session: session,
+                    preservingItemIDs: preservingItemIDs
+                )
+            }
+            if request.operation == .complete {
+                return applyGroundedSavedCompletion(
+                    request, to: item, session: session,
+                    preservingItemIDs: preservingItemIDs
+                )
+            }
+            if request.operation == .reschedule,
+               request.expectedOldTimingText != nil {
+                return applyGroundedSavedDateAmendment(
+                    request, to: item, session: session,
+                    preservingItemIDs: preservingItemIDs,
+                    schedulesReminders: schedulesReminders
+                )
+            }
             do {
                 switch request.operation {
                 case .cancel:
-                    // `delete` already tears down notifications, recurrence and
-                    // pin metadata; the place monitor is stopped explicitly
-                    // because a region outlives the row that asked for it.
-                    LocationReminderMonitor.shared.stopMonitoring(itemID: itemID)
-                    try delete(item)
+                    // The capture-owned, source-retaining path above handles
+                    // every single-target cancellation before this switch.
+                    break
                 case .complete:
-                    try setCompleted(item, completed: true)
-                    LocationReminderMonitor.shared.stopMonitoring(itemID: itemID)
+                    // The capture-owned receipt path above handles every
+                    // uniquely matched completion before this switch.
+                    break
                 case .reschedule:
                     guard let timing = request.newTimingText,
                           let moved = rescheduledDates(timing, for: item) else {
@@ -1251,7 +1393,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                         locationIntent: .unchanged,
                         dueDateHasTime: moved.hasTime
                     ))
-                case .create, .retract:
+                case .revise, .create, .retract:
                     break
                 }
             } catch {
@@ -1272,6 +1414,823 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         }
     }
 
+    /// Commit the performed receipt and saved-row deletion together. The
+    /// target's original CaptureSession remains even when this was its only
+    /// item: cancelling a reminder does not withdraw the words that created
+    /// it. A retry after the save reads the V5 receipt instead of attempting
+    /// the cancellation again or inventing a new task from its wording.
+    private func applyGroundedSavedCancellation(
+        _ request: CaptureOperationRequest,
+        to item: CapturedItem,
+        session: CaptureSession,
+        preservingItemIDs: Set<UUID>
+    ) -> CaptureOperationOutcome {
+        let itemID = item.id
+        let title = item.displayTitle
+        let previousRecord = session.operationStateData
+        do {
+            let state = CaptureOperationState(
+                phase: .performed, operation: .cancel,
+                sourceQuote: request.sourceQuote, targetWords: request.target,
+                candidateIDs: [itemID], targetID: itemID, targetTitle: title,
+                expectedOldTimingText: nil, newTimingText: nil,
+                oldDueDate: item.dueDate, oldReminderDate: item.reminderDate,
+                newDueDate: nil, newReminderDate: nil, resolvedAt: .now
+            )
+            session.operationStateData = try JSONEncoder().encode(state)
+            let disposable = session.items.filter { !preservingItemIDs.contains($0.id) }
+            disposable.forEach(modelContext.delete)
+            modelContext.delete(item)
+            session.processingStatus = .complete
+            try persistChanges(deletedItemIDs: [itemID] + disposable.map(\.id))
+
+            RecurrenceStore.remove(itemID)
+            MemoryPinStore.removeMetadata(for: [itemID])
+            ShoppingGroupStore.removeMetadata(for: [itemID])
+            IdeaStageStore.removeMetadata(for: [itemID])
+            LocationReminderMonitor.shared.stopMonitoring(itemID: itemID)
+            ReminderScheduler.cancel(itemID: itemID)
+            return .performed(operation: .cancel, itemID: itemID, title: title)
+        } catch {
+            session.operationStateData = previousRecord
+            holdOperation(request, in: session, preserving: preservingItemIDs)
+            return .ambiguous(operation: .cancel, candidateIDs: [itemID])
+        }
+    }
+
+    /// The completion, capture-owned receipt and removal of its temporary
+    /// review row reach the store in one save. A crash after that save cannot
+    /// turn a relaunch or repeated capture into another task or another
+    /// completion. `setCompleted` still advances a recurring task normally.
+    private func applyGroundedSavedCompletion(
+        _ request: CaptureOperationRequest,
+        to item: CapturedItem,
+        session: CaptureSession,
+        preservingItemIDs: Set<UUID>
+    ) -> CaptureOperationOutcome {
+        let itemID = item.id
+        let title = item.displayTitle
+        do {
+            let state = CaptureOperationState(
+                phase: .performed, operation: .complete,
+                sourceQuote: request.sourceQuote, targetWords: request.target,
+                candidateIDs: [itemID], targetID: itemID, targetTitle: title,
+                expectedOldTimingText: nil, newTimingText: nil,
+                oldDueDate: item.dueDate, oldReminderDate: item.reminderDate,
+                newDueDate: item.dueDate, newReminderDate: item.reminderDate,
+                resolvedAt: .now
+            )
+            session.operationStateData = try JSONEncoder().encode(state)
+            let disposable = session.items.filter { !preservingItemIDs.contains($0.id) }
+            disposable.forEach(modelContext.delete)
+            session.processingStatus = .complete
+            try setCompleted(item, completed: true)
+            LocationReminderMonitor.shared.stopMonitoring(itemID: itemID)
+            return .performed(operation: .complete, itemID: itemID, title: title)
+        } catch {
+            // `persistChanges` rolled back the whole context on a failed
+            // save. Keep the immutable source visible as a review item.
+            holdOperation(request, in: session, preserving: preservingItemIDs)
+            return .ambiguous(operation: .complete, candidateIDs: [itemID])
+        }
+    }
+
+    /// A speaker who explicitly names two possible saved titles has given us
+    /// candidate evidence, not permission to choose one. Resolve each phrase
+    /// only if it identifies a different, active Today row.
+    private func explicitSpokenAlternatives(
+        in source: String,
+        among items: [CapturedItem]
+    ) -> [CapturedItem]? {
+        let pattern = #"(?i)\b(?:called|named)\s+it\s+(?:the\s+)?(.+?)\s+or\s+(?:the\s+)?(.+?)\s+when\s+i\s+saved\s+it\b"#
+        guard let regex = NSRegularExpression.speakItCached(pattern),
+              let match = regex.firstMatch(in: source, range: NSRange(source.startIndex..., in: source)),
+              let first = Range(match.range(at: 1), in: source),
+              let second = Range(match.range(at: 2), in: source) else { return nil }
+        let a = CaptureTargetMatcher.candidates(for: String(source[first]), in: items)
+        let b = CaptureTargetMatcher.candidates(for: String(source[second]), in: items)
+        guard a.count == 1, b.count == 1, a[0].id != b[0].id else { return nil }
+        return [a[0], b[0]]
+    }
+
+    private func holdAlternativeChoice(
+        _ request: CaptureOperationRequest,
+        in session: CaptureSession,
+        candidateIDs: [UUID],
+        preserving itemIDs: Set<UUID>
+    ) throws -> CaptureOperationOutcome {
+        var state = CaptureOperationState(
+            phase: .pendingChoice, operation: request.operation,
+            sourceQuote: session.originalTranscription, targetWords: request.target,
+            candidateIDs: candidateIDs, targetID: nil, targetTitle: nil,
+            expectedOldTimingText: nil, newTimingText: nil,
+            oldDueDate: nil, oldReminderDate: nil,
+            newDueDate: nil, newReminderDate: nil, resolvedAt: nil
+        )
+        if let review = session.items.first(where: { !itemIDs.contains($0.id) }) {
+            state.reviewItemID = review.id
+        } else {
+            let review = CapturedItem(
+                originalTextSegment: request.sourceQuote,
+                displayTitle: "Choose which saved reminder to cancel",
+                createdAt: session.createdAt.addingTimeInterval(0.1),
+                processingConfidence: 0,
+                needsClarification: true,
+                captureSession: session
+            )
+            modelContext.insert(review)
+            state.reviewItemID = review.id
+        }
+        session.operationStateData = try JSONEncoder().encode(state)
+        session.processingStatus = .complete
+        try persistChanges()
+        return .ambiguous(operation: request.operation, candidateIDs: candidateIDs)
+    }
+
+    /// A named old/new date is an amendment to one saved row. Verify that the
+    /// old date still describes that row, then save the new date and the
+    /// capture-owned receipt together. Only timing fields change; the saved
+    /// title, completion, original wording and row ID remain intact.
+    private func applyGroundedSavedDateAmendment(
+        _ request: CaptureOperationRequest,
+        to item: CapturedItem,
+        session: CaptureSession,
+        preservingItemIDs: Set<UUID>,
+        schedulesReminders: Bool
+    ) -> CaptureOperationOutcome {
+        func hold() -> CaptureOperationOutcome {
+            holdOperation(request, in: session, preserving: preservingItemIDs)
+            return .ambiguous(operation: .reschedule, candidateIDs: [item.id])
+        }
+        guard let oldText = request.expectedOldTimingText,
+              let newText = request.newTimingText,
+              let currentDate = item.dueDate ?? item.reminderDate else { return hold() }
+        let calendar = Calendar.autoupdatingCurrent
+        let oldReading = ThoughtOrganizer.organize(
+            "remind me \(oldText)", referenceDate: session.createdAt,
+            calendar: calendar
+        )
+        guard let oldDate = oldReading.dueDate ?? oldReading.reminderDate,
+              CalendarDay(from: oldDate, calendar: calendar)
+                == CalendarDay(from: currentDate, calendar: calendar),
+              let moved = rescheduledDates(newText, for: item,
+                                           referenceDate: session.createdAt) else { return hold() }
+
+        let oldDueDate = item.dueDate
+        let oldReminderDate = item.reminderDate
+        let previousRecord = session.operationStateData
+        let previousProcessingStatus = session.processingStatus
+        do {
+            let state = CaptureOperationState(
+                phase: .performed, operation: .reschedule,
+                sourceQuote: request.sourceQuote, targetWords: request.target,
+                candidateIDs: [item.id], targetID: item.id,
+                targetTitle: item.displayTitle,
+                expectedOldTimingText: oldText, newTimingText: newText,
+                oldDueDate: oldDueDate, oldReminderDate: oldReminderDate,
+                newDueDate: moved.dueDate, newReminderDate: moved.reminderDate,
+                resolvedAt: .now
+            )
+            session.operationStateData = try JSONEncoder().encode(state)
+            item.dueDate = moved.dueDate
+            item.reminderDate = moved.reminderDate
+            item.temporalIntent = TemporalIntent.userEdited(
+                dueDate: moved.dueDate, reminderDate: moved.reminderDate,
+                recurrence: RecurrenceStore.rule(for: item.id),
+                sourceText: item.temporalIntent?.sourceText ?? item.originalTextSegment,
+                calendar: calendar, dueDateHasTime: moved.hasTime
+            )
+            item.lastModifiedAt = .now
+            let disposable = session.items.filter { !preservingItemIDs.contains($0.id) }
+            disposable.forEach(modelContext.delete)
+            session.processingStatus = .complete
+            try persistChanges(deletedItemIDs: disposable.map(\.id))
+            if schedulesReminders {
+                synchronizeReminders(for: item.captureSession,
+                                     requestAuthorizationIfNeeded: true)
+            }
+            return .performed(operation: .reschedule, itemID: item.id,
+                              title: item.displayTitle)
+        } catch {
+            session.operationStateData = previousRecord
+            session.processingStatus = previousProcessingStatus
+            return hold()
+        }
+    }
+
+    func atomicSnapshot(_ item: CapturedItem) -> SavedAtomicRevision.Snapshot? {
+        guard let parentID = item.captureSession?.id else { return nil }
+        return .init(id: item.id, parentID: parentID, original: item.originalTextSegment,
+            title: item.displayTitle, kind: item.itemTypeRawValue, category: item.categoryRawValue,
+            created: item.createdAt, modified: item.lastModifiedAt, person: item.personName,
+            due: item.dueDate, reminder: item.reminderDate, completed: item.completedAt,
+            archived: item.isArchived, archivedAt: item.archivedAt, reviewed: item.isReviewed,
+            needsClarification: item.needsClarification, confidence: item.processingConfidence,
+            priority: item.priorityRawValue, temporal: item.temporalIntentData,
+            location: item.locationIntentData, semanticState: item.semanticStateRawValue,
+            semanticGap: item.semanticGapRawValue, parentOriginal: item.captureSession?.originalTranscription, parentCreated: item.captureSession?.createdAt,
+            temporalKind: item.temporalKindRawValue, reminderTriggerKind: item.reminderTriggerKindRawValue)
+    }
+
+    private func applyAtomicRevision(_ revision: SavedAtomicRevision,
+                                     request: CaptureOperationRequest, session: CaptureSession,
+                                     preservingItemIDs: Set<UUID>, schedulesReminders: Bool) throws -> CaptureOperationOutcome {
+        let previousRecord = session.operationStateData
+        let previousStatus = session.processingStatus
+        func hold() -> CaptureOperationOutcome {
+            holdOperation(request, in: session, preserving: preservingItemIDs)
+            return .ambiguous(operation: .revise, candidateIDs: [revision.expected.id])
+        }
+        // Receipt replay precedes old-title matching: the successful revision
+        // necessarily changed that title. A later edit never gets overwritten.
+        if let state = CaptureOperationState.read(from: previousRecord), state.phase == .performed {
+            guard state.operation == .revise, state.sourceQuote == revision.sourceQuote,
+                  state.atomicRevision?.before == revision.expected,
+                  state.targetID == revision.expected.id else {
+                throw RepositoryError.saveFailed("This capture already has a saved change record.")
+            }
+            if schedulesReminders, state.reminderSynchronizationPending == true {
+                // The commit may have survived while OS scheduling failed or
+                // was interrupted. Replay retries delivery from today's rows,
+                // without repeating the historical mutation or its receipt.
+                retryPendingAtomicRevisionDelivery(session)
+            }
+            return .performed(operation: .revise, itemID: revision.expected.id,
+                              title: state.newTitle ?? state.targetTitle ?? revision.replacementAction)
+        }
+        var calendar = Calendar(identifier: .gregorian)
+        guard let zone = TimeZone(identifier: revision.timeZoneIdentifier),
+              revision.referenceDate == session.createdAt,
+              session.originalTranscription == (revision.captureSource ?? revision.sourceQuote),
+              request.sourceQuote == revision.sourceQuote,
+              session.originalTranscription.contains(revision.sourceQuote),
+              !request.needsReview else { return hold() }
+        calendar.timeZone = zone
+        var reparsed = SavedAtomicRevision.read(revision.sourceQuote, snapshots: [revision.expected],
+            referenceDate: session.createdAt, calendar: calendar)
+        reparsed?.captureSource = revision.captureSource
+        if let confirmation = revision.confirmedIntent {
+            guard let pending = CaptureOperationState.read(from: previousRecord),
+                  pending.phase == .pendingChoice, pending.pendingSavedRevision == confirmation,
+                  pending.candidateIDs.contains(revision.expected.id) else { return hold() }
+            reparsed = confirmation.confirmedRevision(for: revision.expected)
+        }
+        guard reparsed == revision,
+              let item = try findItem(withID: revision.expected.id),
+              atomicSnapshot(item) == revision.expected, item.captureSession?.id != session.id,
+              !item.belongsInMemory, !item.isCompleted, !item.isArchived, !item.needsClarification,
+              item.locationIntent == nil, RecurrenceStore.rule(for: item.id) == nil else { return hold() }
+        let all = try modelContext.fetch(FetchDescriptor<CapturedItem>())
+        guard all.filter({ $0.displayTitle == revision.expected.title && !$0.isArchived && !$0.isCompleted
+            && !$0.belongsInMemory && $0.captureSession?.id != session.id }).count == 1
+            || revision.confirmedIntent != nil else { return hold() }
+
+        let action = ThoughtOrganizer.organize(revision.replacementAction,
+            referenceDate: session.createdAt, calendar: calendar)
+        let taskFamily: Set<ItemType> = [.task, .personFollowUp]
+        let compatibleKind = action.itemType == item.itemType
+            || (taskFamily.contains(action.itemType) && taskFamily.contains(item.itemType))
+        let preserveAction = revision.removesAlert || (revision.confirmedIntent.map { $0.replacementAction == nil } ?? false)
+        if !preserveAction {
+            guard action.itemType.isActionable, !action.needsClarification,compatibleKind,
+                  ActionabilityReader.read(revision.replacementAction).belongsOnToday,
+                  action.locationIntent == nil,action.recurrenceRule == nil else { return hold() }
+        }
+        var due = item.dueDate, reminder = item.reminderDate, intent = item.temporalIntent
+        let replacementHasTiming = !preserveAction && (action.dueDate != nil || action.reminderDate != nil)
+        if let confirmation = revision.confirmedIntent, let timing = confirmation.timingText {
+            let explicit = ThoughtOrganizer.organize("Check the task on " + timing,referenceDate: session.createdAt,calendar: calendar)
+            guard let day = explicit.dueDate, !explicit.needsClarification else { return hold() }
+            let explicitClock = explicit.temporalIntent.kind.carriesTimeOfDay
+            if explicitClock, let oldDue = item.dueDate, let oldReminder = item.reminderDate, oldDue != oldReminder { return hold() }
+            func preserveClock(_ old: Date, on chosenDay: Date, carriesClock: Bool) -> Date? {
+                guard carriesClock else { return calendar.startOfDay(for: chosenDay) }
+                let clock = calendar.dateComponents([.hour,.minute,.second],from: old)
+                return calendar.date(bySettingHour: clock.hour ?? 0,minute: clock.minute ?? 0,second: clock.second ?? 0,of: chosenDay)
+            }
+            if explicitClock {
+                due = item.dueDate == nil ? nil : day; reminder = item.reminderDate == nil ? nil : day
+            } else {
+                if let oldDue = item.dueDate {
+                    guard let preserved = preserveClock(oldDue,on: day,carriesClock: !item.isDateOnly) else { return hold() }
+                    due = preserved
+                }
+                if let oldReminder = item.reminderDate {
+                    // Preserve the reminder's calendar-day lead and its own
+                    // wall clock, rather than collapsing it onto the deadline.
+                    let anchor = item.dueDate ?? oldReminder
+                    let lead = calendar.dateComponents([.day],from: calendar.startOfDay(for: anchor),to: calendar.startOfDay(for: oldReminder)).day ?? 0
+                    guard let reminderDay = calendar.date(byAdding: .day,value: lead,to: day),
+                          let preserved = preserveClock(oldReminder,on: reminderDay,carriesClock: true) else { return hold() }
+                    reminder = preserved
+                }
+            }
+            guard [due,reminder].compactMap({ $0 }).allSatisfy({ $0 > session.createdAt }) else { return hold() }
+            intent = TemporalIntent.userEdited(dueDate: due,reminderDate: reminder,recurrence: nil,sourceText: timing,
+                calendar: calendar,dueDateHasTime: explicitClock || !item.isDateOnly)
+        } else if !revision.removesAlert, revision.timingText != nil || replacementHasTiming {
+            if let oldDue = item.dueDate, let oldReminder = item.reminderDate,
+               oldDue != oldReminder { return hold() }
+            // A clock in the replacement is part of the same delta even when
+            // the speaker did not use the optional "instead," separator.
+            let timing = revision.timingText ?? revision.replacementAction
+            let reading = revision.timingText == nil ? action : ThoughtOrganizer.organize("remind me \(timing)", referenceDate: session.createdAt, calendar: calendar)
+            guard !reading.needsClarification, reading.locationIntent == nil,
+                  reading.recurrenceRule == nil, let moment = reading.reminderDate ?? reading.dueDate,
+                  moment > session.createdAt else { return hold() }
+            if revision.timingText != nil, replacementHasTiming {
+                guard (action.reminderDate ?? action.dueDate) == moment else { return hold() }
+            }
+            due = item.dueDate != nil || item.reminderDate == nil ? moment : nil
+            reminder = item.reminderDate != nil ? moment : nil
+            intent = TemporalIntent.userEdited(dueDate: due, reminderDate: reminder, recurrence: nil,
+                sourceText: timing, calendar: calendar,
+                dueDateHasTime: reading.temporalIntent.kind.carriesTimeOfDay)
+        }
+        if revision.removesAlert { reminder = nil } // Deadline and its precision remain unchanged.
+        let title = preserveAction ? item.displayTitle : ThoughtTitleFormatter.polished(revision.replacementAction, itemType: item.itemType)
+        // All identity, source, interpretation and delta checks finish before
+        // any mutable field changes. No await splits this transaction.
+        do {
+            item.displayTitle = title
+            if !preserveAction { item.personName = action.personName }
+            item.dueDate = due; item.reminderDate = reminder
+            if !revision.removesAlert { item.temporalIntent = intent }
+            item.lastModifiedAt = Date(timeIntervalSinceReferenceDate: max(
+                Date.now.timeIntervalSinceReferenceDate,
+                session.createdAt.timeIntervalSinceReferenceDate,
+                revision.expected.modified.timeIntervalSinceReferenceDate + 0.001))
+            guard let after = atomicSnapshot(item) else { throw RepositoryError.saveFailed("The saved item's source is unavailable.") }
+            var state = CaptureOperationState(phase: .performed, operation: .revise,
+                sourceQuote: revision.sourceQuote, targetWords: revision.expected.title,
+                candidateIDs: [item.id], targetID: item.id, targetTitle: title,
+                expectedOldTimingText: nil, newTimingText: revision.timingText,
+                oldDueDate: revision.expected.due, oldReminderDate: revision.expected.reminder,
+                newDueDate: due, newReminderDate: reminder, resolvedAt: .now)
+            state.reviewItemID = CaptureOperationState.read(from: previousRecord)?.reviewItemID
+            state.oldTitle = revision.expected.title; state.newTitle = title
+            state.oldPersonName = revision.expected.person
+            state.atomicRevision = .init(before: revision.expected, after: after,
+                replacementEvidence: revision.replacementAction, timingEvidence: revision.timingText)
+            state.reminderSynchronizationPending = reminder != nil || revision.removesAlert
+            state.reminderSynchronizationStatus = revision.removesAlert ? "cancellationPending" : reminder == nil ? nil : "pending"
+            session.operationStateData = try JSONEncoder().encode(state)
+            let disposable = session.items.filter { !preservingItemIDs.contains($0.id) }
+            disposable.forEach(modelContext.delete)
+            session.processingStatus = .complete
+            try persistChanges(deletedItemIDs: disposable.map(\.id))
+        } catch {
+            // persistChanges rolls back fields and deleted placeholders. Keep
+            // the caller's registered amendment consistent with durable state.
+            modelContext.rollback()
+            session.operationStateData = previousRecord
+            session.processingStatus = previousStatus
+            throw error
+        }
+        // OS delivery follows the durable commit. Launch reconciliation reads
+        // the current rows after a crash here; retry never repeats the mutation.
+        if schedulesReminders {
+            synchronizeAtomicRevisionReminders(amendment: session, target: item)
+        }
+        return .performed(operation: .revise, itemID: item.id, title: item.displayTitle)
+    }
+
+    private func holdSavedRevision(_ intent: SavedRevisionIntent, request: CaptureOperationRequest,
+                                   session: CaptureSession, preservingItemIDs: Set<UUID>) throws -> CaptureOperationOutcome {
+        guard intent.captureSource == session.originalTranscription, intent.sourceQuote == request.sourceQuote,
+              intent.referenceDate == session.createdAt else {
+            holdOperation(request,in: session,preserving: preservingItemIDs)
+            return .ambiguous(operation: .revise,candidateIDs: [])
+        }
+        let previous = session.operationStateData; let status = session.processingStatus
+        do {
+            let review: CapturedItem
+            if let existing = session.items.first(where: { !preservingItemIDs.contains($0.id) }) { review = existing }
+            else {
+                review = CapturedItem(originalTextSegment: intent.sourceQuote,displayTitle: intent.sourceQuote,
+                    itemType: .unclear,createdAt: session.createdAt.addingTimeInterval(0.1),processingConfidence: 0,
+                    needsClarification: true,captureSession: session)
+                modelContext.insert(review)
+            }
+            review.needsClarification = true
+            var state = CaptureOperationState(phase: .pendingChoice,operation: .revise,sourceQuote: intent.sourceQuote,
+                targetWords: intent.targetWords,candidateIDs: intent.candidates.map(\.id),targetID: nil,targetTitle: nil,
+                expectedOldTimingText: nil,newTimingText: intent.timingText,oldDueDate: nil,oldReminderDate: nil,
+                newDueDate: nil,newReminderDate: nil,resolvedAt: nil)
+            state.reviewItemID = review.id; state.pendingSavedRevision = intent
+            session.operationStateData = try JSONEncoder().encode(state); session.processingStatus = .complete
+            try persistChanges()
+            return .ambiguous(operation: .revise,candidateIDs: intent.candidates.map(\.id))
+        } catch {
+            modelContext.rollback(); session.operationStateData = previous; session.processingStatus = status; throw error
+        }
+    }
+
+    private func retryPendingAtomicRevisionDelivery(_ amendment: CaptureSession) {
+        guard let state = CaptureOperationState.read(from: amendment.operationStateData),
+              state.phase == .performed, state.reminderSynchronizationPending == true,
+              let receipt = state.atomicRevision else { return }
+        if let target = try? findItem(withID: receipt.after.id) {
+            synchronizeAtomicRevisionReminders(amendment: amendment, target: target)
+        } else {
+            reconcilePendingReminders()
+        }
+    }
+
+    private func synchronizeAtomicRevisionReminders(amendment: CaptureSession, target: CapturedItem) {
+        guard let parent = target.captureSession,
+              CaptureOperationState.read(from: amendment.operationStateData)?.atomicRevision != nil else { return }
+        let requests = parent.items.filter { !$0.isArchived && !$0.isCompleted }
+            .compactMap(ReminderScheduleRequest.init(item:))
+        ReminderScheduler.synchronize(requests,
+            requestAuthorizationIfNeeded: requestsReminderAuthorization,
+            scope: ReminderSynchronizationScope(itemIDs: Set(parent.items.map(\.id)), captureSessionIDs: [parent.id]),
+            onAcknowledgment: { [weak self] report in
+                self?.acknowledgeAtomicRevisionReminders(report)
+            })
+    }
+
+    #if DEBUG
+    func acknowledgeAtomicRevisionRemindersForTesting(_ report: ReminderBatchAcknowledgment) {
+        acknowledgeAtomicRevisionReminders(report)
+    }
+    #endif
+
+    private func acknowledgeAtomicRevisionReminders(_ report: ReminderBatchAcknowledgment) {
+        guard let sessions = try? modelContext.fetch(FetchDescriptor<CaptureSession>()) else { return }
+        var changed = false, stale = false
+        let previous = sessions.map { ($0, $0.operationStateData) }
+        for amendment in sessions {
+            guard var state = CaptureOperationState.read(from: amendment.operationStateData),
+                  state.phase == .performed, state.reminderSynchronizationPending == true,
+                  let receipt = state.atomicRevision else { continue }
+            let current = try? findItem(withID: receipt.after.id)
+            if current.flatMap(atomicSnapshot) != receipt.after {
+                // A later edit/deletion supersedes this historical delivery
+                // request. It does not acknowledge the old alert as armed.
+                state.reminderSynchronizationPending = false
+                state.reminderSynchronizationStatus = "superseded"
+                stale = true
+            } else if receipt.after.reminder == nil, receipt.before.reminder != nil {
+                let oldDelivery = ItemPresentation.parsedReminderDelivery(segment: receipt.before.original,
+                    createdAt: receipt.before.created, parentSource: receipt.before.parentOriginal,
+                    parentCreatedAt: receipt.before.parentCreated)
+                if report.cancelledItemIDs.contains(receipt.after.id),
+                   oldDelivery != .alarm || report.cancelledAlarmItemIDs.contains(receipt.after.id) {
+                    state.reminderSynchronizationPending = false
+                    state.reminderSynchronizationStatus = "cancelled"
+                } else { continue } // No OS cancellation proof, including an empty acknowledgment.
+            } else if let time = receipt.after.reminder, time <= ReminderSchedulingClock.now {
+                state.reminderSynchronizationPending = false
+                state.reminderSynchronizationStatus = "expired"
+            } else if report.requests[receipt.after.id] != current.flatMap(ReminderScheduleRequest.init(item:)) {
+                continue // A successful older pass cannot acknowledge a newer clock/title/delivery.
+            } else if report.items[receipt.after.id] == .scheduled {
+                state.reminderSynchronizationPending = false
+                state.reminderSynchronizationStatus = "scheduled"
+            } else if let result = report.items[receipt.after.id] {
+                state.reminderSynchronizationStatus = result == .denied ? "denied"
+                    : result == .needsPermission ? "needsPermission" : "failed"
+            } else { continue } // No target acknowledgment, including [] and expired requests.
+            guard let encoded = try? JSONEncoder().encode(state), encoded != amendment.operationStateData else { continue }
+            amendment.operationStateData = encoded; changed = true
+        }
+        if changed {
+            do { try persistChanges() }
+            catch { for (session, data) in previous { session.operationStateData = data }; return }
+        }
+        // The scheduler serializes passes. A stale callback must replace its
+        // old OS snapshot with the current rows; the superseded receipt avoids
+        // a loop when that fresh pass finishes.
+        if stale { reconcilePendingReminders() }
+    }
+
+    /// Preserve an occurrence-grounded revision request for review. Even an
+    /// exact old/new title pair cannot execute yet: CaptureSession owns one
+    /// set of items, and updating another session's item would leave no
+    /// durable relationship from this amendment transcript to that saved row.
+    /// A transient performed receipt is insufficient after restart or sync.
+    private func applySavedItemRevision(
+        _ request: CaptureOperationRequest,
+        session: CaptureSession,
+        preservingItemIDs: Set<UUID>,
+        schedulesReminders: Bool
+    ) -> CaptureOperationOutcome {
+        func hold(_ candidates: [UUID] = []) -> CaptureOperationOutcome {
+            holdOperation(request, in: session, preserving: preservingItemIDs)
+            return .ambiguous(operation: .revise, candidateIDs: candidates)
+        }
+        if let removal = request.savedAlertRemoval {
+            let existing = (try? modelContext.fetch(FetchDescriptor<CapturedItem>())) ?? []
+            let active = CaptureTargetMatcher.activeItems(existing).filter {
+                $0.captureSession?.id != session.id && !$0.belongsInMemory
+            }
+            let candidates = CaptureTargetMatcher.candidates(
+                for: removal.targetWords + " " + removal.dayWord,
+                in: active, referenceDate: session.createdAt,
+                calendar: .autoupdatingCurrent
+            )
+            guard candidates.count == 1, let item = candidates.first,
+                  let oldReminder = item.reminderDate,
+                  Calendar.autoupdatingCurrent.component(.hour, from: oldReminder)
+                    == removal.oldHour24,
+                  RecurrenceStore.rule(for: item.id) == nil else {
+                return hold(candidates.map(\.id))
+            }
+            let calendar = Calendar.autoupdatingCurrent
+            let previousDue = item.dueDate
+            let previousIntent = item.temporalIntent
+            let previousRecord = session.operationStateData
+            let dateOnly = calendar.startOfDay(for: item.dueDate ?? oldReminder)
+            do {
+                var state = CaptureOperationState(
+                    phase: .performed, operation: .revise,
+                    sourceQuote: request.sourceQuote, targetWords: request.target,
+                    candidateIDs: [item.id], targetID: item.id,
+                    targetTitle: item.displayTitle,
+                    expectedOldTimingText: nil, newTimingText: nil,
+                    oldDueDate: previousDue, oldReminderDate: oldReminder,
+                    newDueDate: dateOnly, newReminderDate: nil,
+                    resolvedAt: .now
+                )
+                state.oldTitle = item.displayTitle
+                state.newTitle = item.displayTitle
+                session.operationStateData = try JSONEncoder().encode(state)
+                item.dueDate = dateOnly
+                item.reminderDate = nil
+                item.temporalIntent = TemporalIntent.userEdited(
+                    dueDate: dateOnly, reminderDate: nil, recurrence: nil,
+                    sourceText: previousIntent?.sourceText ?? item.originalTextSegment,
+                    calendar: calendar, dueDateHasTime: false
+                )
+                item.lastModifiedAt = .now
+                let disposable = session.items.filter { !preservingItemIDs.contains($0.id) }
+                disposable.forEach(modelContext.delete)
+                session.processingStatus = .complete
+                try persistChanges(deletedItemIDs: disposable.map(\.id))
+                ReminderScheduler.cancel(itemID: item.id)
+                return .performed(operation: .revise, itemID: item.id,
+                                  title: item.displayTitle)
+            } catch {
+                item.dueDate = previousDue
+                item.reminderDate = oldReminder
+                item.temporalIntent = previousIntent
+                session.operationStateData = previousRecord
+                return hold([item.id])
+            }
+        }
+        if let field = request.savedFieldRevision {
+            return applySavedFieldRevision(field, request: request, session: session,
+                                           preservingItemIDs: preservingItemIDs,
+                                           schedulesReminders: schedulesReminders,
+                                           hold: hold)
+        }
+        if let quantity = request.savedQuantityRevision {
+            let existing = (try? modelContext.fetch(FetchDescriptor<CapturedItem>())) ?? []
+            let candidates = CaptureTargetMatcher.activeItems(existing).filter {
+                $0.captureSession?.id != session.id && !$0.belongsInMemory
+                    && quantity.replacementTitle(for: $0.displayTitle) != nil
+            }
+            guard candidates.count == 1,
+                  let item = candidates.first,
+                  let revisedTitle = quantity.replacementTitle(for: item.displayTitle) else {
+                return hold(candidates.map(\.id))
+            }
+            let oldTitle = item.displayTitle
+            let previousRecord = session.operationStateData
+            do {
+                var state = CaptureOperationState(
+                    phase: .performed, operation: .revise,
+                    sourceQuote: request.sourceQuote, targetWords: request.target,
+                    candidateIDs: [item.id], targetID: item.id,
+                    targetTitle: revisedTitle,
+                    expectedOldTimingText: nil, newTimingText: nil,
+                    oldDueDate: item.dueDate, oldReminderDate: item.reminderDate,
+                    newDueDate: item.dueDate, newReminderDate: item.reminderDate,
+                    resolvedAt: .now
+                )
+                state.oldTitle = oldTitle
+                state.newTitle = revisedTitle
+                session.operationStateData = try JSONEncoder().encode(state)
+                item.displayTitle = revisedTitle
+                item.lastModifiedAt = .now
+                let disposable = session.items.filter { !preservingItemIDs.contains($0.id) }
+                disposable.forEach(modelContext.delete)
+                session.processingStatus = .complete
+                try persistChanges(deletedItemIDs: disposable.map(\.id))
+                if schedulesReminders {
+                    synchronizeReminders(for: item.captureSession,
+                                         requestAuthorizationIfNeeded: true)
+                }
+                return .performed(operation: .revise, itemID: item.id,
+                                  title: revisedTitle)
+            } catch {
+                item.displayTitle = oldTitle
+                session.operationStateData = previousRecord
+                return hold([item.id])
+            }
+        }
+        guard let revision = request.savedItemRevision,
+              !revision.oldTitleUnitIDs.isEmpty,
+              !revision.replacementUnitIDs.isEmpty,
+              revision.oldTitleUnitIDs.isDisjoint(with: revision.replacementUnitIDs),
+              request.sourceUnitIDs.isSuperset(of: revision.oldTitleUnitIDs),
+              request.sourceUnitIDs.isSuperset(of: revision.replacementUnitIDs) else {
+            return hold()
+        }
+        let existing = (try? modelContext.fetch(FetchDescriptor<CapturedItem>())) ?? []
+        let active = CaptureTargetMatcher.activeItems(existing).filter {
+            $0.captureSession?.id != session.id && !$0.belongsInMemory
+        }
+        func normalized(_ text: String) -> String {
+            text.trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+                .lowercased()
+        }
+        let candidates = active.filter { normalized($0.displayTitle) == normalized(revision.oldTitle) }
+        return hold(candidates.map(\.id))
+    }
+
+    /// Executes one explicitly requested field change on a saved action, or
+    /// holds it for review. Every condition below must hold, or nothing on
+    /// the saved item changes and the request stays visible:
+    /// - exactly one active saved action (from another capture) carries the
+    ///   old value in the requested role — the person after a communication
+    ///   verb, or the place after "at"/"to"/"from" — exactly once;
+    /// - that target also shares words with how the speaker named the item;
+    /// - the old value was actually said somewhere in this capture;
+    /// - the item has not been edited since this capture was spoken.
+    /// Only the matching span of the title and, for a person, the person field
+    /// change. Due date, reminder, recurrence, place monitoring, category,
+    /// original segment and identity are untouched, and the capture keeps a
+    /// record of the old and new values.
+    private func applySavedFieldRevision(
+        _ field: SavedFieldRevision,
+        request: CaptureOperationRequest,
+        session: CaptureSession,
+        preservingItemIDs: Set<UUID>,
+        schedulesReminders: Bool,
+        hold: ([UUID]) -> CaptureOperationOutcome
+    ) -> CaptureOperationOutcome {
+        let resolution = resolveSavedFieldRevision(field, session: session)
+        guard case let .resolved(item, oldValue, titleRange) = resolution else {
+            if case let .unresolved(candidates) = resolution { return hold(candidates) }
+            return hold([])
+        }
+        return performSavedFieldRevision(field, request: request, session: session, item: item,
+                                         oldValue: oldValue, titleRange: titleRange,
+                                         preservingItemIDs: preservingItemIDs,
+                                         schedulesReminders: schedulesReminders, hold: hold)
+    }
+
+    enum SavedFieldResolution {
+        case resolved(CapturedItem, String, Range<String.Index>)
+        case unresolved([UUID])
+    }
+
+    /// Whether a field revision can execute, without changing anything. The
+    /// capture paths use this to decide between editing the saved item beside
+    /// the capture's independent content and holding the whole capture.
+    func resolveSavedFieldRevision(_ field: SavedFieldRevision, session: CaptureSession) -> SavedFieldResolution {
+        let source = session.originalTranscription
+        func stems(_ text: String) -> Set<String> {
+            let stop: Set<String> = ["the", "and", "for", "with", "that", "this", "from", "into",
+                                     "item", "task", "reminder", "entry", "same", "existing", "saved",
+                                     "change", "update", "about", "yesterday", "says"]
+            var result = Set<String>()
+            for piece in text.lowercased().split(whereSeparator: { !$0.isLetter }) {
+                let word = String(piece)
+                guard word.count >= 3, !stop.contains(word) else { continue }
+                let stem: String = word.count > 4 && word.hasSuffix("s") ? String(word.dropLast()) : word
+                result.insert(stem)
+                // "pickup" names the same thing as "pick up".
+                if stem.hasSuffix("up"), stem.count > 4 { result.insert(String(stem.dropLast(2))) }
+            }
+            return result
+        }
+        func escaped(_ value: String) -> String { NSRegularExpression.escapedPattern(for: value) }
+        /// The one span of `title` holding `old` in the requested role.
+        func roleSpan(in title: String, old: String) -> NSRange? {
+            let pattern: String
+            switch field.field {
+            case .person:
+                pattern = #"(?i)\b"# + SavedFieldRevision.communicationVerb + #"\s+("# + escaped(old) + #")\b"#
+            case .place:
+                pattern = #"(?i)\b(?:at|to|from)\s+(?:the\s+)?("# + escaped(old) + #")\b"#
+            }
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+            let matches = regex.matches(in: title, range: NSRange(title.startIndex..., in: title))
+            guard matches.count == 1 else { return nil }
+            return matches[0].range(at: 1)
+        }
+        /// The old value the target holds in that role, when not stated.
+        func impliedOld(of item: CapturedItem) -> String? {
+            switch field.field {
+            case .person:
+                if let person = item.personName { return person }
+                // The recipient slot of the title: "Ask Maya for the price".
+                let title = item.displayTitle
+                guard let regex = try? NSRegularExpression(
+                    pattern: #"(?i)\b"# + SavedFieldRevision.communicationVerb + #"\s+([A-Z][\p{L}'’-]+)\b"#),
+                      let match = regex.firstMatch(in: title, range: NSRange(title.startIndex..., in: title)),
+                      let range = Range(match.range(at: 1), in: title),
+                      title[range].first?.isUppercase == true else { return nil }
+                return String(title[range])
+            case .place:
+                let title = item.displayTitle
+                guard let regex = try? NSRegularExpression(
+                    pattern: #"\b(?:(?:[Aa]t|[Ff]rom)\s+(?:the\s+)?([A-Z][\p{L}'’-]*(?:\s+[A-Z][\p{L}'’-]*){0,3})|[Tt]o\s+(?:the\s+)?([A-Z][\p{L}'’-]*(?:\s+[A-Z][\p{L}'’-]*){1,3}))(?:\s+(?:on|by|this|next|before|after|tomorrow|today|tonight)\b.*)?\s*$"#),
+                      let match = regex.firstMatch(in: title, range: NSRange(title.startIndex..., in: title)),
+                      // "to Evan" is a recipient; a "to" place needs a
+                      // multi-word name ("to Maple Road").
+                      let range = Range(match.range(at: 1), in: title) ?? Range(match.range(at: 2), in: title)
+                else { return nil }
+                return String(title[range]).trimmingCharacters(in: .whitespaces)
+            }
+        }
+        let existing = (try? modelContext.fetch(FetchDescriptor<CapturedItem>())) ?? []
+        let active = CaptureTargetMatcher.activeItems(existing).filter {
+            $0.captureSession?.id != session.id && !$0.belongsInMemory
+        }
+        let named = stems(field.itemWords)
+        var matches: [(item: CapturedItem, old: String, span: NSRange)] = []
+        // Only a settled saved action can be revised. A held review row (an
+        // earlier unresolved capture) quotes the same words and must never
+        // become the target of an edit.
+        for item in active where item.itemType.isActionable && !item.needsClarification {
+            guard let old = field.statedOldValue ?? impliedOld(of: item), !old.isEmpty,
+                  old.caseInsensitiveCompare(field.newValue) != .orderedSame,
+                  let span = roleSpan(in: item.displayTitle, old: old) else { continue }
+            let titleStems = stems(item.displayTitle).subtracting(stems(old))
+            guard !titleStems.isDisjoint(with: named) else { continue }
+            // The old value must have been spoken in this capture: a request
+            // that never names what it replaces cannot prove its target.
+            guard source.range(of: #"(?i)\b"# + escaped(old) + #"\b"#,
+                               options: .regularExpression) != nil else { continue }
+            if field.field == .person,
+               let person = item.personName,
+               person.caseInsensitiveCompare(old) != .orderedSame { continue }
+            matches.append((item, old, span))
+        }
+        guard matches.count == 1, let chosen = matches.first,
+              let titleRange = Range(chosen.span, in: chosen.item.displayTitle) else {
+            return .unresolved(matches.map(\.item.id))
+        }
+        let item = chosen.item
+        // A newer edit wins over this older capture's interpretation.
+        guard item.lastModifiedAt <= session.createdAt.addingTimeInterval(1),
+              item.completedAt == nil, !item.isArchived else {
+            return .unresolved([item.id])
+        }
+        return .resolved(item, chosen.old, titleRange)
+    }
+
+    private func performSavedFieldRevision(
+        _ field: SavedFieldRevision, request: CaptureOperationRequest, session: CaptureSession,
+        item: CapturedItem, oldValue: String, titleRange: Range<String.Index>,
+        preservingItemIDs: Set<UUID>, schedulesReminders: Bool,
+        hold: ([UUID]) -> CaptureOperationOutcome
+    ) -> CaptureOperationOutcome {
+        let oldTitle = item.displayTitle
+        let oldPerson = item.personName
+        let newTitle = oldTitle.replacingCharacters(in: titleRange, with: field.newValue)
+        let previousRecord = session.operationStateData
+        do {
+            var state = CaptureOperationState(
+                phase: .performed, operation: .revise,
+                sourceQuote: request.sourceQuote, targetWords: request.target,
+                candidateIDs: [item.id], targetID: item.id, targetTitle: newTitle,
+                expectedOldTimingText: nil, newTimingText: nil,
+                oldDueDate: item.dueDate, oldReminderDate: item.reminderDate,
+                newDueDate: item.dueDate, newReminderDate: item.reminderDate,
+                resolvedAt: .now
+            )
+            state.oldTitle = oldTitle
+            state.newTitle = newTitle
+            state.revisedField = field.field.rawValue
+            state.oldFieldValue = oldValue
+            state.newFieldValue = field.newValue
+            state.oldPersonName = oldPerson
+            session.operationStateData = try JSONEncoder().encode(state)
+            item.displayTitle = newTitle
+            if field.field == .person { item.personName = field.newValue }
+            item.lastModifiedAt = .now
+            let disposable = session.items.filter { !preservingItemIDs.contains($0.id) }
+            disposable.forEach(modelContext.delete)
+            session.processingStatus = .complete
+            try persistChanges(deletedItemIDs: disposable.map(\.id))
+            if schedulesReminders {
+                synchronizeReminders(for: item.captureSession, requestAuthorizationIfNeeded: true)
+            }
+            return .performed(operation: .revise, itemID: item.id, title: newTitle)
+        } catch {
+            item.displayTitle = oldTitle
+            item.personName = oldPerson
+            session.operationStateData = previousRecord
+            return hold([item.id])
+        }
+    }
+
     /// Resolves the spoken destination of a reschedule against one item.
     ///
     /// Two shapes: an offset from the scheduled moment ("back an hour",
@@ -1282,14 +2241,15 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     /// moving it "to Friday" is asking to hear about it then.
     private func rescheduledDates(
         _ timing: String,
-        for item: CapturedItem
+        for item: CapturedItem,
+        referenceDate: Date = .now
     ) -> (dueDate: Date?, reminderDate: Date?, hasTime: Bool)? {
         let anchor = item.reminderDate ?? item.dueDate
 
         if let offset = RescheduleOffset.parse(timing) {
             guard let anchor else { return nil }
             let moved = anchor.addingTimeInterval(offset)
-            guard moved > .now else { return nil }
+            guard moved > referenceDate else { return nil }
             return (
                 item.dueDate != nil ? moved : nil,
                 item.reminderDate != nil || item.dueDate == nil ? moved : nil,
@@ -1299,7 +2259,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
 
         let organized = ThoughtOrganizer.organize(
             "remind me \(timing)",
-            referenceDate: .now,
+            referenceDate: referenceDate,
             calendar: .autoupdatingCurrent
         )
         guard let moment = organized.reminderDate ?? organized.dueDate else { return nil }
@@ -1323,6 +2283,46 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     /// a permanent row with nothing left to say. See Docs/FINAL_RELEASE_AUDIT.md F-1.
     func confirmPendingOperation(_ item: CapturedItem) throws {
         guard let record = PendingOperationStore.record(for: item.id) else { return }
+        if record.operation == .cancel {
+            guard let session = item.captureSession else {
+                throw RepositoryError.saveFailed("The original request is unavailable. No saved item changed.")
+            }
+            // Revalidate the exact IDs shown at confirmation time. A stale
+            // candidate must hold the entire broad operation, not allow a
+            // partial delete of the remaining candidates.
+            let candidates = try record.candidateIDs.map { try findItem(withID: $0) }
+            guard candidates.allSatisfy({ candidate in
+                guard let candidate else { return false }
+                return candidate.completedAt == nil && !candidate.isArchived
+                    && !candidate.belongsInMemory && candidate.captureSession?.id != session.id
+            }) else {
+                throw RepositoryError.saveFailed("A saved item changed. Review this cancellation again.")
+            }
+            let targets = candidates.compactMap { $0 }
+            let state = CaptureOperationState(
+                phase: .performed, operation: .cancel,
+                sourceQuote: session.originalTranscription, targetWords: nil,
+                candidateIDs: record.candidateIDs, targetID: nil,
+                targetTitle: nil, expectedOldTimingText: nil, newTimingText: nil,
+                oldDueDate: nil, oldReminderDate: nil,
+                newDueDate: nil, newReminderDate: nil, resolvedAt: .now
+            )
+            session.operationStateData = try JSONEncoder().encode(state)
+            targets.forEach(modelContext.delete)
+            modelContext.delete(item)
+            session.processingStatus = .complete
+            try persistChanges(deletedItemIDs: record.candidateIDs + [item.id])
+            PendingOperationStore.remove(item.id)
+            for candidateID in record.candidateIDs {
+                RecurrenceStore.remove(candidateID)
+                MemoryPinStore.removeMetadata(for: [candidateID])
+                ShoppingGroupStore.removeMetadata(for: [candidateID])
+                IdeaStageStore.removeMetadata(for: [candidateID])
+                LocationReminderMonitor.shared.stopMonitoring(itemID: candidateID)
+                ReminderScheduler.cancel(itemID: candidateID)
+            }
+            return
+        }
         for candidateID in record.candidateIDs {
             guard let candidate = try findItem(withID: candidateID) else { continue }
             switch record.operation {
@@ -1332,7 +2332,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             case .complete:
                 try setCompleted(candidate, completed: true)
                 LocationReminderMonitor.shared.stopMonitoring(itemID: candidateID)
-            case .reschedule, .create, .retract:
+            case .reschedule, .revise, .create, .retract:
                 // A reschedule is never broad; nothing to confirm here.
                 break
             }
@@ -1341,11 +2341,112 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         try delete(item)
     }
 
+    func pendingCaptureOperationChoices(for item: CapturedItem) throws -> [CapturedItem] {
+        guard let state = CaptureOperationState.read(from: item.captureSession?.operationStateData),
+              state.phase == .pendingChoice,
+              state.reviewItemID == item.id else { return [] }
+        return try state.candidateIDs.compactMap { id in
+            guard let candidate = try findItem(withID: id),
+                  candidate.completedAt == nil, !candidate.isArchived,
+                  !candidate.belongsInMemory else { return nil }
+            if let intent = state.pendingSavedRevision, !intent.candidates.contains(where: { $0 == atomicSnapshot(candidate) }) { return nil }
+            return candidate
+        }
+    }
+
+    /// A reply selects exactly one stored ID. The V5 receipt and deletion are
+    /// committed together; a repeated reply after relaunch sees `.performed`
+    /// and returns without deleting a second row.
+    func choosePendingCaptureOperation(_ item: CapturedItem, targetID: UUID) throws {
+        guard let session = item.captureSession else {
+            throw RepositoryError.saveFailed("The saved-item question is no longer available.")
+        }
+        try choosePendingCaptureOperation(session: session, reviewItemID: item.id, targetID: targetID)
+    }
+
+    /// Stable reply identity survives deletion of the temporary question row.
+    func choosePendingCaptureOperation(captureSessionID: UUID, reviewItemID: UUID, targetID: UUID) throws {
+        guard let session = try modelContext.fetch(FetchDescriptor<CaptureSession>()).first(where: { $0.id == captureSessionID }) else {
+            throw RepositoryError.saveFailed("The saved-item question is no longer available.")
+        }
+        try choosePendingCaptureOperation(session: session, reviewItemID: reviewItemID, targetID: targetID)
+    }
+
+    private func choosePendingCaptureOperation(session: CaptureSession, reviewItemID: UUID, targetID: UUID) throws {
+        guard var state = CaptureOperationState.read(from: session.operationStateData),
+              state.reviewItemID == reviewItemID else {
+            throw RepositoryError.saveFailed("The saved-item question is no longer available.")
+        }
+        if state.phase == .performed, state.targetID == targetID {
+            if state.reminderSynchronizationPending == true { retryPendingAtomicRevisionDelivery(session) }
+            return
+        }
+        if let intent = state.pendingSavedRevision {
+            guard state.phase == .pendingChoice, state.operation == .revise,
+                  state.candidateIDs.contains(targetID), let target = try findItem(withID: targetID),
+                  let snapshot = atomicSnapshot(target), intent.candidates.contains(snapshot),
+                  let revision = intent.confirmedRevision(for: snapshot) else {
+                throw RepositoryError.saveFailed("That saved item has changed. Review the requested edit again.")
+            }
+            var request = CaptureOperationRequest(operation: .revise,polarity: .positive,target: snapshot.title,
+                sourceQuote: intent.sourceQuote,needsReview: false)
+            request.savedAtomicRevision = revision
+            let preserved = Set(session.items.filter { $0.id != reviewItemID }.map(\.id))
+            let outcome = try applyAtomicRevision(revision,request: request,session: session,
+                preservingItemIDs: preserved,schedulesReminders: true)
+            guard case .performed = outcome else {
+                throw RepositoryError.saveFailed("The complete change needs more information. The saved item is unchanged.")
+            }
+            return
+        }
+        guard state.phase == .pendingChoice,
+              state.reviewItemID == reviewItemID,
+              state.operation == .cancel,
+              state.candidateIDs.contains(targetID),
+              let target = try findItem(withID: targetID),
+              target.completedAt == nil, !target.isArchived,
+              !target.belongsInMemory else {
+            throw RepositoryError.saveFailed("That saved reminder has changed. Review the request again.")
+        }
+        guard let item = session.items.first(where: { $0.id == reviewItemID }) else {
+            throw RepositoryError.saveFailed("The saved-item question is no longer available.")
+        }
+        state.phase = .performed
+        state.targetID = targetID
+        state.targetTitle = target.displayTitle
+        state.oldDueDate = target.dueDate
+        state.oldReminderDate = target.reminderDate
+        state.resolvedAt = .now
+        session.operationStateData = try JSONEncoder().encode(state)
+        item.isArchived = true
+        item.needsClarification = false
+        modelContext.delete(target)
+        try persistChanges(deletedItemIDs: [targetID])
+        RecurrenceStore.remove(targetID)
+        MemoryPinStore.removeMetadata(for: [targetID])
+        ShoppingGroupStore.removeMetadata(for: [targetID])
+        IdeaStageStore.removeMetadata(for: [targetID])
+        LocationReminderMonitor.shared.stopMonitoring(itemID: targetID)
+        ReminderScheduler.cancel(itemID: targetID)
+    }
+
     /// Declines a held broad cancel or complete. Nothing the request would
     /// have touched is changed; the review row is removed the same way
     /// confirming it removes the row, since a decline is also a resolution,
     /// not something left to keep asking about.
     func dismissPendingOperation(_ item: CapturedItem) throws {
+        if let session = item.captureSession,
+           var state = CaptureOperationState.read(from: session.operationStateData),
+           state.phase == .pendingChoice,
+           state.reviewItemID == item.id {
+            state.phase = .dismissed
+            state.resolvedAt = .now
+            session.operationStateData = try JSONEncoder().encode(state)
+            item.isArchived = true
+            item.needsClarification = false
+            try persistChanges()
+            return
+        }
         PendingOperationStore.remove(item.id)
         try delete(item)
     }
@@ -1386,9 +2487,68 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     /// Marks a capture finished so launch recovery leaves it alone. The
     /// transcript itself is kept: the words are never what gets discarded.
     private func closeSession(_ session: CaptureSession) {
+        let previousStatus = session.processingStatus
         session.processingStatus = .complete
-        try? persistChanges()
+        do { try persistChanges() }
+        catch {
+            // The store remains authoritative after rollback. SwiftData can
+            // leave an already registered model's enum property cached; do
+            // not report processing complete when that status never saved.
+            session.processingStatus = previousStatus
+        }
     }
+
+#if DEBUG
+    /// Disposable UI fixtures stay behind both UI-test launch flags in RootView.
+    /// All persistent writes remain inside the repository.
+    func seedSavedRevisionChoiceQA() throws {
+        let descriptor = FetchDescriptor<CapturedItem>()
+        guard try modelContext.fetch(descriptor).isEmpty else { return }
+        var calendar = Calendar(identifier: .gregorian); calendar.timeZone = .current
+        for number in 1...3 {
+            let original = "Email Lina the panel diagram by October 20 at \(3 + number * 2) PM. Remind me October 19 at \(7 + number * 2) \(number == 3 ? "PM" : "AM")."
+            let due = calendar.date(from: DateComponents(year:2026,month:10,day:20,hour:15 + number * 2))!
+            let alert = calendar.date(from: DateComponents(year:2026,month:10,day:19,hour:7 + number * 2))!
+            // 13:00 is 1 PM, not 13 PM, in the immutable source.
+            let source = number == 3 ? "Email Lina the panel diagram by October 20 at 9 PM. Remind me October 19 at 1 PM." : original
+            let created = calendar.date(from:DateComponents(year:2026,month:10,day:4,hour:18,second:number))!
+            let parent = CaptureSession(id:UUID(uuidString:"B1000000-0000-4000-8000-00000000000\(number)")!,originalTranscription:source,createdAt:created,captureSource:.inAppText,processingStatus:.complete)
+            let temporal = TemporalIntent(kind:.exactDateTime,day:CalendarDay(from:due,calendar:calendar),
+                time:WallClockTime(hour:15 + number * 2,minute:0),timeZoneIdentifier:calendar.timeZone.identifier,
+                timeZoneBehavior:.deviceLocal,sourceText:source)
+            let row = CapturedItem(id:UUID(uuidString:"A1000000-0000-4000-8000-00000000000\(number)")!,originalTextSegment:source,
+                displayTitle:"Email Lina the panel diagram",itemType:.task,category:.general,createdAt:created,dueDate:due,
+                reminderDate:alert,personName:"Lina",lastModifiedAt:created,temporalIntent:temporal,semanticState:.resolved,captureSession:parent)
+            modelContext.insert(parent); modelContext.insert(row)
+        }
+        try persistChanges()
+    }
+    func mutateSavedRevisionChoiceQA() throws {
+        guard let row = try findItem(withID:UUID(uuidString:"A1000000-0000-4000-8000-000000000003")!),
+              try modelContext.fetch(FetchDescriptor<CaptureSession>()).contains(where: { CaptureOperationState.read(from:$0.operationStateData)?.pendingSavedRevision != nil }) else { return }
+        row.personName = "Keira" // Keep timestamp: whole snapshot must detect it.
+        try persistChanges()
+    }
+
+    func seedRuntimeClarificationQA() throws {
+        let clock = Date.now; var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .autoupdatingCurrent
+        let day = calendar.date(from: DateComponents(year: 2026,month: 11,day: 19))!
+        for (title,original,person,gap,due) in [
+            ("Email Rowan about the panel","Email Rowan about the panel; I need to confirm which Rowan.","Rowan",SemanticGap.ambiguousPerson,Optional<Date>.none),
+            ("Inspect the hinge","Inspect the hinge on November 19 or November 20.",nil,SemanticGap.ambiguousTemporalScope,Optional(day))
+        ] {
+            let session = CaptureSession(originalTranscription: original,createdAt: clock,captureSource: .sample,processingStatus: .complete)
+            let intent: TemporalIntent? = due.map { TemporalIntent(kind: .dateOnly,day: CalendarDay(from: $0,calendar: calendar),
+                time: nil,timeZoneIdentifier: calendar.timeZone.identifier,timeZoneBehavior: .deviceLocal,sourceText: original) }
+            let item = CapturedItem(originalTextSegment: original,displayTitle: title,itemType: .task,category: .general,
+                createdAt: clock,dueDate: due,reminderDate: nil,personName: person,processingConfidence: 0,needsClarification: true,
+                temporalIntent: intent,semanticState: .underspecified(gap),captureSession: session)
+            modelContext.insert(session); modelContext.insert(item)
+        }
+        try persistChanges()
+    }
+#endif
 
     func update(_ item: CapturedItem, with edits: ItemEdits) throws {
         // A person's own wording is not framing to be unwrapped. `reduceFrames`
@@ -1402,8 +2562,22 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             reduceFrames: false
         )
         guard !normalizedTitle.isEmpty else { throw RepositoryError.emptyTitle }
+        let clarifiesObject = item.semanticState == .underspecified(.ambiguousObject)
+            || (item.semanticState == .contested(.ambiguousObject)
+                && normalizedTitle != item.displayTitle)
         let previousRecurrences = RecurrenceStore.snapshots()
+        // A person, destination or title correction is not a timing answer.
+        // Preserve the typed condition/day/clock unless a temporal field was
+        // actually changed by this edit. In particular, do not erase an
+        // unresolved prerequisite while accepting a recipient correction.
+        let temporalFieldsChanged = item.dueDate != edits.dueDate
+            || item.reminderDate != edits.reminderDate
+            || RecurrenceStore.rule(for: item.id) != edits.recurrenceRule
+            || (edits.dueDate != nil && item.isDateOnly == edits.dueDateHasTime)
+            || edits.clarifiedGap == .ambiguousTemporalScope
 
+        if !edits.needsClarification, let answered = edits.clarifiedGap,
+           item.semanticGapRawValue == answered.rawValue { item.semanticState = .resolved }
         item.displayTitle = normalizedTitle
         // Only a title the automatic pass would disagree with needs protecting.
         // Recording every edit would freeze the title of anyone who only
@@ -1420,19 +2594,28 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         item.priority = edits.priority
         item.personName = edits.personName?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
         item.needsClarification = edits.needsClarification
+        if clarifiesObject, !edits.needsClarification {
+            item.semanticState = .resolved
+        }
+        if item.semanticState == .underspecified(.ambiguousTemporalScope),
+           !edits.needsClarification, edits.reminderDate != nil {
+            item.semanticState = .resolved
+        }
         // An explicit edit outranks the sentence. The original wording stays in
         // `originalTextSegment` as provenance forever, but the intent is now
         // what the person set by hand, and `isUserEdited` stops any later
         // reparse from quietly reverting it.
-        item.temporalIntent = TemporalIntent.userEdited(
-            dueDate: edits.dueDate,
-            reminderDate: edits.reminderDate,
-            recurrence: edits.recurrenceRule,
-            sourceText: item.temporalIntent?.sourceText ?? item.originalTextSegment,
-            calendar: .autoupdatingCurrent,
-            dueDateHasTime: edits.dueDateHasTime
-        )
-        RecurrenceStore.set(edits.recurrenceRule, for: item.id)
+        if temporalFieldsChanged {
+            item.temporalIntent = TemporalIntent.userEdited(
+                dueDate: edits.dueDate,
+                reminderDate: edits.reminderDate,
+                recurrence: edits.recurrenceRule,
+                sourceText: item.temporalIntent?.sourceText ?? item.originalTextSegment,
+                calendar: .autoupdatingCurrent,
+                dueDateHasTime: edits.dueDateHasTime
+            )
+            RecurrenceStore.set(edits.recurrenceRule, for: item.id)
+        }
 
         // The same rule the temporal half follows: an explicit edit outranks the
         // sentence, and `isUserEdited` stops a later reparse from reverting it.
@@ -1621,6 +2804,21 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         guard let session = item.captureSession else {
             throw RepositoryError.saveFailed("The original capture is unavailable.")
         }
+        // A completed split keeps the first row's identity and creates its
+        // children at deterministic offsets. Recognize only that exact saved
+        // result before replaying an identical editor submission; otherwise
+        // a second tap/relaunch would insert duplicate reminders. Different
+        // edited parts or missing children still use the ordinary mutation.
+        if item.isReviewed, item.originalTextSegment == normalizedParts[0],
+           normalizedParts.dropFirst().enumerated().allSatisfy({ offset, part in
+               let childDate = item.createdAt.addingTimeInterval(Double(offset + 1) / 1_000)
+               return session.items.contains {
+                   $0.id != item.id && $0.isReviewed
+                       && $0.createdAt == childDate && $0.originalTextSegment == part
+               }
+           }) {
+            return
+        }
         let previousRecurrences = RecurrenceStore.snapshots()
 
         let candidates = normalizedParts.map { part -> ExtractedThought in
@@ -1715,6 +2913,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     }
 
     func undoOrganization(_ session: CaptureSession) throws {
+        guard CaptureOperationState.read(from: session.operationStateData)?.phase != .performed else {
+            throw RepositoryError.saveFailed("This capture records a saved change. Edit the saved item to change it again.")
+        }
         let previousRecurrences = RecurrenceStore.snapshots()
         ensureFallbackItem(for: session)
         let ordered = orderedItems(in: session)
@@ -1769,6 +2970,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     }
 
     func reorganize(_ session: CaptureSession) throws {
+        guard CaptureOperationState.read(from: session.operationStateData)?.phase != .performed else {
+            throw RepositoryError.saveFailed("This capture records a saved change. Edit the saved item to change it again.")
+        }
         ensureFallbackItem(for: session)
         let extraction = ThoughtExtractionEngine.extractWithRules(
             session.originalTranscription,
@@ -2087,6 +3291,11 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         for candidate: ExtractedThought,
         spokenFallback: String
     ) -> String {
+        // A complete filler-only capture has no meaningful prefix to polish
+        // away. Preserve all its original audible words, including "you know".
+        if RuntimeShortSourceCertificate.isDisfluencyOnly(spokenFallback) {
+            return spokenFallback.trimmingCharacters(in:.whitespacesAndNewlines)
+        }
         let rawTitle: String
         if let title = candidate.suggestedTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
            !title.isEmpty {
@@ -2263,7 +3472,88 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         }
     }
 
-    private func makeICloudSnapshot() -> ICloudLibrarySnapshot {
+    /// Build 20 used an isolated store under the same app identity. Import it
+    /// once, by stable IDs, without modifying or deleting that source store.
+    /// The marker is written only after the merged library is durable.
+    func importBuild20LibraryIfPresent(
+        at sourceURL: URL? = nil,
+        preferences: UserDefaults? = nil,
+        sharedPreferences: UserDefaults? = nil,
+        completionDefaults: UserDefaults = .standard
+    ) throws {
+        let marker = "SpeakIt.build20LibraryImported.v1"
+        guard !completionDefaults.bool(forKey: marker) else { return }
+        let url = sourceURL ?? FileManager.default.urls(
+            for: .applicationSupportDirectory, in: .userDomainMask
+        )[0].appendingPathComponent("SpeakItPreview/preview.store")
+        guard FileManager.default.fileExists(atPath: url.path) else { return }
+        let configuration = ModelConfiguration(
+            schema: PersistenceController.schema, url: url,
+            allowsSave: false, cloudKitDatabase: .none
+        )
+        let source = try ModelContainer(
+            for: PersistenceController.schema,
+            migrationPlan: SpeakItMigrationPlan.self, configurations: [configuration]
+        )
+        // Do not treat a failed fetch as an empty successful import.
+        _ = try source.mainContext.fetch(FetchDescriptor<CaptureSession>())
+        _ = try source.mainContext.fetch(FetchDescriptor<CapturedItem>())
+        let prefs = preferences ?? UserDefaults(suiteName: "com.calvinwak.SpeakIt.preview-preferences")!
+        let shared = sharedPreferences ?? UserDefaults(suiteName: "group.com.calvinwak.SpeakItPreview")!
+        let metadata = try Build20Metadata(preferences: prefs, shared: shared)
+        let reader = SwiftDataThoughtRepository(
+            modelContext: source.mainContext, requestsReminderAuthorization: false
+        )
+        let incoming = reader.makeICloudSnapshot(legacy: metadata)
+        let merged = ICloudSnapshotMerger.merge(local: makeICloudSnapshot(), cloud: incoming)
+        try applyICloudSnapshot(merged)
+        let importedIDs = Set(incoming.items.map(\.id))
+        for id in metadata.handEditedTitles where importedIDs.contains(id) {
+            HandEditedTitleStore.remember(id)
+        }
+        completionDefaults.set(true, forKey: marker)
+    }
+
+    private struct Build20Metadata {
+        struct StoredRecurrence: Decodable {
+            let rule: RecurrenceRule
+            let seriesID: UUID
+            let generatedNextItemID: UUID?
+            let modifiedAt: Date?
+        }
+        let recurrences: [RecurrenceRecordSnapshot]
+        let pins: [MemoryPinRecord]
+        let ideas: [IdeaStageRecord]
+        let shoppingGroups: [String: String]
+        let handEditedTitles: Set<UUID>
+
+        init(preferences: UserDefaults, shared: UserDefaults) throws {
+            func read<T: Decodable>(_ type: T.Type, key: String, from defaults: UserDefaults) throws -> T? {
+                guard let data = defaults.data(forKey: key) else { return nil }
+                return try JSONDecoder().decode(type, from: data)
+            }
+            let stored = try read([String: StoredRecurrence].self, key: "SpeakIt.recurrence.v1", from: shared) ?? [:]
+            recurrences = stored.compactMap { key, value in
+                guard let id = UUID(uuidString: key) else { return nil }
+                return RecurrenceRecordSnapshot(itemID: id, rule: value.rule,
+                    seriesID: value.seriesID, generatedNextItemID: value.generatedNextItemID,
+                    modifiedAt: value.modifiedAt ?? .distantPast)
+            }
+            pins = try read([MemoryPinRecord].self, key: "SpeakIt.pinnedMemoryRecords.v1", from: preferences)
+                ?? MemoryPinStore.decode(preferences.string(forKey: MemoryPinStore.key) ?? "").map {
+                    MemoryPinRecord(itemID: $0, isPinned: true, modifiedAt: .distantPast)
+                }
+            ideas = try read([IdeaStageRecord].self, key: "SpeakIt.ideaStageRecords.v1", from: preferences)
+                ?? IdeaStageStore.decode(preferences.string(forKey: IdeaStageStore.key) ?? "").map {
+                    IdeaStageRecord(itemID: $0.key, stage: $0.value, modifiedAt: .distantPast)
+                }
+            shoppingGroups = try read([String: String].self, key: "SpeakIt.shoppingGroups.v1", from: shared) ?? [:]
+            handEditedTitles = Set((shared.stringArray(forKey: "SpeakIt.handEditedTitles.v1") ?? []).compactMap(UUID.init(uuidString:)))
+        }
+    }
+
+    private func makeICloudSnapshot(legacy: Build20Metadata? = nil) -> ICloudLibrarySnapshot {
+
         // Practice is local, temporary UI state. Never upload it, even if the
         // user enables iCloud while the tutorial is still open.
         let sessions = ((try? modelContext.fetch(FetchDescriptor<CaptureSession>())) ?? [])
@@ -2285,7 +3575,11 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                     captureSource: $0.captureSource,
                     processingStatus: $0.processingStatus,
                     processingError: $0.processingError,
-                    lastModifiedAt: $0.items.map(\.lastModifiedAt).max() ?? $0.createdAt
+                    lastModifiedAt: max(
+                        $0.items.map(\.lastModifiedAt).max() ?? $0.createdAt,
+                        CaptureOperationState.read(from: $0.operationStateData)?.resolvedAt ?? $0.createdAt
+                    ),
+                    operationStateData: $0.operationStateData
                 )
             },
             items: items.compactMap { item in
@@ -2309,25 +3603,25 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                     needsClarification: item.needsClarification,
                     isReviewed: item.isReviewed,
                     lastModifiedAt: item.lastModifiedAt,
-                    recurrenceRule: RecurrenceStore.rule(for: item.id),
+                    recurrenceRule: legacy.map { value in value.recurrences.first { $0.itemID == item.id }?.rule } ?? RecurrenceStore.rule(for: item.id),
                     temporalIntent: item.temporalIntent,
                     portableSemantics: ICloudItemSemantics(
                         temporalIntent: item.temporalIntent,
                         locationIntent: item.locationIntent,
                         semanticStateRawValue: item.semanticStateRawValue,
                         semanticGapRawValue: item.semanticGapRawValue,
-                        shoppingGroup: ShoppingGroupStore.group(for: item.id)
+                        shoppingGroup: legacy.map { $0.shoppingGroups[item.id.uuidString] } ?? ShoppingGroupStore.group(for: item.id)
                     )
                 )
             },
-            deletionRecords: ICloudDeletionStore.records(),
-            recurrenceRecords: RecurrenceStore.snapshots().filter {
+            deletionRecords: legacy == nil ? ICloudDeletionStore.records() : [],
+            recurrenceRecords: (legacy?.recurrences ?? RecurrenceStore.snapshots()).filter {
                 syncedItemIDs.contains($0.itemID)
             },
-            pinRecords: MemoryPinStore.records().values.filter {
+            pinRecords: (legacy?.pins ?? Array(MemoryPinStore.records().values)).filter {
                 syncedItemIDs.contains($0.itemID)
             },
-            ideaStageRecords: IdeaStageStore.records().values.filter {
+            ideaStageRecords: (legacy?.ideas ?? Array(IdeaStageStore.records().values)).filter {
                 syncedItemIDs.contains($0.itemID)
             }
         )
@@ -2358,6 +3652,17 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             session.captureSource = value.captureSource
             session.processingStatus = value.processingStatus
             session.processingError = value.processingError
+            if let operationStateData = value.operationStateData {
+                let local = CaptureOperationState.read(from: session.operationStateData)
+                let incoming = try? JSONDecoder().decode(
+                    CaptureOperationState.self, from: operationStateData
+                )
+                let localIsResolved = local?.phase == .performed || local?.phase == .dismissed
+                let incomingIsPending = incoming?.phase == .pendingChoice
+                if !(localIsResolved && incomingIsPending) {
+                    session.operationStateData = operationStateData
+                }
+            }
             importedSessions[value.id] = session
         }
 
@@ -2472,6 +3777,12 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         let requests = session.items
             .filter { !$0.isArchived && !$0.isCompleted }
             .compactMap(ReminderScheduleRequest.init(item:))
+        var completion: (@MainActor ([ReminderSchedulingResult]) -> Void)? = nil
+        if !requests.isEmpty {
+            completion = { results in
+                performance?.markNotificationSchedulingFinished(accepted:results.contains(.scheduled))
+            }
+        }
         ReminderScheduler.synchronize(
             requests,
             requestAuthorizationIfNeeded: requestAuthorizationIfNeeded && requestsReminderAuthorization,
@@ -2479,11 +3790,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 itemIDs: Set(session.items.map(\.id)),
                 captureSessionIDs: [session.id]
             ),
-            onCompletion: requests.isEmpty ? nil : { results in
-                performance?.markNotificationSchedulingFinished(
-                    accepted: results.contains(.scheduled)
-                )
-            }
+            onCompletion: completion
         )
     }
 
@@ -2604,11 +3911,28 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         return try modelContext.fetch(descriptor).lazy.compactMap { session in
             guard session.originalTranscription.captureFingerprint == fingerprint else { return nil }
             let items = self.orderedItems(in: session)
-            guard !items.isEmpty else { return nil }
+            let operationOutcome: CaptureOperationOutcome? = {
+                guard let state = CaptureOperationState.read(from: session.operationStateData) else { return nil }
+                switch state.phase {
+                case .performed:
+                    if let targetID = state.targetID {
+                        return .performed(operation: state.operation, itemID: targetID,
+                                          title: state.targetTitle ?? state.targetWords ?? "Saved item")
+                    }
+                    return .performedMany(operation: state.operation,
+                                          count: state.candidateIDs.count)
+                case .pendingChoice:
+                    return .ambiguous(operation: state.operation, candidateIDs: state.candidateIDs)
+                case .dismissed:
+                    return .ambiguous(operation: state.operation, candidateIDs: [])
+                }
+            }()
+            guard !items.isEmpty || operationOutcome != nil else { return nil }
             return CaptureCreationResult(
                 session: session,
                 items: items,
-                createdNewCapture: false
+                createdNewCapture: false,
+                operationOutcome: operationOutcome
             )
         }.first
     }

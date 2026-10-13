@@ -1,0 +1,421 @@
+{
+  "sourceBankRows": 510000,
+  "sourceBankBlueprints": 212,
+  "sourceBankSHA256": "7fbb7ef7061cd012ef7eb5073f9c93bb79e9fa7a42f7018b9b4292a4a19dbe50",
+  "approvedCandidateRows": 59,
+  "approvedCandidateBytes": 352256,
+  "approvedCandidateSHA256": "aaec1117575f03c2ae0cb420a61070a2d50954c5dd44b626dac908e70f8d3d6d",
+  "approvedBlueprints": [
+    "action_ambiguous_target",
+    "action_quoted_title",
+    "cap_mixed_kinds",
+    "cap_twenty",
+    "cap_two_dates",
+    "cap_two_groups",
+    "fam_coupled_revision",
+    "fam_distinct_parent_anchors",
+    "fam_embedded_instructions",
+    "fam_inventory_ownership",
+    "fam_joint_recipients",
+    "fam_long_household",
+    "fam_nested_relation",
+    "fam_owner_and_recipient",
+    "fam_pack_owned",
+    "fam_preference",
+    "fam_purchase_allocation",
+    "fam_quote_perspective",
+    "fam_recipient_repair",
+    "fam_report_no_adoption",
+    "fam_same_word_roles",
+    "fam_separate_times",
+    "fam_third_party_possessive",
+    "fam_unknown_home",
+    "list_delayed_addition",
+    "list_keep_note",
+    "list_question",
+    "list_total",
+    "long_reference",
+    "note_corrected_fact",
+    "note_questions",
+    "ramble_account",
+    "saved_coupled",
+    "saved_independent",
+    "saved_missing",
+    "saved_object_repair",
+    "saved_place",
+    "saved_same_name_roles",
+    "saved_stale",
+    "saved_wrong_singleton",
+    "shop_add_quantity",
+    "shop_allocation",
+    "shop_no_purchase",
+    "shop_package",
+    "shop_partial_owned",
+    "shop_quoted",
+    "shop_replace_quantity",
+    "task_dont_forget",
+    "task_refusal_plus"
+  ],
+  "approval": "independent input-first AI review of exact originals, not human approval or runtime qualification",
+  "excludedDisputedIDs": [
+    "SIR1-506751",
+    "SIR1-509711",
+    "SIR1-034355"
+  ],
+  "records": [
+    {
+      "id": "SIR1-502751",
+      "blueprint": "fam_distinct_parent_anchors",
+      "input_sha256": "b320950747b4660194a1a5e85f9fc038d2391e620a9c1b7bae39f2382897f83f",
+      "solution_sha256": "7934e57c3cbf630928a4df5afba1c2d72f1f1054f7a71e14910d93ef34332f28"
+    },
+    {
+      "id": "SIR1-502001",
+      "blueprint": "fam_owner_and_recipient",
+      "input_sha256": "d216647d24d077f2e0dafe36f9e30e9ed07942e2c876f65a46955a1822df193e",
+      "solution_sha256": "4c3d917556b27012302cde68abaa78a8cfcb94397310bfccfa4439c6a5e96345"
+    },
+    {
+      "id": "SIR1-501501",
+      "blueprint": "fam_quote_perspective",
+      "input_sha256": "74530f1806783c319a13566180fe9c6f70eee4209b705e2e164df7fec67a92d3",
+      "solution_sha256": "82aee465c19a8c5655cc74f4df40eb21dd8aa66f9ef6bc582cd569daa5c3081c"
+    },
+    {
+      "id": "SIR1-501751",
+      "blueprint": "fam_recipient_repair",
+      "input_sha256": "5d61465b382995def70613b0f31502ef80a7a52d7dddde062ce61156cce258c3",
+      "solution_sha256": "9e8c117d9138ba7777e4a8eec36be6c78b0c1b389e177b4ba51f9fc5e017018a"
+    },
+    {
+      "id": "SIR1-506251",
+      "blueprint": "fam_same_word_roles",
+      "input_sha256": "7a3fd98d2357d2491eacb469f6e1fa8307b8a366002391c24d84b3cab6aaa4ba",
+      "solution_sha256": "f31a76ec4e867ec1d1bd47a8231cacf23c6e5982006f9fddabeb4f8521a8ecb8"
+    },
+    {
+      "id": "SIR1-502251",
+      "blueprint": "fam_third_party_possessive",
+      "input_sha256": "ab5f6bcf15677d60d5d391681f838ce6b06bdaba056c85a8e28b8b4fd11541bc",
+      "solution_sha256": "9dec01b3ef89acf1ce3dd97d5f76124d546cc9e5483285af58345a9e39383543"
+    },
+    {
+      "id": "SIR1-507251",
+      "blueprint": "fam_unknown_home",
+      "input_sha256": "0496592347709ca8eb1246508eca5f7de065a0b1e39d20982abecbb05f839376",
+      "solution_sha256": "20b9511e7841cad1d86ce54433af39c336cc0dc0a9247597ffd666932d0528e2"
+    },
+    {
+      "id": "SIR1-503251",
+      "blueprint": "fam_pack_owned",
+      "input_sha256": "12635c4a02a2d0fceb9d4547b4eb2238aad0024d762b9d1dd3d25fec39da6897",
+      "solution_sha256": "dcfd88a71164125b0db9188f028c10b0110aa8e677cad96afe5135e5278dfb96"
+    },
+    {
+      "id": "SIR1-503001",
+      "blueprint": "fam_purchase_allocation",
+      "input_sha256": "5e56fc6ab2db16a92cef37df1fc1c9901db160b7a3ba3e6ba8d218aafb6da43c",
+      "solution_sha256": "0af6f7839e0383407eeaf033dc08d2a89f15be9d6d063df02fff9dca1b303451"
+    },
+    {
+      "id": "SIR1-000084",
+      "blueprint": "shop_package",
+      "input_sha256": "491a248f4410da4c6db4ac0f1ccb85e99b15cb7d70f035386c4b3431bee2a892",
+      "solution_sha256": "7445e32f93f8c45426112db479acb191947228f56cfd668b75604b86379731cc"
+    },
+    {
+      "id": "SIR1-000153",
+      "blueprint": "note_questions",
+      "input_sha256": "7768b24c3b920f8a0b2222098c8e7ada2e1eaaa6f2d3f9cd47faa01a5ccbe20f",
+      "solution_sha256": "3d9861abed44333cf6df469b37eac85f778831298909820a62e7c1698211e2fd"
+    },
+    {
+      "id": "SIR1-000133",
+      "blueprint": "saved_coupled",
+      "input_sha256": "a504f3b3078ae96771a4c175966caecc99d5fe51318f6a836708d97f181e5a99",
+      "solution_sha256": "23face330aa5f1ad511fd61a34f84e4b2244279ae70fd57863dab2ced5fa5ce7"
+    },
+    {
+      "id": "SIR1-000041",
+      "blueprint": "saved_independent",
+      "input_sha256": "90f53cce87fd40cfcd9fc043a0395bc43d283378b00cb236ff046244d0a2b0d2",
+      "solution_sha256": "3a0a175bb946f65d821310d583e8e080c0403770c59a33a0638684b04b73572b"
+    },
+    {
+      "id": "SIR1-000112",
+      "blueprint": "saved_missing",
+      "input_sha256": "2164e69bdf4ba18ac8c5a5a79987a62f71aaff8f253b5548131d47978895953a",
+      "solution_sha256": "1128865d0780927e9ab5d3faeec8ead426915d5a24fa6a4aad608b9b46692bf7"
+    },
+    {
+      "id": "SIR1-000126",
+      "blueprint": "saved_wrong_singleton",
+      "input_sha256": "dc886d2c88acf58232fe2853e776004455204dafa7b1370c28d0006ce52b78d6",
+      "solution_sha256": "1401d839e64b952425ff96c912b9675b9824820c7ed13e00a0982ae4bdc9047a"
+    },
+    {
+      "id": "SIR1-008681",
+      "blueprint": "cap_two_dates",
+      "input_sha256": "54b0184914d8861bed7379b8fef1fa85d70e097a8940a8495cccd0eb0431b8b5",
+      "solution_sha256": "728349f233340737ace1233218d0302e5797bdee8fa63bb96d139e2a84796cac"
+    },
+    {
+      "id": "SIR1-017297",
+      "blueprint": "saved_object_repair",
+      "input_sha256": "accb3cdf511cbb08e3b36c02364b396cc4720253f189593084b1d0dc43d78aa8",
+      "solution_sha256": "cb54ac1631cbaa830d316209fd5edd269a48a35f9dc1dc74a076ce1d243f31af"
+    },
+    {
+      "id": "SIR1-030990",
+      "blueprint": "action_ambiguous_target",
+      "input_sha256": "55590f941ec14da3dba70b1080e89eed0797c19dec84fada02f23be145c90b51",
+      "solution_sha256": "e76e4ef65b9f96e684b7a6a73089a2c73c7f41cc161a387a85e68999cb89466d"
+    },
+    {
+      "id": "SIR1-072410",
+      "blueprint": "list_question",
+      "input_sha256": "e9825c424cdf651249c1f9cf1965262c2f83756c28e4dedab693e62aba55de88",
+      "solution_sha256": "46ddf9b76853bb4fb349c9aee6d6b74ac214b129751aef6d4089576582bb3693"
+    },
+    {
+      "id": "SIR1-077051",
+      "blueprint": "shop_no_purchase",
+      "input_sha256": "5b19f879c402f40ff33ad1b8ceaa6e72d28314df2e812d010843beb32cbe1bc0",
+      "solution_sha256": "2d2d3494b347c5859735dfad66a6697c16af40b146710343bca23c6cba82e307"
+    },
+    {
+      "id": "SIR1-087852",
+      "blueprint": "list_delayed_addition",
+      "input_sha256": "f00ea00f3822da7b079ef5906719227db2539b7124d3ec7a9583c483b41940ae",
+      "solution_sha256": "a653a36b69978aeb05022af7517bb3ed9b6b5dfc434148fe4691ab637093b359"
+    },
+    {
+      "id": "SIR1-153507",
+      "blueprint": "cap_two_groups",
+      "input_sha256": "16f2b0366ea2da384659eba4cedb71d74f14e7738b07669dee3ad196ff6b76ad",
+      "solution_sha256": "8eec817ea044a0ab8208380a245f0875d6ca2eaa665493a17618e8b879b3ff31"
+    },
+    {
+      "id": "SIR1-317804",
+      "blueprint": "action_quoted_title",
+      "input_sha256": "09bac29b70831e58f0e3a8af984994518bb3bf48e717eeab66b19426b78be99d",
+      "solution_sha256": "feb6e7ce245e950a4baaa656b43755be5a63a7b548122f820e15f912a184cdde"
+    },
+    {
+      "id": "SIR1-385425",
+      "blueprint": "task_dont_forget",
+      "input_sha256": "f9acc785d4ac1ca6ee3f26b4ecc9eb5e4a5953c05b8e94acc7f50d9e247659fa",
+      "solution_sha256": "b91bf2266f9a3011a29d50f871a5bf9bd76c03b9056c29218c2081b7e59fb613"
+    },
+    {
+      "id": "SIR1-429557",
+      "blueprint": "cap_mixed_kinds",
+      "input_sha256": "fafb7852748860ba1d38f064743640e23016269cab0be28e223a0db8ca0cf4c3",
+      "solution_sha256": "678f3d538acced44a9a754020c02edbe3e6b30331fb957c07be5058c3aff3e99"
+    },
+    {
+      "id": "SIR1-459657",
+      "blueprint": "cap_twenty",
+      "input_sha256": "723fc78a9df9b8c353b6a3a3c81fcd6dfe961dc697af51cf1a9d92a9f533e998",
+      "solution_sha256": "64e9b8967b34181e3d9cd048cadf370b61909ab359b64231c6c4f491330d1fcf"
+    },
+    {
+      "id": "SIR1-500405",
+      "blueprint": "fam_joint_recipients",
+      "input_sha256": "c804cde9a6db16101b931ef550ba40720865daf17ffd075edf32fe7093551927",
+      "solution_sha256": "51762cd6331506f06f8cb8d8eccd18e9dd8a07e217c8967723b92bcb4a5a75fe"
+    },
+    {
+      "id": "SIR1-500700",
+      "blueprint": "fam_separate_times",
+      "input_sha256": "3bee15e6648bf2b7a5ef21ffe7cb5617941626a7c338469a6822da16d5f400c9",
+      "solution_sha256": "f94e62991062bcc918a92ae7542c4dab67721ff98bd2662ee8d6deacd5238a4c"
+    },
+    {
+      "id": "SIR1-501092",
+      "blueprint": "fam_report_no_adoption",
+      "input_sha256": "6d2f1dfd2e2c2803de2d7c950a89a9b578fe19cec9f1ed013d630df1d5728f6d",
+      "solution_sha256": "8b44f4b61cd9f65049d5e464b75d8e618bbd0d11cc82c950b0c6ddfb613c8cb0"
+    },
+    {
+      "id": "SIR1-502144",
+      "blueprint": "fam_owner_and_recipient",
+      "input_sha256": "d25bb5b80d772483aa313398da9ceda4ad06f665712c5ac79021d8b342155102",
+      "solution_sha256": "b5dadd28ea8befa1a77608ccc429bdedf6e88429172b7001201f1f6cc7656bdb"
+    },
+    {
+      "id": "SIR1-503672",
+      "blueprint": "fam_inventory_ownership",
+      "input_sha256": "91e8c20a41e72bf3462c955be519d76b280c5cab00babf518b4b6157adf2e786",
+      "solution_sha256": "59aa3fd0cd9f19e1dfd6afc49cb296f11316cce447f1e680ea4fdca4027b2814"
+    },
+    {
+      "id": "SIR1-503953",
+      "blueprint": "fam_preference",
+      "input_sha256": "b790646cd9b88647c054c652b988d80e06eeab180f91480766744156eed6e570",
+      "solution_sha256": "f0ffc14983ea325315c8e79a7700fb79d069422dc8f541910768e55455a682ed"
+    },
+    {
+      "id": "SIR1-506496",
+      "blueprint": "fam_same_word_roles",
+      "input_sha256": "dd5540c95734877b7a45092b06962a41fbf95e39e6dddd7253df634ef9ae5c33",
+      "solution_sha256": "79079968d11e088a841c2791d261c1f82ce49970fdf29ec9e38ba28219907df6"
+    },
+    {
+      "id": "SIR1-506504",
+      "blueprint": "fam_coupled_revision",
+      "input_sha256": "363d73376a97703018ab2f97ac86e0fc307669c7d0a0462c7a2fa4b7cdd71241",
+      "solution_sha256": "e685b24adac0a554d5b8c032d127bc9958d9339050aec12a996b73e2762d65fe"
+    },
+    {
+      "id": "SIR1-509407",
+      "blueprint": "fam_embedded_instructions",
+      "input_sha256": "82cd46a0bb5cc97c42fa54cb5420c407b4acd4b7e615db0e4e151fb00f23aca7",
+      "solution_sha256": "462e7adad3116370445f17bf65dcd8c20ff8b333c724df2b9b5c452f38b1b135"
+    },
+    {
+      "id": "SIR1-509678",
+      "blueprint": "fam_long_household",
+      "input_sha256": "37bd49d50485fa9ef73cd94f6808414a0a51d0082fa3467cd7a2c465c93256fc",
+      "solution_sha256": "c3043e80f7256ad47d92310bc99049c1da6d9ed693b1e8c54bd2350aebdaee1a"
+    },
+    {
+      "id": "SIR1-501835",
+      "blueprint": "fam_recipient_repair",
+      "input_sha256": "48d22cb6df474099db3a7cc1c4e475e1a0148c61436160c3e914dfe52705ab6c",
+      "solution_sha256": "ef184f443c06fdc3c163c66d09ea3b8a71504c864be7d10059dbc42ab5ebad76"
+    },
+    {
+      "id": "SIR1-502352",
+      "blueprint": "fam_third_party_possessive",
+      "input_sha256": "bcfe1be30a03e0a5a074ff8bafe7f875ea76d2385673a711487af9a4a4a4918c",
+      "solution_sha256": "80153caf4fefd0270dd11e75acabc7128f7ff9172101422080b861e4c4204b0f"
+    },
+    {
+      "id": "SIR1-502605",
+      "blueprint": "fam_nested_relation",
+      "input_sha256": "adc6ee028fef9f1dbb73b6e48a8def8adee3d6a0e53cd24fdd68a3ccdb748bf4",
+      "solution_sha256": "97eb39f4563ff0e64f64f1bee62e2145961bddb764299cc06d7ada3a51dc720f"
+    },
+    {
+      "id": "SIR1-451691",
+      "blueprint": "saved_same_name_roles",
+      "input_sha256": "47c6cd74e886e81a23038ccb08d880222191e6054e1d94e3277003bc93d39864",
+      "solution_sha256": "a78727007f84cd628fcbd26dd78854ce8b93c6df017e7f739c7b09bfaa92341f"
+    },
+    {
+      "id": "SIR1-329569",
+      "blueprint": "shop_replace_quantity",
+      "input_sha256": "6d7670a1e2afd77db46970b305d1fc158dd4120dceb02776bef10850a95922e1",
+      "solution_sha256": "543d1b0bc4074745205bb3a4aca0cf659aed48be229f36df742ff6275cdeac62"
+    },
+    {
+      "id": "SIR1-381234",
+      "blueprint": "shop_add_quantity",
+      "input_sha256": "1aedb42d884a495591800fa89b5d75792ebf0d2a5e9d4bed4b5a91ba57c59e35",
+      "solution_sha256": "4e5c1755a450b102669f4618441805f2b34d6e7f66581ffc84e6292bf5d642ae"
+    },
+    {
+      "id": "SIR1-178688",
+      "blueprint": "shop_allocation",
+      "input_sha256": "2f183ac593ee340f0452778a689c019edee96b345e5f73e9b9b63a647da6a6c2",
+      "solution_sha256": "32ce5f284a5d7216bb4a1078ab1cd170b439c6303af16dd4724ceaf3de58af66"
+    },
+    {
+      "id": "SIR1-456352",
+      "blueprint": "list_total",
+      "input_sha256": "c966ff81088beb142bfaedb4c6f0788322c1373bac7a8c7141ed5272dd9ef715",
+      "solution_sha256": "e25c2a0c92496894edb608ca29e66f9efdfb452608083e2f43c058790e17c940"
+    },
+    {
+      "id": "SIR1-503264",
+      "blueprint": "fam_pack_owned",
+      "input_sha256": "37d71af03b815b4764c5ada9475c71aa08eadfa8f62e7e8287f79b03c98515af",
+      "solution_sha256": "b6eb73dfe6838f1372d629188f461a4384a1b305a2a263651356fe8f358ea27c"
+    },
+    {
+      "id": "SIR1-303473",
+      "blueprint": "shop_partial_owned",
+      "input_sha256": "60c6e8206b28ced8ce052e44bc6a7b56ab5a643814ad4332604013ef76e7c988",
+      "solution_sha256": "5ceccf554fb4727c7440fefe74e0730d0f3208b6f73b1033100ceea5477856a7"
+    },
+    {
+      "id": "SIR1-206002",
+      "blueprint": "list_keep_note",
+      "input_sha256": "d24fe080364a528657dcfd649b99c92fa60c129d0992bc30c7b171e8cbd442b8",
+      "solution_sha256": "d3ed84c7273f450e5dbda0deb1d5601cda3177f5bc5b13fd0cbb5e7d0334db24"
+    },
+    {
+      "id": "SIR1-089700",
+      "blueprint": "long_reference",
+      "input_sha256": "245ed05000c3b572e568c21f3bb41e1f123184e8a7a9283be8d9e14f96b7c70c",
+      "solution_sha256": "b280adfb17fa96c52e7a04030c54f547eaf03c9171c39d1c287f73811a42773b"
+    },
+    {
+      "id": "SIR1-325503",
+      "blueprint": "note_corrected_fact",
+      "input_sha256": "76e8fb877b2964bde9859d2562d12366f234da6f809bc767b046ce0fed0537b3",
+      "solution_sha256": "a67d682c603fb576d4e0105958abbbbaefb912b9a4c5726243ebc2d59cb58713"
+    },
+    {
+      "id": "SIR1-413374",
+      "blueprint": "ramble_account",
+      "input_sha256": "3c2e8abdb02c3cb94d127c977e9d68046e9d569493162cf44fd75476de387fe9",
+      "solution_sha256": "5031a10624e7fd01410d893b88bcb4b13d6861929ea317ec21cb4bc15bc517df"
+    },
+    {
+      "id": "SIR1-501701",
+      "blueprint": "fam_quote_perspective",
+      "input_sha256": "ac7039d6d3ca426473fd2dd9899e942a73305e287bf6455845da4ce466cdf29e",
+      "solution_sha256": "ec4b48f84f398dd3c9f6c5a790d20947d6651014e626cdc0c729923917e01521"
+    },
+    {
+      "id": "SIR1-316351",
+      "blueprint": "shop_quoted",
+      "input_sha256": "e912325246da54a8937ed2088846424995736b3f090405519fa6e12b93d22eee",
+      "solution_sha256": "09287cf13e0b81e7f08f14188d53b0c61e5dcf4db1cb0a81ffd324f87c889066"
+    },
+    {
+      "id": "SIR1-220725",
+      "blueprint": "task_refusal_plus",
+      "input_sha256": "fd330cecd5115d036e43a06952fb392cb6a5d8aa71b8ea074f5d701033ffb1df",
+      "solution_sha256": "e1d731317342d2861f9140a35d0307e7c84966656da1ae2ad2126c3a8ab2f5db"
+    },
+    {
+      "id": "SIR1-412126",
+      "blueprint": "saved_coupled",
+      "input_sha256": "bb14e03e8967c4bbca502fa0ee84e6ff7d7b9646c7def895ba4eb4cabdf5028f",
+      "solution_sha256": "63f68ec77b8e6acc6fdba37cc525c748dd80c52be89d8ac7088b6d9d587865fd"
+    },
+    {
+      "id": "SIR1-466868",
+      "blueprint": "saved_wrong_singleton",
+      "input_sha256": "603cf5972bcfc98fe6c6dd0ffc14816d8fb143295bb43c70d4f31c70abb0c6c3",
+      "solution_sha256": "0ba74eb0b0f35681e749801676dff76b45c07830d525a1eb5d6c54f5b8dfe017"
+    },
+    {
+      "id": "SIR1-480312",
+      "blueprint": "saved_stale",
+      "input_sha256": "c6da581de2ae0c96a2fe69c7262fb67d9ba2c224551c73b663e10167baadb6f5",
+      "solution_sha256": "685623dd0cef001b0ac68c3bd5696c71e0135cf4a9838517273b41afe574bb68"
+    },
+    {
+      "id": "SIR1-222847",
+      "blueprint": "saved_missing",
+      "input_sha256": "80e0d376df35353ea6625b2c5d8b1b7217ea3f1c077e9f74232f08986b67c5d9",
+      "solution_sha256": "d05ae9881aaf6386a2d95e00d6de08f3ad4151e01fcc03191850657a7108fbd0"
+    },
+    {
+      "id": "SIR1-507475",
+      "blueprint": "fam_unknown_home",
+      "input_sha256": "5e6a1833e6d1fe016595709a4ef53342932cb7df1eec664c99a34dd12fd9c048",
+      "solution_sha256": "04f8e1418a96054361b02b9eeab4e11215486cb9b702a97cc104bbe897440fa3"
+    },
+    {
+      "id": "SIR1-360976",
+      "blueprint": "saved_place",
+      "input_sha256": "077a619fbc8803d4d533ac53cb9d5c04c4f05b8716f45682adeb29685629632c",
+      "solution_sha256": "f7bf7a694d899d1d85b789ffb7f6fb72776356d5ce04ae35d3ad4227aae4a532"
+    }
+  ]
+}

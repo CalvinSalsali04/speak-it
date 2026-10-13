@@ -153,6 +153,8 @@ final class SemanticCorpusTests: XCTestCase {
     func testFactCorrections() { run(.corrections, SemanticCorpusR.factCorrections) }
     func testElidedVerbTitles() { run(.multipleThoughts, SemanticCorpusR.elidedVerbTitles) }
     func testCoordinatedRecipients() { run(.coordinationContext, SemanticCorpusR.coordinatedRecipients) }
+    func testSentenceCoordinationContext() { run(.coordinationContext, SemanticCorpusQ.coordinationContext) }
+    func testSentenceCoordinationGuards() { run(.coordinationContext, SemanticCorpusQ.coordinationGuards) }
     func testFrontedConditions() { run(.frontedConditions, SemanticCorpusR.frontedConditions) }
     func testFrontedConditionGuards() { run(.frontedConditions, SemanticCorpusR.frontedConditionGuards) }
 

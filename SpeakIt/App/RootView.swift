@@ -6,6 +6,13 @@ private enum AppDestination: Hashable {
     case library
 }
 
+private struct CaptureDockHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 private enum FullScreenDestination: String, Equatable, Identifiable {
     case welcome
     case captureVoice
@@ -20,6 +27,10 @@ private enum FullScreenDestination: String, Equatable, Identifiable {
 struct RootView: View {
     @Environment(\.thoughtRepository) private var repository
     @Environment(\.scenePhase) private var scenePhase
+#if DEBUG
+    @Environment(\.colorScheme) private var qaColorScheme
+    @Environment(\.dynamicTypeSize) private var qaDynamicTypeSize
+#endif
     @EnvironmentObject private var subscriptionStore: SubscriptionStore
     @Query(
         filter: #Predicate<CapturedItem> { item in
@@ -68,6 +79,7 @@ struct RootView: View {
 
     @State private var selectedDestination: AppDestination = RootView.initialDestination
     @State private var isDockVisible = true
+    @State private var captureDockHeight: CGFloat = DockScroll.clearance
     /// Bumped when the dock button for the destination already on screen is
     /// tapped again. The destination views watch it and pop their pushed
     /// screens, so tapping "Today" from inside the List lands on Today.
@@ -90,7 +102,10 @@ struct RootView: View {
     @State private var returnsToSetupAfterExternalCapture = false
     @State private var hasPerformedMaintenance = false
     @State private var isImportingSharedCaptures = false
+    @State private var libraryUpgradeProblem: String?
     @State private var sharedImportNotice: String?
+    @State private var sharedImportProblem: String?
+    @State private var checkpointReadProblem: String?
     @State private var fullScreenDestination: FullScreenDestination? = RootView.initialFullScreenDestination
     @State private var hasTrackedInitialScreen = false
     // A fresh identity per presentation. `.fullScreenCover(item:)` keys off
@@ -191,6 +206,8 @@ struct RootView: View {
                 TutorialBanner(step: inAppTutorialStep, onExit: endTutorialEarly)
             }
 
+            sharedImportBanner
+
             ZStack(alignment: .bottom) {
                 Group {
                     switch selectedDestination {
@@ -228,7 +245,12 @@ struct RootView: View {
                 )
 
                 captureDock
-                    .offset(y: isDockVisible ? 0 : 116)
+                    .background {
+                        GeometryReader { geometry in
+                            Color.clear.preference(key: CaptureDockHeightKey.self, value: geometry.size.height)
+                        }
+                    }
+                    .offset(y: isDockVisible ? 0 : captureDockHeight + 30)
                     .opacity(isDockVisible ? 1 : 0)
                     // The capture screen's Type instead control occupies the same
                     // bottom region as this dock. Keep the covered dock out of the
@@ -236,23 +258,17 @@ struct RootView: View {
                     .allowsHitTesting(isDockVisible && fullScreenDestination == nil)
                     .animation(.smooth(duration: 0.24), value: isDockVisible)
             }
-        }
-        .tint(.speakInk)
-        .modifier(SpeakItAppearanceSync(rawValue: appearanceRawValue))
-        .overlay(alignment: .top) {
-            if let sharedImportNotice {
-                Label(sharedImportNotice, systemImage: "checkmark")
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Color.speakInverseInk)
-                    .padding(.horizontal, 16)
-                    .frame(minHeight: 48)
-                    .background(Color.speakInverseSurface, in: Capsule())
-                    .shadow(color: .black.opacity(0.16), radius: 16, y: 8)
-                    .padding(.top, 12)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .zIndex(20)
+            .onPreferenceChange(CaptureDockHeightKey.self) { height in
+                guard height.isFinite, height > 0 else { return }
+                captureDockHeight = height
             }
         }
+        // Keep the reserve stable while the dock retracts. The actual height
+        // grows with text wrapping and a Memory badge at accessibility sizes.
+        .environment(\.dockScrollClearance, max(DockScroll.clearance, captureDockHeight + 8))
+        .tint(.speakInk)
+        .modifier(SpeakItAppearanceSync(rawValue: appearanceRawValue))
+
 #if DEBUG
         // Comes into existence only once the launch-time task above has run to
         // the end, so UI tests have something to wait on instead of racing it
@@ -268,6 +284,8 @@ struct RootView: View {
                     .foregroundStyle(.clear)
                     .allowsHitTesting(false)
                     .accessibilityIdentifier("debug.launchWorkFinished")
+                    .accessibilityValue(ProcessInfo.processInfo.arguments.contains("--ui-testing-dynamic-type-axxxl")
+                        ? "scheme=\(qaColorScheme);dynamic=\(qaDynamicTypeSize)" : "")
             }
         }
 #endif
@@ -353,6 +371,7 @@ struct RootView: View {
             presentPendingProMomentIfReady()
             guard !hasPerformedMaintenance else { return }
             hasPerformedMaintenance = true
+            importBuild20Library()
 #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--load-examples"),
                let repository {
@@ -422,6 +441,50 @@ struct RootView: View {
                 }
                 UserDefaults.standard.set(true, forKey: "SpeakIt.hasLoadedTodayQAExamples")
             }
+            if ProcessInfo.processInfo.arguments.contains("--load-saved-choice-qa"),
+               let repository {
+                let referenceDate = Date.now
+                for (index, text) in [
+                    "Call the clinic tomorrow about the visit",
+                    "Call the dentist tomorrow about the visit"
+                ].enumerated() {
+                    _ = try? await repository.createCaptureResult(
+                        text: text, source: .sample,
+                        createdAt: referenceDate.addingTimeInterval(Double(index) / 100),
+                        schedulesReminders: false
+                    )
+                }
+                _ = try? await repository.createCaptureResult(
+                    text: "I need you to cancel the reminder about the appointment tomorrow. I cannot remember whether I called it the clinic visit or the dentist visit when I saved it. Do not guess between them just because one was created more recently. I can choose the right one when I see the names.\n\nAlso buy a packet of envelopes. That is a clear new task unrelated to the appointment, so it can be saved while the cancellation waits. Keep the cancellation request visible and ask me which saved reminder I mean. None of the appointment reminders should change before I select one.",
+                    source: .sample, createdAt: referenceDate.addingTimeInterval(0.02),
+                    schedulesReminders: false
+                )
+            }
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing"),
+               ProcessInfo.processInfo.arguments.contains("--load-runtime-review-qa"),
+               let repository = repository as? SwiftDataThoughtRepository,
+               !UserDefaults.standard.bool(forKey: "SpeakIt.hasLoadedRuntimeReviewQA") {
+                try? repository.seedRuntimeClarificationQA()
+                UserDefaults.standard.set(true,forKey: "SpeakIt.hasLoadedRuntimeReviewQA")
+            }
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing"),
+               let repository = repository as? SwiftDataThoughtRepository {
+                if ProcessInfo.processInfo.arguments.contains("--load-saved-revision-choice-qa") {
+                    try? repository.seedSavedRevisionChoiceQA()
+                }
+                if ProcessInfo.processInfo.arguments.contains("--mutate-saved-revision-choice-qa") {
+                    try? repository.mutateSavedRevisionChoiceQA()
+                }
+            }
+            if ProcessInfo.processInfo.arguments.contains("--load-ui-qa-capture"),
+               let repository,
+               let text = ProcessInfo.processInfo.environment["SPEAKIT_UI_QA_TEXT"],
+               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                _ = try? await repository.createCaptureResult(
+                    text: text, source: .sample, createdAt: .now,
+                    schedulesReminders: false
+                )
+            }
 #endif
             // Keep database recovery and reminder reconciliation out of the
             // App Intent cold-start path so a hardware trigger can reach the microphone
@@ -431,9 +494,13 @@ struct RootView: View {
             // hundred milliseconds to load the first time it is touched, and
             // that first touch used to land inside the first Memory render.
             Task.detached(priority: .utility) {
+                async let taggingAssets = SentenceContext.prepareEnglishAssets()
                 PersonMentionResolver.preloadEmbedding()
                 ActionabilityReader.preloadEmbedding()
+                await ThoughtExtractionEngine.prepareOnDeviceReferences()
+                _ = await taggingAssets
             }
+            refreshCheckpointReadProblem()
             CaptureDraftStore.pruneEmptyTextDrafts()
             CaptureDraftStore.pruneResolvedTombstones()
             await recoverInterruptedAudioDrafts()
@@ -497,6 +564,7 @@ struct RootView: View {
             // without waiting for a relaunch. The shared-inbox import below only
             // refreshes when a share-extension payload is actually waiting.
             subscriptionStore.refreshFreeAllowance()
+            refreshCheckpointReadProblem()
             repository?.reconcileSharedTodayActions()
             // Self-healing pass. SwiftData and UNUserNotificationCenter are two
             // stores that can fall out of step — a scheduling call that failed,
@@ -552,6 +620,9 @@ struct RootView: View {
         // Home or Work moved. Every reminder that says "home" still says "home";
         // only where that resolves to has changed, so re-resolving is a
         // reconcile rather than an edit to any of them.
+        .onReceive(NotificationCenter.default.publisher(for: CaptureDraftStore.recoveryDidChangeNotification)) { _ in
+            refreshCheckpointReadProblem()
+        }
         .onReceive(NotificationCenter.default.publisher(for: SavedPlaceStore.didChangeNotification)) { _ in
             repository?.reconcileLocationReminders()
         }
@@ -1312,14 +1383,76 @@ struct RootView: View {
         return Date.now.timeIntervalSince1970 - beganAt < 30 * 60
     }
 
+    private func importBuild20Library() {
+        do {
+            guard PersistenceController.initializationError == nil else {
+                throw CocoaError(.fileWriteUnknown)
+            }
+            try (repository as? SwiftDataThoughtRepository)?.importBuild20LibraryIfPresent()
+            try CaptureDraftStore.importBuild20DraftsIfPresent()
+            libraryUpgradeProblem = nil
+            if UserDefaults.standard.bool(forKey: "SpeakIt.build20LibraryImported.v1") {
+                Task { await ReminderScheduler.retireBuild20Notifications() }
+            }
+        } catch {
+            libraryUpgradeProblem = "Earlier captures couldn’t be restored yet. Their original copy is safe."
+        }
+    }
+
+    @ViewBuilder
+    private var sharedImportBanner: some View {
+        if let notice = libraryUpgradeProblem ?? checkpointReadProblem ?? sharedImportProblem ?? sharedImportNotice {
+            VStack(spacing: 6) {
+                Label(notice, systemImage: libraryUpgradeProblem == nil && checkpointReadProblem == nil && sharedImportProblem == nil ? "checkmark" : "exclamationmark")
+                    .fixedSize(horizontal: false, vertical: true)
+                if libraryUpgradeProblem != nil || checkpointReadProblem != nil || sharedImportProblem != nil {
+                    Button {
+                        importBuild20Library()
+                        refreshCheckpointReadProblem()
+                        Task { await importSharedCaptures() }
+                    } label: {
+                        Text("Try again")
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("shared.retry")
+                }
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(Color.speakInverseInk)
+            .padding(12)
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .background(Color.speakInverseSurface, in: RoundedRectangle(cornerRadius: 20))
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+        }
+    }
+
+    private func refreshCheckpointReadProblem() {
+        checkpointReadProblem = CaptureDraftStore.hasUnreadableCheckpoints
+            ? "Some interrupted thoughts couldn’t be read. Original checkpoints were kept."
+            : nil
+    }
+
     private func importSharedCaptures() async {
         guard !isImportingSharedCaptures, let repository else { return }
         isImportingSharedCaptures = true
         defer { isImportingSharedCaptures = false }
 
+        let inspection: SharedCaptureInbox.Inspection
+        do {
+            inspection = try SharedCaptureInbox.inspect()
+        } catch {
+            sharedImportProblem = "Shared thoughts couldn’t be read. The inbox was kept."
+            return
+        }
+        sharedImportProblem = inspection.unreadableCount > 0
+            ? "Some shared thoughts couldn’t be read. Their files were kept."
+            : nil
         var importedCount = 0
         var blockedByFreeLimit = false
-        for pending in SharedCaptureInbox.pending() {
+        for pending in inspection.pending {
             subscriptionStore.refreshFreeAllowance()
             guard subscriptionStore.canCreateCapture else {
                 // The Share sheet already told the person "Ready in Speak It"
@@ -1365,19 +1498,18 @@ struct RootView: View {
                     importedCount += 1
                 }
             } catch {
-                // Leave this and later files in the shared inbox. The next
-                // activation retries them without duplicating completed work.
+                // Leave this and later files in the shared inbox, and explain
+                // that enqueueing in the extension was not a library save.
+                sharedImportProblem = "Shared thoughts couldn’t be saved yet. Try again when storage is ready."
                 break
             }
         }
 
         if blockedByFreeLimit {
-            let waiting = SharedCaptureInbox.pending().count
-            withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) {
-                sharedImportNotice = waiting == 1
-                    ? "1 shared thought is waiting — your free captures are used up"
-                    : "\(waiting) shared thoughts are waiting — your free captures are used up"
-            }
+            let waiting = (try? SharedCaptureInbox.inspect().pending.count) ?? inspection.pending.count
+            sharedImportNotice = waiting == 1
+                ? "1 shared thought is waiting — your free captures are used up"
+                : "\(waiting) shared thoughts are waiting — your free captures are used up"
             showsFreeLimit = true
         }
 
@@ -1385,13 +1517,9 @@ struct RootView: View {
         let notice = importedCount == 1
             ? "Shared thought remembered"
             : "\(importedCount) shared thoughts remembered"
-        withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) {
-            sharedImportNotice = notice
-        }
+        sharedImportNotice = notice
         try? await Task.sleep(for: .seconds(2.8))
-        withAnimation(.easeOut(duration: 0.2)) {
-            if sharedImportNotice == notice { sharedImportNotice = nil }
-        }
+        if sharedImportNotice == notice { sharedImportNotice = nil }
     }
 
     private func recoverInterruptedAudioDrafts() async {
@@ -1438,13 +1566,9 @@ struct RootView: View {
         let notice = recoveredCount == 1
             ? "Interrupted capture recovered"
             : "\(recoveredCount) interrupted captures recovered"
-        withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) {
-            sharedImportNotice = notice
-        }
+        sharedImportNotice = notice
         try? await Task.sleep(for: .seconds(3.2))
-        withAnimation(.easeOut(duration: 0.2)) {
-            if sharedImportNotice == notice { sharedImportNotice = nil }
-        }
+        if sharedImportNotice == notice { sharedImportNotice = nil }
     }
 }
 

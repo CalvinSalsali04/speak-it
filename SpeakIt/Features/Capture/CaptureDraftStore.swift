@@ -23,6 +23,13 @@ enum CaptureDraftStore {
         var recoveryStatusRawValue: String?
         var recoveryFailureMessage: String?
         var recoveryFailureKindRawValue: String?
+        /// Optional so checkpoints from older builds still decode. An older
+        /// audio draft has unknown length, so recovery treats it conservatively.
+        var wholeRecordingVerificationRequired: Bool? = nil
+
+        var requiresWholeRecordingVerification: Bool {
+            wholeRecordingVerificationRequired ?? (recoveryAudioFilename != nil)
+        }
 
         var captureSource: CaptureSource {
             CaptureSource(rawValue: captureSourceRawValue ?? "") ?? .shortcut
@@ -49,12 +56,60 @@ enum CaptureDraftStore {
     )
 
     private static let storageKey = "SpeakIt.activeCaptureDraft"
+    private static let supplementalPrefix = "SpeakIt.activeCaptureDraft.supplemental."
     private static let deletedIDsKey = "SpeakIt.deletedCaptureRecoveryIDs"
     private static let deletedIDsLimit = 50
     /// Long enough that any checkpoint written before a deletion has certainly
     /// been replayed and rejected by now.
     nonisolated static let tombstoneRetention: TimeInterval = 60 * 60 * 24 * 30
     private static let recoveryFolderName = "CaptureRecovery"
+
+    /// Copy unfinished Build 20 checkpoints/audio without retiring the originals.
+    /// A durable completion marker prevents a later deletion from resurrecting them.
+    static func importBuild20DraftsIfPresent() throws {
+        let marker = "SpeakIt.build20DraftsImported.v1"
+        guard !UserDefaults.standard.bool(forKey: marker),
+              let legacy = UserDefaults(suiteName: "com.calvinwak.SpeakIt.preview-preferences") else { return }
+        let keys = legacy.dictionaryRepresentation().keys.filter {
+            $0 == storageKey || $0.hasPrefix(supplementalPrefix)
+        }.sorted()
+        let decoder = JSONDecoder()
+        let deleted = try legacy.data(forKey: deletedIDsKey).map {
+            Set(try decoder.decode([Tombstone].self, from: $0).map(\.id))
+        } ?? []
+        var drafts = allDrafts()
+        let existing = Set(drafts.map(\.id)).union(deletedIDs())
+        var imported: [UUID: Draft] = [:]
+        for key in keys {
+            guard let data = legacy.data(forKey: key) else { continue }
+            let values = try (try? decoder.decode([Draft].self, from: data))
+                ?? [decoder.decode(Draft.self, from: data)]
+            for draft in values where !deleted.contains(draft.id) && !existing.contains(draft.id) {
+                if let old = imported[draft.id], old.updatedAt > draft.updatedAt { continue }
+                imported[draft.id] = draft
+            }
+        }
+        for draft in imported.values {
+            if let filename = draft.recoveryAudioFilename {
+                // Filenames come from our checkpoint, but still require a basename.
+                guard URL(fileURLWithPath: filename).lastPathComponent == filename else {
+                    throw CocoaError(.fileReadCorruptFile)
+                }
+                let original = recoveryDirectoryURL.deletingLastPathComponent()
+                    .appendingPathComponent("SpeakItPreviewCaptureRecovery")
+                    .appendingPathComponent(filename)
+                if FileManager.default.fileExists(atPath: original.path),
+                   let destination = try prepareAudioURL(for: draft),
+                   !FileManager.default.fileExists(atPath: destination.path) {
+                    try FileManager.default.copyItem(at: original, to: destination)
+                    protectAudio(at: destination)
+                }
+            }
+            drafts.append(draft)
+        }
+        persist(drafts, notifiesRecoveryChange: !imported.isEmpty)
+        UserDefaults.standard.set(true, forKey: marker)
+    }
 
     @discardableResult
     static func begin(
@@ -73,7 +128,8 @@ enum CaptureDraftStore {
                 : "\(id.uuidString).caf",
             recoveryStatusRawValue: RecoveryStatus.capturing.rawValue,
             recoveryFailureMessage: nil,
-            recoveryFailureKindRawValue: nil
+            recoveryFailureKindRawValue: nil,
+            wholeRecordingVerificationRequired: false
         )
         var drafts = allDrafts()
         drafts.append(draft)
@@ -108,6 +164,18 @@ enum CaptureDraftStore {
         drafts[index].captureSourceRawValue = source.rawValue
         drafts[index].updatedAt = .now
         persist(drafts)
+    }
+
+    /// Sticky for the life of this draft, including mode toggles and relaunch.
+    @discardableResult
+    static func requireWholeRecordingVerification(id: UUID) -> Bool {
+        var drafts = allDrafts()
+        guard let index = drafts.firstIndex(where: { $0.id == id }) else { return false }
+        if drafts[index].wholeRecordingVerificationRequired == true { return true }
+        drafts[index].wholeRecordingVerificationRequired = true
+        drafts[index].updatedAt = .now
+        persist(drafts, notifiesRecoveryChange: true)
+        return draft(id: id)?.wholeRecordingVerificationRequired == true
     }
 
     static func markProcessing(id: UUID) {
@@ -201,7 +269,7 @@ enum CaptureDraftStore {
     static func clear(id: UUID? = nil) {
         guard let id else {
             allDrafts().compactMap(audioURL(for:)).forEach(removeAudio)
-            UserDefaults.standard.removeObject(forKey: storageKey)
+            checkpointKeys().forEach { UserDefaults.standard.removeObject(forKey: $0) }
             UserDefaults.standard.removeObject(forKey: deletedIDsKey)
             NotificationCenter.default.post(name: recoveryDidChangeNotification, object: nil)
             return
@@ -250,6 +318,9 @@ enum CaptureDraftStore {
         now: Date = .now,
         retention: TimeInterval = tombstoneRetention
     ) {
+        // An unreadable checkpoint may still refer to a deliberately deleted
+        // recording. Keep its tombstone until the checkpoint can be inspected.
+        guard !hasUnreadableCheckpoints else { return }
         let stones = tombstones()
         guard !stones.isEmpty else { return }
         let liveIDs = Set(allDrafts().map(\.id))
@@ -275,7 +346,15 @@ enum CaptureDraftStore {
     /// applied on read, so replaying a checkpoint captured before a deletion
     /// cannot bring that recording back.
     static func restore(_ drafts: [Draft]) {
-        persist(drafts, notifiesRecoveryChange: true)
+        let current = Dictionary(uniqueKeysWithValues: allDrafts().map { ($0.id, $0) })
+        let merged = drafts.map { draft -> Draft in
+            var draft = draft
+            if current[draft.id]?.requiresWholeRecordingVerification == true {
+                draft.wholeRecordingVerificationRequired = true
+            }
+            return draft
+        }
+        persist(merged, notifiesRecoveryChange: true)
     }
 
     private static func deletedIDs() -> Set<UUID> {
@@ -339,17 +418,42 @@ enum CaptureDraftStore {
         try? FileManager.default.removeItem(at: url)
     }
 
-    private static func allDrafts() -> [Draft] {
-        guard let data = UserDefaults.standard.data(forKey: storageKey) else { return [] }
-        let decoded: [Draft]
+    static var hasUnreadableCheckpoints: Bool {
+        checkpointKeys().contains { decodedCheckpoint(for: $0) == nil }
+    }
+
+    private static func checkpointKeys() -> [String] {
+        let supplemental = UserDefaults.standard.dictionaryRepresentation().keys
+            .filter { $0.hasPrefix(supplementalPrefix) }.sorted()
+        return (UserDefaults.standard.object(forKey: storageKey) == nil ? [] : [storageKey])
+            + supplemental
+    }
+
+    /// nil means a present checkpoint could not be read, never an empty inbox.
+    private static func decodedCheckpoint(for key: String) -> [Draft]? {
+        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
         if let drafts = try? JSONDecoder().decode([Draft].self, from: data) {
-            decoded = drafts
+            return drafts
         } else if let legacyDraft = try? JSONDecoder().decode(Draft.self, from: data) {
-            // Migrate the original single-draft encoding in place.
-            decoded = [legacyDraft]
-        } else {
-            return []
+            return [legacyDraft]
         }
+        return nil
+    }
+
+    private static func allDrafts() -> [Draft] {
+        // Known drafts remain usable beside unreadable slots. RootView reports
+        // the incomplete read; persist never overwrites those original bytes.
+        var known: [UUID: Draft] = [:]
+        var order: [UUID] = []
+        for key in checkpointKeys() {
+            guard let drafts = decodedCheckpoint(for: key) else { continue }
+            for draft in drafts {
+                if known[draft.id] == nil { order.append(draft.id) }
+                if let previous = known[draft.id], previous.updatedAt > draft.updatedAt { continue }
+                known[draft.id] = draft
+            }
+        }
+        let decoded = order.compactMap { known[$0] }
         let deleted = deletedIDs()
         guard !deleted.isEmpty else { return decoded }
         return decoded.filter { !deleted.contains($0.id) }
@@ -359,15 +463,23 @@ enum CaptureDraftStore {
         _ drafts: [Draft],
         notifiesRecoveryChange: Bool = false
     ) {
+        let keys = checkpointKeys()
+        var writable = keys.filter { decodedCheckpoint(for: $0) != nil }
         guard !drafts.isEmpty else {
-            UserDefaults.standard.removeObject(forKey: storageKey)
+            // Empty known drafts do not authorize discarding unreadable ones.
+            writable.forEach { UserDefaults.standard.removeObject(forKey: $0) }
             if notifiesRecoveryChange {
                 NotificationCenter.default.post(name: recoveryDidChangeNotification, object: nil)
             }
             return
         }
         guard let data = try? JSONEncoder().encode(drafts) else { return }
-        UserDefaults.standard.set(data, forKey: storageKey)
+        if writable.isEmpty {
+            writable = [keys.isEmpty ? storageKey : supplementalPrefix + UUID().uuidString]
+        }
+        // Mirror healthy slots so retiring a draft cannot resurrect a stale
+        // copy. Failed slots are retained verbatim until explicit discard.
+        writable.forEach { UserDefaults.standard.set(data, forKey: $0) }
         if notifiesRecoveryChange {
             NotificationCenter.default.post(name: recoveryDidChangeNotification, object: nil)
         }

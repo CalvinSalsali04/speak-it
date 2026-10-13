@@ -476,4 +476,80 @@ final class ItemPresentationTests: XCTestCase {
             )
         )
     }
+
+    // MARK: Overdue item presentation
+
+    func testOverdueTimedItemIsFlaggedAndFormattedWithOverduePrefix() {
+        let fixedNow = Date(timeIntervalSince1970: 1_700_000_000)
+        let pastDate = fixedNow.addingTimeInterval(-3600)
+        let item = CapturedItem(
+            originalTextSegment: "Call the pharmacy",
+            displayTitle: "Call the pharmacy",
+            itemType: .task,
+            category: .general,
+            dueDate: pastDate
+        )
+
+        let presentation = presentation(for: item, now: fixedNow)
+        XCTAssertTrue(presentation.isOverdue)
+        XCTAssertEqual(presentation.destination, .overdue)
+        let formatted = presentation.formattedTimingText
+        XCTAssertNotNil(formatted)
+        XCTAssertTrue(formatted?.hasPrefix("Overdue · ") == true, "Expected 'Overdue · ' prefix, got \(String(describing: formatted))")
+    }
+
+    func testOverdueDateOnlyItemIsFlaggedAndFormattedWithOverduePrefix() {
+        let calendar = Calendar.autoupdatingCurrent
+        let fixedNow = Date(timeIntervalSince1970: 1_700_000_000)
+        let pastDay = calendar.date(byAdding: .day, value: -2, to: fixedNow)!
+        let item = CapturedItem(
+            originalTextSegment: "File taxes",
+            displayTitle: "File taxes",
+            itemType: .task,
+            category: .general,
+            dueDate: pastDay,
+            temporalIntent: TemporalIntent(kind: .dateOnly)
+        )
+
+        let presentation = presentation(for: item, now: fixedNow)
+        XCTAssertTrue(presentation.isOverdue)
+        XCTAssertEqual(presentation.destination, .overdue)
+        let formatted = presentation.formattedTimingText
+        XCTAssertNotNil(formatted)
+        XCTAssertTrue(formatted?.hasPrefix("Overdue · ") == true, "Expected 'Overdue · ' prefix, got \(String(describing: formatted))")
+    }
+
+    func testCompletedItemIsNeverOverdueEvenIfPastDue() {
+        let fixedNow = Date(timeIntervalSince1970: 1_700_000_000)
+        let pastDate = fixedNow.addingTimeInterval(-7200)
+        let item = CapturedItem(
+            originalTextSegment: "Call doctor",
+            displayTitle: "Call doctor",
+            itemType: .task,
+            category: .general,
+            dueDate: pastDate,
+            completedAt: fixedNow.addingTimeInterval(-1800)
+        )
+
+        let presentation = presentation(for: item, now: fixedNow)
+        XCTAssertFalse(presentation.isOverdue, "Completed items must not be marked overdue")
+        XCTAssertFalse(presentation.formattedTimingText?.contains("Overdue") == true)
+    }
+
+    func testFutureItemIsNotOverdue() {
+        let fixedNow = Date(timeIntervalSince1970: 1_700_000_000)
+        let futureDate = fixedNow.addingTimeInterval(3600)
+        let item = CapturedItem(
+            originalTextSegment: "Doctor appointment",
+            displayTitle: "Doctor appointment",
+            itemType: .task,
+            category: .general,
+            dueDate: futureDate
+        )
+
+        let presentation = presentation(for: item, now: fixedNow)
+        XCTAssertFalse(presentation.isOverdue)
+        XCTAssertFalse(presentation.formattedTimingText?.contains("Overdue") == true)
+        XCTAssertEqual(presentation.formattedTimingText, presentation.primaryTimingText)
+    }
 }

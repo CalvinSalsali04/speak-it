@@ -1,3 +1,4 @@
+import Combine
 import SwiftData
 import SwiftUI
 import UIKit
@@ -15,6 +16,23 @@ private struct TodayDisclosureHeightPreferenceKey: PreferenceKey {
 /// it and the region that has to finish it on a first open.
 private enum TodayDisclosureMotion {
     static let open: Animation = .smooth(duration: 0.26, extraBounce: 0)
+
+    /// The scroll that follows an open. It matches `open` so the section
+    /// travelling up the screen reads as the same gesture as the one that
+    /// grew it, rather than a second, unrelated movement.
+    static let reveal: Animation = .smooth(duration: 0.26, extraBounce: 0)
+
+    /// How long the reveal waits for the open before it asks the scroll view
+    /// to move.
+    ///
+    /// `TodayDisclosureContent` opens by growing a clipped frame, so until
+    /// that animation lands the scroll view's content is still shorter than
+    /// its final height and a scroll issued now clamps short of the target.
+    /// Without motion the height is applied in the first layout pass instead,
+    /// so the wait is only the frame or two that pass takes.
+    static func settleDelay(reduceMotion: Bool) -> Duration {
+        reduceMotion ? .milliseconds(40) : .milliseconds(300)
+    }
 }
 
 /// Animates one clipped region rather than a row-by-row insert. That is what
@@ -92,6 +110,7 @@ private struct TodayDisclosureContent<Content: View>: View {
 private struct CompletionUndo: Identifiable {
     let id = UUID()
     let item: CapturedItem
+    let message: String
 }
 
 enum TodayActionTiming: Hashable {
@@ -139,7 +158,16 @@ enum TodayActionTiming: Hashable {
         relativeTo now: Date = .now,
         calendar: Calendar = .autoupdatingCurrent
     ) -> TodayActionTiming {
-        group(
+        if let intent = item.temporalIntent,
+           intent.kind == .calendarWindow,
+           let start = intent.day,
+           let end = intent.windowEndDay,
+           let today = CalendarDay(from: now, calendar: intent.calendar(default: calendar)) {
+            if isBefore(today, start) { return .comingUp }
+            if isBefore(end, today) { return .overdue }
+            return .today
+        }
+        return group(
             for: item.dueDate,
             isDateOnly: item.isDateOnly,
             calendarDay: item.isDateOnly ? item.temporalIntent?.day : nil,
@@ -154,6 +182,7 @@ enum TodayActionTiming: Hashable {
 }
 
 struct TodayView: View {
+    @Environment(\.dockScrollClearance) private var dockScrollClearance
     /// Built once with the view, not once per `body`: a publisher created
     /// inside `body` was re-subscribed on every render, so the minute tick
     /// restarted whenever anything on the screen changed.
@@ -200,6 +229,7 @@ struct TodayView: View {
     @State private var recoveryAudioDrafts: [CaptureDraftStore.Draft] = []
     @State private var reminderAccessStatus = ReminderAccessStatus.ready
     @State private var completionUndo: CompletionUndo?
+    @State private var hasDismissedCompletedToday = false
     @StateObject private var dockScrollTracker = DockScrollTracker()
     @State private var reportsDockVisible = true
     @State private var showsUpcoming = TodayView.initialShowsUpcoming
@@ -468,25 +498,29 @@ struct TodayView: View {
                     if !comingUp.isEmpty || !comingUpShoppingGroups.isEmpty {
                         collapsibleThoughtSection(
                             title: "Coming up",
+                            key: "comingUp",
                             detail: "Scheduled tomorrow or later",
                             items: comingUp,
                             isExpanded: $showsUpcoming,
-                            listCards: comingUpShoppingGroups
+                            listCards: comingUpShoppingGroups,
+                            revealedBy: proxy
                         )
                     }
 
                     if !noDate.isEmpty || !untimedShoppingGroups.isEmpty {
                         collapsibleThoughtSection(
                             title: "When you have time",
+                            key: "noDate",
                             detail: "Ready to do · no date set",
                             items: noDate,
                             isExpanded: $showsNoDate,
-                            listCards: untimedShoppingGroups
+                            listCards: untimedShoppingGroups,
+                            revealedBy: proxy
                         )
                     }
                 }
 
-                if !completedToday.isEmpty {
+                if !completedToday.isEmpty && !hasDismissedCompletedToday {
                     completedTodayLink
                 }
 
@@ -514,7 +548,7 @@ struct TodayView: View {
                 revealTutorialSpotlight(using: proxy)
             }
         }
-        .contentMargins(.bottom, DockScroll.clearance, for: .scrollContent)
+        .contentMargins(.bottom, dockScrollClearance, for: .scrollContent)
         .coordinateSpace(name: DockScroll.coordinateSpace)
         .scrollBounceBehavior(.basedOnSize)
         .modifier(DockScrollObserver(onScroll: handleDockScroll))
@@ -578,7 +612,7 @@ struct TodayView: View {
         .speakScreenStyle()
         .overlay(alignment: .bottom) {
             if let completionUndo {
-                UndoToast(message: "Task completed") {
+                UndoToast(message: completionUndo.message) {
                     undoCompletion(completionUndo)
                 }
                 .padding(.horizontal, 22)
@@ -819,29 +853,48 @@ struct TodayView: View {
     }
 
     private var completedTodayLink: some View {
-        Button {
-            showsCompletedLog = true
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(Color.speakMuted)
+        HStack(spacing: 0) {
+            Button {
+                showsCompletedLog = true
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(Color.speakMuted)
 
-                Text("\(completedToday.count) completed today")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(Color.speakInk)
+                    Text("\(completedToday.count) completed today")
+                        .font(.subheadline.weight(.medium))
+                        .foregroundStyle(Color.speakInk)
 
-                Spacer()
+                    Spacer()
 
-                Image(systemName: "chevron.right")
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(Color.speakMuted)
+                }
+                .padding(.leading, 16)
+                .padding(.trailing, 8)
+                .frame(minHeight: 52)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.speakIt)
+            .accessibilityHint("Opens your completed task history")
+
+            Button {
+                withAnimation(.easeOut(duration: 0.2)) {
+                    hasDismissedCompletedToday = true
+                }
+            } label: {
+                Image(systemName: "xmark")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.speakMuted)
+                    .frame(width: 44, height: 52)
+                    .contentShape(Rectangle())
             }
-            .padding(.horizontal, 16)
-            .frame(minHeight: 52)
-            .contentShape(Rectangle())
+            .buttonStyle(.speakIt)
+            .accessibilityLabel("Dismiss completed banner")
+            .accessibilityHint("Hides this banner until your next completed task")
         }
-        .buttonStyle(.speakIt)
         .background(
             Color.speakSurface,
             in: RoundedRectangle(cornerRadius: 17, style: .continuous)
@@ -850,7 +903,6 @@ struct TodayView: View {
             RoundedRectangle(cornerRadius: 17, style: .continuous)
                 .stroke(Color.speakDivider, lineWidth: 1)
         }
-        .accessibilityHint("Opens your completed task history")
     }
 
     private var reminderPermissionCard: some View {
@@ -1094,9 +1146,11 @@ struct TodayView: View {
     /// fire moment earns — a dated list is a commitment like any dated task.
     private func shoppingGroupCard(_ group: ShoppingGroupSummary) -> some View {
         let countLabel = group.count == 1 ? "1 item" : "\(group.count) items"
-        let timing = group.timingItem.map {
+        let presentation = group.timingItem.map {
             ItemPresentation.make(for: $0, authorization: locationAuthorization)
-        }?.primaryTimingText
+        }
+        let isOverdue = presentation?.isOverdue ?? false
+        let timing = presentation?.formattedTimingText
 
         return Button {
             shoppingListFocus = group.name
@@ -1117,7 +1171,7 @@ struct TodayView: View {
 
                     Text(timing.map { "\(countLabel) · \($0)" } ?? countLabel)
                         .font(SpeakItTypography.metadata)
-                        .foregroundStyle(Color.speakMuted)
+                        .foregroundStyle(isOverdue ? Color.speakWarning : Color.speakMuted)
                         .lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1155,6 +1209,7 @@ struct TodayView: View {
         if let blocker = item.locationBlocker(authorization: locationAuthorization) {
             return blocker.listLabel
         }
+        if let saved = ItemPresentation.savedChangeReviewPrompt(for:item) { return saved }
         return (item.clarificationRequirement ?? .confirmation).listLabel
     }
 
@@ -1319,12 +1374,15 @@ struct TodayView: View {
 
     private func collapsibleThoughtSection(
         title: String,
+        key: String,
         detail: String,
         items: [CapturedItem],
         isExpanded: Binding<Bool>,
-        listCards: [ShoppingGroupSummary] = []
+        listCards: [ShoppingGroupSummary] = [],
+        revealedBy proxy: ScrollViewProxy
     ) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        let anchor = Self.sectionAnchor(key)
+        return VStack(alignment: .leading, spacing: 0) {
             Button {
                 let nextValue = !isExpanded.wrappedValue
                 if accessibilityReduceMotion {
@@ -1337,6 +1395,9 @@ struct TodayView: View {
                     withAnimation(TodayDisclosureMotion.open) {
                         isExpanded.wrappedValue = nextValue
                     }
+                }
+                if nextValue {
+                    revealSection(anchor, isExpanded: isExpanded, using: proxy)
                 }
             } label: {
                 HStack(alignment: .center) {
@@ -1359,7 +1420,7 @@ struct TodayView: View {
             }
             .buttonStyle(.speakIt)
             .accessibilityValue(isExpanded.wrappedValue ? "Expanded" : "Collapsed")
-            .accessibilityIdentifier("today.section.\(title == "Coming up" ? "comingUp" : "noDate")")
+            .accessibilityIdentifier(anchor)
 
             TodayDisclosureContent(isExpanded: isExpanded.wrappedValue) {
                 VStack(spacing: 0) {
@@ -1398,6 +1459,10 @@ struct TodayView: View {
                 .padding(.top, 10)
             }
         }
+        // `revealSection` scrolls to the section as a whole, so the identity
+        // has to name the header rather than any one row: a section opened low
+        // on the screen has no row worth aligning to yet.
+        .id(anchor)
     }
 
     private func sectionHeader(
@@ -1444,6 +1509,51 @@ struct TodayView: View {
         onTutorialPrimary()
     }
 
+    /// The scroll identity, and the accessibility identifier, of a Today
+    /// section that can be opened and closed.
+    private static func sectionAnchor(_ key: String) -> String {
+        "today.section.\(key)"
+    }
+
+    /// Brings a section the person just opened onto the screen.
+    ///
+    /// A disclosure grows downward and the scroll view does not follow it. A
+    /// section opened in the lower half of Today revealed its rows into the
+    /// band the floating capture dock covers, or below the screen entirely, so
+    /// the tap looked like it had done nothing until you scrolled. Aligning
+    /// the section with the top of the viewport puts as much of it on screen
+    /// as it has, and that scroll is also what slides the dock out from over
+    /// it: dock visibility already follows the scroll view's own position.
+    ///
+    /// Closing is left alone. Nothing new appears, so there is nothing to
+    /// bring into view, and moving the screen under a person who just tidied
+    /// a section away would lose their place for no gain.
+    private func revealSection(
+        _ anchor: String,
+        isExpanded: Binding<Bool>,
+        using proxy: ScrollViewProxy
+    ) {
+        let reduceMotion = accessibilityReduceMotion
+        Task { @MainActor in
+            try? await Task.sleep(for: TodayDisclosureMotion.settleDelay(reduceMotion: reduceMotion))
+            // A second tap that closed the section again during the wait
+            // cancels the move.
+            guard isExpanded.wrappedValue else { return }
+
+            guard !reduceMotion else {
+                var transaction = Transaction(animation: nil)
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    proxy.scrollTo(anchor, anchor: .top)
+                }
+                return
+            }
+            withAnimation(TodayDisclosureMotion.reveal) {
+                proxy.scrollTo(anchor, anchor: .top)
+            }
+        }
+    }
+
     private func revealTutorialSpotlight(using proxy: ScrollViewProxy) {
         guard let spotlight = tutorialSpotlight,
               let item = allItems.first(where: { $0.id == spotlight.itemID }) else { return }
@@ -1483,8 +1593,8 @@ struct TodayView: View {
 
     private func prioritizedBefore(_ lhs: CapturedItem, _ rhs: CapturedItem) -> Bool {
         if lhs.priority != rhs.priority { return lhs.priority > rhs.priority }
-        let leftDate = lhs.dueDate ?? .distantFuture
-        let rightDate = rhs.dueDate ?? .distantFuture
+        let leftDate = orderingDate(for: lhs)
+        let rightDate = orderingDate(for: rhs)
         if leftDate != rightDate { return leftDate < rightDate }
         return olderFirst(lhs, rhs)
     }
@@ -1500,8 +1610,8 @@ struct TodayView: View {
     }
 
     private func chronologicalBefore(_ lhs: CapturedItem, _ rhs: CapturedItem) -> Bool {
-        let leftDate = lhs.dueDate ?? .distantFuture
-        let rightDate = rhs.dueDate ?? .distantFuture
+        let leftDate = orderingDate(for: lhs)
+        let rightDate = orderingDate(for: rhs)
         // Within one day, a stated time outranks a bare day.
         //
         // A date-only item is stored at the start of its day, so "sometime
@@ -1515,6 +1625,15 @@ struct TodayView: View {
         if leftDate != rightDate { return leftDate < rightDate }
         if lhs.priority != rhs.priority { return lhs.priority > rhs.priority }
         return olderFirst(lhs, rhs)
+    }
+
+    private func orderingDate(for item: CapturedItem) -> Date {
+        if let intent = item.temporalIntent,
+           intent.kind == .calendarWindow,
+           let start = intent.day?.startOfDay(in: intent.calendar(default: .autoupdatingCurrent)) {
+            return start
+        }
+        return item.dueDate ?? .distantFuture
     }
 
     private func handleDockScroll(_ scrolled: CGFloat) {
@@ -1568,7 +1687,10 @@ struct TodayView: View {
     }
 
     private func showCompletionUndo(for item: CapturedItem) {
-        let notice = CompletionUndo(item: item)
+        let count = completedToday.count
+        let message = count > 1 ? "Task completed · \(count) today" : "Task completed"
+        let notice = CompletionUndo(item: item, message: message)
+        hasDismissedCompletedToday = false
         withAnimation(.snappy(duration: 0.24)) {
             completionUndo = notice
         }
@@ -1893,7 +2015,8 @@ struct CaptureHistoryView: View {
                     .font(.caption)
                     .foregroundStyle(Color.speakMuted)
                 Text(session.processingStatus == .complete
-                     ? "\(session.extractedItemCount) saved"
+                     ? (CaptureOperationState.read(from: session.operationStateData)?.phase == .performed
+                        ? "Saved change" : "\(session.extractedItemCount) saved")
                      : session.processingStatus.rawValue.capitalized)
                     .font(.caption.weight(.medium))
                     .foregroundStyle(Color.speakMuted)

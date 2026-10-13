@@ -29,6 +29,8 @@ DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}" xcr
   SpeakIt/Repositories/ClauseStructure.swift \
   SpeakIt/Repositories/TranscriptProvenance.swift \
   SpeakIt/Repositories/ThoughtExtractor.swift \
+  SpeakIt/Repositories/RuntimeReferenceStore.swift \
+  SpeakIt/Repositories/RuntimeSemanticIndex.swift \
   SpeakIt/Repositories/ThoughtOrganizer.swift \
   SpeakIt/Repositories/SpeechRepair.swift \
   SpeakIt/Repositories/IntentConsolidation.swift \

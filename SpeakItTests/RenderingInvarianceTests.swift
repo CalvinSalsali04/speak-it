@@ -214,6 +214,20 @@ final class RenderingInvarianceTests: XCTestCase {
 /// it is the same kind of fact as the rest of it: something outside the app
 /// decides what the app does, and the suite states what it is relying on.
 final class NaturalLanguageEnvironmentTests: XCTestCase {
+    private func requireEnglishTagger() async throws {
+        _ = await SentenceContext.prepareEnglishAssets()
+        try LexicalTagging.skipIfBlind()
+        guard NLTagger.availableTagSchemes(for: .word, language: .english).contains(.lexicalClass) else {
+            throw XCTSkip("Apple's English lexical tagging asset is unavailable in this simulator. Tag assertions require a supported device; embedding and rules tests still run.")
+        }
+    }
+
+    func testLanguageAssetPreparationReportsActualAvailability() async {
+        let prepared = await SentenceContext.prepareEnglishAssets()
+        XCTAssertEqual(prepared, SentenceContext.englishTaggingResponds())
+        let report = XCTAttachment(string: String(describing: SentenceContext.taggerAvailability()))
+        report.name = "Actual English tagging assets"; report.lifetime = .keepAlways; add(report)
+    }
 
     /// The whole sentence's tagging, as the failure message so the reading is
     /// recoverable from a log without an `.xcresult`.
@@ -243,7 +257,8 @@ final class NaturalLanguageEnvironmentTests: XCTestCase {
         }
     }
 
-    func testAFrontedAdjunctIsTaggedAsOneAndTheVerbBehindItAsAVerb() {
+    func testAFrontedAdjunctIsTaggedAsOneAndTheVerbBehindItAsAVerb() async throws {
+        try await requireEnglishTagger()
         for (text, verb) in [
             ("on the 15th pay the rent", "pay"),
             ("by friday send the invoice", "send"),
@@ -262,7 +277,8 @@ final class NaturalLanguageEnvironmentTests: XCTestCase {
         }
     }
 
-    func testASubjectInsideAFrontedConditionIsTagged() {
+    func testASubjectInsideAFrontedConditionIsTagged() async throws {
+        try await requireEnglishTagger()
         let text = "when I finish the essay call dave"
         XCTAssertEqual(tag("i", in: text), .pronoun, tagging(text))
         XCTAssertEqual(tag("finish", in: text), .verb, tagging(text))
@@ -271,7 +287,8 @@ final class NaturalLanguageEnvironmentTests: XCTestCase {
 
     /// What separates "I had better luck last time" from "I had better call
     /// the bank tomorrow" is one token's part of speech and nothing else.
-    func testHadBetterIsSeparatedByTheTagOfTheWordAfterIt() {
+    func testHadBetterIsSeparatedByTheTagOfTheWordAfterIt() async throws {
+        try await requireEnglishTagger()
         let knowledge = "I had better luck last time"
         XCTAssertEqual(tag("luck", in: knowledge), .noun, tagging(knowledge))
         let action = "I had better call the bank tomorrow"

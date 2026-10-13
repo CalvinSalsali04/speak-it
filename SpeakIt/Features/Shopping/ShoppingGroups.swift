@@ -413,6 +413,17 @@ enum ShoppingGroupParser {
         "sparkling water", "olive tapenade", "bread crumbs", "corn starch",
     ]
 
+    /// One exact product phrase, with no dropped list connectors or words.
+    /// The capture certificate uses this when lexical assets are unavailable;
+    /// a sequence of products must still pass through the complete list reader.
+    static func namesOneProduct(_ text: String) -> Bool {
+        guard text.range(of: #"^[\p{L}\p{M} -]+$"#, options: .regularExpression) != nil else { return false }
+        var words=text.lowercased().split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        if ["a","an","the"].contains(words.first ?? "") { words.removeFirst() }
+        guard !words.isEmpty else { return false }
+        return words.count == 1 ? groceryWords.contains(words[0]) : knownProductPhrases.contains(words.joined(separator:" "))
+    }
+
     /// Whether every significant word of a fragment names a grocery.
     ///
     /// Exists because `NLTagger` labels a surprising number of ordinary foods
@@ -570,6 +581,14 @@ enum ShoppingGroupParser {
         // "Some yogurt", "more coffee": a quantity in front of a product is
         // not the determiner that refuses "the newspaper" below.
         if let first = words.first, ["some", "more"].contains(first.text.lowercased()) {
+            words.removeFirst()
+        }
+        // "No Name milk" and other multiword product modifiers still have a
+        // concrete product head. A bare "no sugar" has no positive product
+        // reading and remains an exclusion. Require an additional modifier and
+        // a known product head before treating "no" as part of that noun.
+        if words.count >= 3, words.first?.text.lowercased() == "no",
+           let head = words.last?.text.lowercased(), groceryWords.contains(head) {
             words.removeFirst()
         }
         guard (1...4).contains(words.count) else { return .refused }
@@ -883,7 +902,10 @@ enum ShoppingGroupParser {
     }
 
     static func readsAsProductList(_ body: String) -> Bool {
-        let scope = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        let scope = body.replacingOccurrences(
+            of: #"(?i),\s*(?:but\s+)?(?:not|no|without)\s+[^,.;]+[.;]?\s*$"#,
+            with: "", options: .regularExpression
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
         let pieces = listPieces(in: scope)
         guard pieces.count > 1, !hasSpokenPredicate(pieces, in: scope) else { return false }
         let sentence = "buy \(scope)"

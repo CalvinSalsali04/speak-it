@@ -51,7 +51,7 @@
 2. Tap the animated pulse to begin listening.
 3. Grant microphone and speech-recognition permission when first requested.
 4. Speak while the pulse responds to audio level and live text appears.
-5. Pause naturally to finish, or tap the pulse to finish immediately.
+5. Continuous capture is on by default: keep speaking through thinking pauses, then tap the pulse to Finish. The visible control can switch to **Auto finish** for automatic saving after a natural pause; switching back to continuous is possible while listening. The same control is available when an outside-the-app route starts the in-app voice screen automatically.
 6. Finalize the transcription, separate independent intentions, save them under one untouched capture, play success haptics, and show the Remembered animation.
 7. If recognition fails after producing text, move that text into the typing interface instead of discarding it.
 8. Keep X visible while the keyboard is onscreen. Once speech exists, closing follows the same Save & Close / Discard rule as typing.
@@ -107,6 +107,15 @@ saved is ever locked, and no other feature is gated.
    route, the privacy summary and the legal links are on the same screen.
 
 ## Review and edit
+
+After an unclear capture, **Review and edit saved items** opens the complete
+original transcript and the individual saved rows. **Edit this item** opens
+the existing item editor for only that row. The original capture remains
+read-only and clear sibling items are left in place. **Try saying the capture
+again** remains available when editing cannot recover the intent; that route
+replaces the prior attempt only after the new capture is durable. This local
+edit route does not yet implement a targeted spoken reply or idempotent
+clarification dialogue.
 
 1. Open an item from Today or Memory.
 2. Review the editable title, type, category, priority, due date, person, and clarification flag.

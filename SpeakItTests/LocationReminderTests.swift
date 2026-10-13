@@ -101,6 +101,32 @@ final class LocationReminderTests: XCTestCase {
         XCTAssertTrue(item.belongsInToday(authorization: authorized))
     }
 
+    func testHeldThoughtCanResolvePlaceButCannotDeliverUntilReviewed() async throws {
+        setHome()
+        var deliveries = 0
+        repository = SwiftDataThoughtRepository(
+            modelContext: container.mainContext,
+            placeReminderDelivery: { _, _, _, _ in deliveries += 1; return .scheduled },
+            requestsReminderAuthorization: false)
+        let item = try repository.createCapture(
+            text: "When I go home remind me to take out the garbage",
+            source: .inAppText, createdAt: .now, schedulesReminder: false)
+        let intent = item.locationIntent
+        XCTAssertNotNil(item.locationMonitorRequest(authorization: authorized))
+        item.needsClarification = true
+        XCTAssertNotNil(item.locationMonitorRequest(authorization: authorized),
+                        "place resolution still explains the retained trigger")
+        await repository.handleLocationTrigger(itemID: item.id, event: .arrive)
+        XCTAssertEqual(deliveries, 0)
+        XCTAssertNil(item.locationIntent?.firedAt)
+        XCTAssertEqual(item.locationIntent, intent, "holding delivery must preserve the trigger for recovery")
+        item.needsClarification = false
+        XCTAssertNotNil(item.locationMonitorRequest(authorization: authorized))
+        await repository.handleLocationTrigger(itemID: item.id, event: .arrive)
+        XCTAssertEqual(deliveries, 1)
+        XCTAssertNotNil(item.locationIntent?.firedAt)
+    }
+
     func testWorkArrivalAndDeparture() {
         XCTAssertEqual(LocationIntentParser.parse("Remind me when I get to work")?.place, .work)
         XCTAssertEqual(LocationIntentParser.parse("Remind me when I get to work")?.event, .arrive)
@@ -1546,6 +1572,57 @@ final class LocationReminderTests: XCTestCase {
             storedIntent,
             "none of this edited the stored intent — only its resolution changed"
         )
+    }
+
+    func testUnpunctuatedBinsCaptureKeepsOneUnarmedPlaceTaskThroughSetup() throws {
+        let spoken = "remind me to take the bins out when i get home there is no saved home place in this test\n\n"
+            + "keep the task and explain the missing requirement rather than choosing a location or clock time for me "
+            + "the request should remain visible if i close the permission screen "
+            + "i do not want to repeat what i said after fixing the setup and i do not want a check mark that falsely says an arrival or departure notification is already working "
+            + "there are no other tasks or saved places to modify in this recording"
+        let item = try repository.createCapture(
+            text: spoken, source: .inAppText, createdAt: .now,
+            schedulesReminder: false
+        )
+        let rows = try container.mainContext.fetch(FetchDescriptor<CapturedItem>())
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(item.captureSession?.originalTranscription, spoken)
+        XCTAssertEqual(item.itemType, .task)
+        XCTAssertEqual(item.locationIntent?.place, .home)
+        XCTAssertEqual(item.locationIntent?.event, .arrive)
+        XCTAssertNil(item.reminderDate)
+        XCTAssertEqual(item.locationBlocker(authorization: unauthorized), .missingHome)
+        XCTAssertNil(item.locationMonitorRequest(authorization: unauthorized))
+
+        let savedID = item.id
+        setHome()
+        XCTAssertEqual(item.id, savedID)
+        XCTAssertEqual(item.locationBlocker(authorization: foregroundOnly),
+                       .alwaysPermissionRequired)
+        XCTAssertNil(item.locationMonitorRequest(authorization: foregroundOnly))
+        XCTAssertNil(item.locationBlocker(authorization: authorized))
+        XCTAssertNotNil(item.locationMonitorRequest(authorization: authorized))
+    }
+
+    func testNoLocationConstraintStaysWithOneUnscheduledBinsTask() throws {
+        let spoken = "Add an unscheduled task to take the bins out; do not use a location reminder."
+        let item = try repository.createCapture(
+            text: spoken, source: .inAppText, createdAt: .now,
+            schedulesReminder: false
+        )
+        let rows = try container.mainContext.fetch(FetchDescriptor<CapturedItem>())
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(item.captureSession?.originalTranscription, spoken)
+        XCTAssertEqual(item.itemType, .task)
+        XCTAssertNil(item.locationIntent)
+        XCTAssertNil(item.reminderDate)
+        XCTAssertTrue(item.originalTextSegment.localizedCaseInsensitiveContains("do not use a location reminder"))
+
+        let standalone = ThoughtExtractionEngine.extractWithRules(
+            "Do not use a location reminder."
+        ).items
+        XCTAssertEqual(standalone.count, 1)
+        XCTAssertTrue(standalone[0].needsReview)
     }
 
     /// A `.home` reminder must never be described with the wording that belongs

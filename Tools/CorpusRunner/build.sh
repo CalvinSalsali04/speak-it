@@ -30,6 +30,8 @@ DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}" xcr
   SpeakIt/Repositories/ClauseStructure.swift \
   SpeakIt/Repositories/TranscriptProvenance.swift \
   SpeakIt/Repositories/ThoughtExtractor.swift \
+  SpeakIt/Repositories/RuntimeReferenceStore.swift \
+  SpeakIt/Repositories/RuntimeSemanticIndex.swift \
   SpeakIt/Repositories/ThoughtOrganizer.swift \
   SpeakIt/Repositories/SpeechRepair.swift \
   SpeakIt/Repositories/IntentConsolidation.swift \
@@ -45,5 +47,6 @@ DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}" xcr
   SpeakIt/Models/ReminderTrigger.swift \
   "$OUT/ReminderCopySlice.swift" \
   "$OUT"/corpus/*.swift \
-  "$SP/../PipelineProbe/shims.swift" "$SP/main.swift" 2>&1 | grep -E 'error:' | head -40 || true
+  "$SP/../PipelineProbe/shims.swift" "$SP/main.swift" \
+  2> "$OUT/build-errors.log" || { cat "$OUT/build-errors.log" >&2; exit 1; }
 test -x "$OUT/corpus-run" && echo "corpus runner built: $OUT/corpus-run"

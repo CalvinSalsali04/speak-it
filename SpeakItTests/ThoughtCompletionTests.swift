@@ -129,6 +129,7 @@ final class ThoughtCompletionTests: XCTestCase {
             "Maybe tomorrow",
             "I keep meaning to write that down",               // down/Adverb
             "That is all",                                     // all/Determiner after a copula
+            "I need to call her",                              // object pronoun, not an article
             "I need to follow up",                             // particle verb
             "Don't forget to check in",
             "I should probably head out",
@@ -308,6 +309,18 @@ final class IncompleteThoughtCaptureTests: XCTestCase {
 
     /// A finished thought captured beside an unfinished one keeps its meaning.
     func testAFinishedThoughtSurvivesBesideAnUnfinishedOne() throws {
+        XCTAssertEqual(
+            RuleBasedThoughtExtractor.splitClauses("Buy milk and tomorrow I want to"),
+            ["Buy milk", "tomorrow I want to"]
+        )
+        XCTAssertEqual(
+            RuleBasedThoughtExtractor.splitClauses("Buy milk and bread"),
+            ["Buy milk and bread"]
+        )
+        XCTAssertEqual(
+            RuleBasedThoughtExtractor.splitClauses("Nina said, \"buy milk and tomorrow I want to\""),
+            ["Nina said, \"buy milk and tomorrow I want to\""]
+        )
         try repository.createCapture(
             text: "Buy milk and tomorrow I want to",
             source: .inAppText,

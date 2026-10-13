@@ -5,35 +5,117 @@ Notable changes to Speak It, newest first. Build numbers are
 Entries before September 2026 were reconstructed from the commit history and
 `Docs/DECISIONS.md`, so they are summaries rather than a contemporaneous record.
 
+## Build 21 — prepared 2026-10-12
+
+- Resolves complete, independently proved factual notes and explicit own tasks
+  locally before optional generation. Lists, quoted instructions, uncertain
+  conditions and unsupported corrections keep the normal interpretation path.
+- Keeps other people's responsibilities, service hours and completed reports
+  in Memory while preserving independently adopted user actions.
+- Binds explicit calendar corrections to the final stated day, hour and daypart;
+  keeps quantities separate from clocks and supports spoken ninety-minute
+  durations. Unsupported recurrence limits and deliberately unset hours remain
+  visible for review without guessed alerts.
+- Requires temporal wording for weekly recurrence and binds its interval to
+  that phrase; unrelated “every resident” or “every other photograph” cannot
+  create or alter a series.
+- Keeps a proved descriptive past-state date outside an action’s schedule and
+  retains complete short-capture facts in Memory when they also explain a
+  separate reminder.
+- Preserves exact source ownership for a bounded local reconsideration or
+  withdrawal. Conditional or other-person actions cannot supply cancellation
+  authority over saved tasks.
+
+- Reuses compiled action-prefix expressions and the fixed relationship grammar
+  to reduce repeated parser work while retaining the original wording.
+
+- Preserves separate visits after a shopping false start, explicit task commitments
+  after ideas, scheduled-message recipients, and successive named timing revisions.
+  Declined reminders remain context on the idea they explicitly refer to.
+  Elapsed-hour series preserve their start and interval across daylight-saving changes.
+
+- Keeps message event clocks separate from sending times, preserves named
+  clock corrections across lowercase sentence stops, and attaches a task's
+  explicit reaffirmation only when its owner is unique. Fronted task dates retain
+  their outer scope, and a new sentence releases a prior reported command.
+
+- Restores the normal Speak It interface and app configuration after Build 20's
+  isolated preview, including the merged Settings, capture-result and tutorial
+  improvements, extensions, optional iCloud and StoreKit behavior.
+- Enables local search across the complete 510,000-example development bank
+  for the on-device interpretation engine on supported iPhones. The model
+  receives a few relevant examples while preserving complete current context.
+- Combines Source126v2 capture improvements with the latest integration branch.
+  Source grounding, safe review, and saved-item operation checks remain active.
+- Preserves Build 19 data and imports Build 20 captures, metadata and unfinished
+  drafts without deleting the original store or recordings. Pending preview
+  shares remain importable through the normal app.
+
+- Keeps complete numbered captures, named local withdrawals, quoted questions,
+  and shared event context intact when lexical assets are absent. A model's
+  failed proposal remains reviewable with the original transcript preserved.
+
 ## Unreleased
 
-- The sheet after the first real capture shows what Speak It did with it (the
-  person's words and the items they became) with "Keep going" and "See Pro
-  plans", instead of opening on plans.
-- Today shows how many free captures are left once fewer than three remain,
-  and says that one capture can hold a whole list. It shows at most one
-  suggestion card, below the person's own sections.
-- The welcome screen shows a worked example instead of a slogan, drops the
-  "NO ACCOUNT" label, and "Explore first" is "Skip the tutorial".
-- The launch price no longer says "summer", and a failed plan load no longer
-  talks about App Store products being connected.
-- Memory's header shows a count, Settings' plan row says the count once,
-  "Make Speak It ready" is "Setup checklist", and the example sentences match
-  across screens.
-- The first-run tutorial is seven steps instead of eight. People and the
-  person's page are one step, and the idea step shows where the idea went and
-  continues without asking for a stage. The practice card now says before the
-  first recording that practice is free and when the free captures start, the
-  task step no longer invites wording it would then reject, and the finish
-  screen states the allowance once. The unused four-part `FirstCaptureGuideView`
-  is removed.
-- The seven week dots beside the date on Today are removed, along with the
-  `week_row_shown` analytics event. The morning brief and the All clear line
-  are unchanged.
-- Settings replaces "Account & Settings". The optional profile (a name and
-  email that nothing in the app used) is gone, and launch clears what earlier
-  builds stored. Settings is regrouped as Plan, Capture, Reminders, Appearance, Privacy, History and
-  Help, and the Lock Screen names footnote is shorter.
+- Preserves separate reminders after retained quoted content, limits new clock inheritance to a proved calendar adjunct, and keeps explicit saved-edit targets separate from earlier notes. These repairs await their own verification; failed prior runs remain recorded.
+
+- Keeps explicit saved thoughts and knowledge pointers in Memory, attaches a fronted clock and calendar day to its reminder, and preserves unique recipient corrections without creating the withdrawn recipient action. Historical and other-person routine clocks do not become new future work. These isolated draft changes are pending exact-source verification.
+
+- Prevents a resolved Memory interpretation from hiding an independent current
+  instruction or reminder. Explicit reference-only calendar facts stay in
+  Memory without creating an alert, and an own instruction not to create a task
+  blocks creation from the same unresolved source unit.
+- Recognizes bounded present commitments such as a first-person job after lunch,
+  and keeps reported team guidance separate from the user's adopted work.
+- Keeps proved local completion and disputed status intact through optional
+  model interpretation, with separate later tasks and named saved edits
+  retaining their source ownership. A model cannot hide an unfinished action
+  merely by classifying the capture as an idea.
+- A physical state such as “the heat was off” no longer requests cancellation
+  of a saved item. Bare “off” requires a scheduled subject; explicit cancelled
+  and called-off wording keeps its existing behavior.
+- Local reference assets prepare on supported phones even when Apple's
+  generative model is unavailable. An empty compact lookup and its full-bank
+  fallback share the same eight-second resource budget.
+- Bounded compact and semantic example routing is implemented behind disabled
+  configuration fields. Large retrieval and complete-pipeline qualification
+  are separate; the new routing is not enabled by this entry.
+
+- Isolated product-readiness changes: unreadable shared captures remain visible
+  with retry, notification diagnostics omit authored content and coordinates,
+  Shortcut operations honor the existing free-capture usage flag and avoid zero-row receipt crashes, and malformed draft checkpoints stay intact beside new drafts. Pending
+  integration and the qualification recorded in the product-readiness report.
+
+- Quoted messages now retain explicit non-adoption and note-retention context
+  without creating send or keep tasks. Independent own actions and facts stay
+  separate. These development repairs are not final release qualification.
+
+- Switching between Light and Dark no longer glitches. The page changed in one
+  frame while the navigation bar ran its own fade, so for about a fifth of a
+  second "Account & Settings" sat in the old colour on the new background —
+  invisible — Done passed through a grey belonging to neither appearance, and
+  the Appearance control's own selected segment turned dark while the page
+  around it was still light. The whole screen now cross-fades together, the way
+  the iPhone's own appearance switch does.
+- Opening a Today section now brings it onto the screen. *Coming up* and *When
+  you have time* grow downward, and the scroll view did not follow them, so a
+  section opened low on the screen revealed its rows into the band the floating
+  dock covers — or below the screen entirely — and the tap read as if nothing
+  had happened. The section now scrolls up to the top of the view as it opens,
+  which is also what slides the dock out from over it. Closing a section still
+  leaves the screen where it is.
+- Speak It no longer states a date nobody said. A day the month does not have
+  ("book the appointment for June 31") is left undated instead of rolling into
+  the next real day and, once that had passed, into the following year. A
+  February 29 resolves to the next actual leap day.
+- Phone numbers and decimals stay numbers. "Call the pharmacy at 416.555.0134"
+  was rewritten to "4:16.555.0134" in the row title and the saved quote, and
+  scheduled; "keep the bag at 6.5 kilograms" and "set the budget at 1,250
+  dollars" became six and one o'clock. A sentence that simply ends in a full
+  stop, "dinner at 6.", still keeps its time.
+- A question is no longer given a deadline. "What's the date today" was filed on
+  Today due today while "what is the date today" was not, and "have I set any
+  alarm for today" answered a question about alarms by scheduling one.
 - Build 19.
 - Choosing System under Appearance now follows the iPhone's light and dark
   switch immediately. After the app had been in Light, picking System left a
