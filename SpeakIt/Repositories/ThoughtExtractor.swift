@@ -10700,6 +10700,18 @@ enum RuleBasedThoughtExtractor {
                 with: "", options: .regularExpression
             )
             .trimmingCharacters(in: CharacterSet(charactersIn: ".;"))
+        if body.contains(","), let products = ShoppingGroupParser.products(in: body, verb: verb),
+           products.allSatisfy({ product in
+               namesSomethingToBuy(product) && (!hasExplicitFinitePredicate(product)
+                   || ShoppingGroupParser.namesOneProduct(product)
+                   || (product.split(separator: " ").count == 2
+                       && ShoppingGroupParser.namesProductHead(String(product.split(separator: " ").last ?? "")))
+                   || ShoppingGroupParser.provesNominalPurchaseObject(product, in: title))
+           }) {
+            // Every comma group can contain coordinated products, not only
+            // the final group: “rice and lentils, plus a jar of sauce”.
+            return products.map { (verb, $0) }
+        }
         guard body.contains(",") else {
             // Speech transcription often drops the commas the person spoke.
             // A comma-less body still splits when every word is a recognized

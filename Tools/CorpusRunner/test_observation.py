@@ -625,7 +625,7 @@ class TheMotivatingFiguresAtTheTopAreRecomputed(unittest.TestCase):
     # Integrated Build 22 source, recomputed through the unchanged reader.
     # New Swift literals widen the population; no concentration threshold or
     # source/stem counting rule changes to preserve the old classification.
-    MOTIVATING = {"plus": (62, 8, 26, 50), "wait": (121, 18, 71, 16)}
+    MOTIVATING = {"plus": (63, 8, 27, 49), "wait": (121, 18, 71, 16)}
 
     def test_the_corpus_still_says_what_the_bullets_say(self):
         forms = {phrase: "anywhere" for phrase in self.MOTIVATING}
