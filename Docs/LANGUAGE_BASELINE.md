@@ -677,30 +677,30 @@ Sources holding exactly the same utterances are one body, grouped first. Then
 a body wholly inside another is not a second population. 25 sources reduce to
 22 distinct bodies and **12 that sit inside no other**:
 
-| utterances | share of 5,901 | population |
+| utterances | share of 11,741 | population |
 |---:|---:|---|
-| 4,064 | 68.9% | the gating corpus in `SpeakItTests` |
-| 818 | 13.9% | `Tools/SpeechLab/phase2`, in four byte-identical files |
-| 695 | 11.8% | `Tools/SpeechLab/phase2/repair/trust-closure/cases.jsonl` |
-| 472 | 8.0% | `Tools/SpeechLab/audit/combined-renderings.jsonl` |
-| 163 | 2.8% | `Tools/CorpusRunner/devsets/unfinished.tsv` |
-| 123 | 2.1% | `Tools/SpeechLab/phase2/repair/trust-closure/exclusions.jsonl` |
-| 121 | 2.1% | `Tools/CorpusRunner/devsets/coordination.tsv` |
-| 114 | 1.9% | `Tools/CorpusRunner/devsets/routed.tsv` |
-| 85 | 1.4% | `Tools/CorpusRunner/devsets/rambling.tsv` |
-| 55 | 0.9% | `Tools/CorpusRunner/devsets/abandonment.tsv` |
-| 46 | 0.8% | `Tools/CorpusRunner/devsets/runon.tsv` |
-| 45 | 0.8% | `Tools/CorpusRunner/devsets/framing.tsv` |
+| 9,904 | 84.4% | the gating corpus in `SpeakItTests` |
+| 818 | 7.0% | `Tools/SpeechLab/phase2`, in four byte-identical files |
+| 695 | 5.9% | `Tools/SpeechLab/phase2/repair/trust-closure/cases.jsonl` |
+| 472 | 4.0% | `Tools/SpeechLab/audit/combined-renderings.jsonl` |
+| 163 | 1.4% | `Tools/CorpusRunner/devsets/unfinished.tsv` |
+| 123 | 1.0% | `Tools/SpeechLab/phase2/repair/trust-closure/exclusions.jsonl` |
+| 121 | 1.0% | `Tools/CorpusRunner/devsets/coordination.tsv` |
+| 114 | 1.0% | `Tools/CorpusRunner/devsets/routed.tsv` |
+| 85 | 0.7% | `Tools/CorpusRunner/devsets/rambling.tsv` |
+| 55 | 0.5% | `Tools/CorpusRunner/devsets/abandonment.tsv` |
+| 46 | 0.4% | `Tools/CorpusRunner/devsets/runon.tsv` |
+| 45 | 0.4% | `Tools/CorpusRunner/devsets/framing.tsv` |
 
 The four files under `Tools/SpeechLab/phase2` are the same 818 utterances four
 times: `adjudication/cases-adjudicated.jsonl`, `data/cases.jsonl`,
 `data/renderings.jsonl`, `review/independent-review-pack.jsonl`. A form
 appearing only there reads as four sources and is one.
 
-**That column sums to 6,801 and its shares to 115.3%, because the twelve
+**That column sums to 12,641 and its shares to 107.7%, because the twelve
 populations are maximal rather than disjoint.** A body inside no other body
 may still overlap one. The excess of 900 counts an utterance once for every
-additional maximal population that contains it. Only the union, 5,901, is a
+additional maximal population that contains it. Only the union, 11,741, is a
 total.
 
 ### By kind, and the one place two kinds overlap
@@ -708,18 +708,18 @@ total.
 Two of the three pairs share nothing: not one utterance is in both
 `SpeakItTests` and the SpeechLab tree, and not one is in both the SpeechLab
 tree and a development set. The development sets and the fixtures overlap by
-114, so the three kinds are 4,064 + 1,333 + 618 = 6,015 against a union of
-5,901 and do not add up. Written out so that they do:
+114, so the three kinds are 9,904 + 1,333 + 618 = 11,855 against a union of
+11,741 and do not add up. Written out so that they do:
 
-| kind | utterances | share of 5,901 |
+| kind | utterances | share of 11,741 |
 |---|---:|---:|
-| test fixtures only | 3,950 | 66.9% |
-| generated renderings (the SpeechLab tree) | 1,333 | 22.6% |
-| development sets only | 504 | 8.5% |
-| in both a development set and a fixture | 114 | 1.9% |
-| **total** | **5,901** | |
+| test fixtures only | 9,790 | 83.4% |
+| generated renderings (the SpeechLab tree) | 1,333 | 11.4% |
+| development sets only | 504 | 4.3% |
+| in both a development set and a fixture | 114 | 1.0% |
+| **total** | **11,741** | |
 
-**91.5% of everything this project may read — 5,397 of 5,901 — is either a
+**95.7% of everything this project may read — 11,237 of 11,741 — is either a
 fixture written to exercise the parser or a rendering generated from a
 blueprint.** The material written to look like somebody talking is 618
 utterances, of which 504 exist nowhere else.

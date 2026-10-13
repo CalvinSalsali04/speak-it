@@ -214,14 +214,6 @@ final class RenderingInvarianceTests: XCTestCase {
 /// it is the same kind of fact as the rest of it: something outside the app
 /// decides what the app does, and the suite states what it is relying on.
 final class NaturalLanguageEnvironmentTests: XCTestCase {
-    private func requireEnglishTagger() async throws {
-        _ = await SentenceContext.prepareEnglishAssets()
-        try LexicalTagging.skipIfBlind()
-        guard NLTagger.availableTagSchemes(for: .word, language: .english).contains(.lexicalClass) else {
-            throw XCTSkip("Apple's English lexical tagging asset is unavailable in this simulator. Tag assertions require a supported device; embedding and rules tests still run.")
-        }
-    }
-
     func testLanguageAssetPreparationReportsActualAvailability() async {
         let prepared = await SentenceContext.prepareEnglishAssets()
         XCTAssertEqual(prepared, SentenceContext.englishTaggingResponds())
@@ -258,7 +250,7 @@ final class NaturalLanguageEnvironmentTests: XCTestCase {
     }
 
     func testAFrontedAdjunctIsTaggedAsOneAndTheVerbBehindItAsAVerb() async throws {
-        try await requireEnglishTagger()
+        _ = await SentenceContext.prepareEnglishAssets()
         for (text, verb) in [
             ("on the 15th pay the rent", "pay"),
             ("by friday send the invoice", "send"),
@@ -278,7 +270,7 @@ final class NaturalLanguageEnvironmentTests: XCTestCase {
     }
 
     func testASubjectInsideAFrontedConditionIsTagged() async throws {
-        try await requireEnglishTagger()
+        _ = await SentenceContext.prepareEnglishAssets()
         let text = "when I finish the essay call dave"
         XCTAssertEqual(tag("i", in: text), .pronoun, tagging(text))
         XCTAssertEqual(tag("finish", in: text), .verb, tagging(text))
@@ -288,7 +280,7 @@ final class NaturalLanguageEnvironmentTests: XCTestCase {
     /// What separates "I had better luck last time" from "I had better call
     /// the bank tomorrow" is one token's part of speech and nothing else.
     func testHadBetterIsSeparatedByTheTagOfTheWordAfterIt() async throws {
-        try await requireEnglishTagger()
+        _ = await SentenceContext.prepareEnglishAssets()
         let knowledge = "I had better luck last time"
         XCTAssertEqual(tag("luck", in: knowledge), .noun, tagging(knowledge))
         let action = "I had better call the bank tomorrow"

@@ -9,17 +9,20 @@ proposals by hand and is the one nothing checks:
     Forty rows contain the word. Are they forty observations, or one
     observation written forty times?
 
-Both failures happened on 2026-09-14, hours apart, on different material:
+The motivating cases were identified on 2026-09-14. Their figures below are
+remeasured on the integrated Build 22 source, rather than kept at that date's
+population:
 
-  * `plus` appears in 48 readable utterances across 8 sources. 41 of them
+  * `plus` appears in 62 readable utterances across 8 sources. 41 of them
     appear in each of four files the census's own containment check reports
     as views of one population, and repair views add further occurrences;
-    twelve stems carry all 48 rows with one frame taking 65%. Read off the
-    census table, `plus 48 0.9%` is an attested form with eight sources behind
-    it. It is one blueprint.
-  * `wait` appears in 58 over 18 sources, and a third of them are one frame,
-    `I was going to ask— wait, ...`. A detector keyed on the phrase would
-    fire on captures that are one sentence with the nouns changed.
+    26 stems carry all 62 rows with one frame taking 50%. Eight sources
+    therefore do not establish eight independent bodies of evidence.
+  * `wait` appears in 121 over 18 sources, with 71 stems and its largest
+    frame, `I was going to ask— wait, ...`, taking 16%. The wider integrated
+    test material has moved this below the unchanged 25% concentration
+    threshold. The earlier population was concentrated; the current one is
+    not. A census pin records that change rather than preserving a verdict.
 
 A row count cannot tell those apart from forty people saying a thing, and a
 row count is what every sizing in this repository has used. **Neither can a

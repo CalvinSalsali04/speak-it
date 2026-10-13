@@ -5398,3 +5398,10 @@ routing check and was reverted before upload. The obligation scanner now
 expands its summarized `i/we'll` into the actual contraction tokens, and its
 counts are pinned to the intentionally expanded Build 21 vocabularies. No
 broader obligation-list convergence or corpus campaign is introduced.
+
+Integration also refreshes the generated readable-corpus population and the
+observation instrument's pinned motivating counts. NaturalLanguage environment
+diagnostics again report failures rather than skipping when assets are absent;
+asset-dependent behavior tests retain their existing abstention policy. These
+are test/tooling corrections, outside the uploaded app binary. The full native
+unit suite and physical speech qualification remain unclaimed.
