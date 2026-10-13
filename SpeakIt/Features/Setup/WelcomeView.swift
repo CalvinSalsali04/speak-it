@@ -381,6 +381,12 @@ enum FirstRunTutorialPhase: String, CaseIterable {
     }
 
     var isActive: Bool { self != .inactive }
+
+    /// Practice ends with the tutorial/test, not after a hidden wall-clock
+    /// cutoff. A slow setup or interrupted test must never spend a capture.
+    func hasComplimentaryCaptureAnywhereTest(beganAt: Double) -> Bool {
+        self == .readiness && beganAt > 0
+    }
 }
 
 enum TutorialSpotlightPlacement: Equatable {

@@ -1413,11 +1413,7 @@ enum ThoughtOrganizer {
     /// them removed. "I need milk and eggs" is a list; "I need to call the
     /// dentist" is not, which is why the infinitive form is not stripped here.
     static func shoppingListBody(in text: String) -> String {
-        text.replacingOccurrences(
-            of: #"(?i)^(?:i|we)\s+(?:also\s+)?(?:do\s+)?(?:need|want|could\s+use)\s+(?!to\b)|^(?:we|i)'?re\s+out\s+of\s+|^(?:we|i)\s+are\s+out\s+of\s+|^need\s+(?!to\b)"#,
-            with: "",
-            options: .regularExpression
-        )
+        ShoppingGroupParser.implicitNeedBody(in: text) ?? text
     }
 
     private static func inferredType(
@@ -1477,6 +1473,13 @@ enum ThoughtOrganizer {
             return .event
         }
 
+        // A nominal wish or shortage has no purchase verb. Do not let the
+        // generic noun-coordination reader invent shopping for abstractions.
+        if ShoppingGroupParser.implicitNeedBody(in: text) != nil,
+           RuleBasedThoughtExtractor.canonicalizedListCommand(text) == text {
+            return .note
+        }
+
         if matchesAny(text, [
             #"^(?:buy|purchase|order)\b"#,
             #"^(?:grocery|shopping)\s+list\b"#,
@@ -1512,6 +1515,28 @@ enum ThoughtOrganizer {
         // "get going", "get ready", "get home" acquire nothing, and "I need to
         // get up at 6 tomorrow" was a shopping row titled *up*. Particles and
         // quantifiers are closed classes, so testing them is grammar.
+        // An indefinite physical object can be a purchase even when the old
+        // acquisition fallback excludes all articles to protect collections.
+        // Keep “the/my …” collections, particles, people and abstractions out.
+        if let lead = text.range(of: #"(?i)^(?:get|grab|pick\s+up)\s+(?=an?\s+)"#,
+                                 options: .regularExpression) {
+            var object = String(text[lead.upperBound...])
+            var acquisitionContext: String?
+            if let context = object.range(of: #"(?i)\s+(?:at|from|for|on|by|before|after|today|tomorrow|tonight|this|next|when|if)\b"#,
+                                          options: .regularExpression) {
+                acquisitionContext = String(object[context.lowerBound...]).trimmingCharacters(in: CharacterSet(charactersIn: " .!?"))
+                object = String(object[..<context.lowerBound])
+            }
+            let contextIsPurchase: Bool
+            if let context = acquisitionContext,
+               context.range(of: #"(?i)^(?:at|from)\s+"#, options: .regularExpression) != nil {
+                let calendarOnly = RuleBasedThoughtExtractor.leadingTemporalContext(in: context)
+                    .map { $0.caseInsensitiveCompare(context) == .orderedSame } ?? false
+                contextIsPurchase = calendarOnly || ShoppingGroupParser.storeName(in: text)
+                    .map(ShoppingGroupParser.isRecognizedStoreName) == true
+            } else { contextIsPurchase = true }
+            if contextIsPurchase, ShoppingGroupParser.certifiesImplicitProducts(object) { return .shopping }
+        }
         let acquisition = #"^(?:get|grab|pick\s+up)\s+(?:\d+\s+)?"#
         if text.range(
             of: acquisition
@@ -1867,7 +1892,7 @@ enum ThoughtOrganizer {
         ), let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
            let tailRange = Range(match.range(at: 1), in: text) else { return false }
         let tail = String(text[tailRange])
-        return ShoppingGroupParser.namesOnlyProducts(tail) || ShoppingGroupParser.readsAsProductList(tail)
+        return ShoppingGroupParser.certifiesImplicitProducts(tail)
     }
 
     private static func matchesAny(_ text: String, _ patterns: [String]) -> Bool {

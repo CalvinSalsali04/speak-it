@@ -52,88 +52,27 @@ enum SpeakItAppearance: String, CaseIterable, Identifiable {
         }
     }
 
-    /// How long the switch between Light and Dark takes.
-    ///
-    /// Matched to the cross-fade iOS runs when the phone itself changes
-    /// appearance, so choosing Dark in Speak It reads the same as choosing it
-    /// in Control Center.
-    static let switchDuration: TimeInterval = 0.22
-
-    private static let fadeTag = 8_421_701
-
-    /// Set one override at the window boundary so UIKit controls inherit a
-    /// consistent trait change. Overriding every private button subview leaves
-    /// old and newly created selection views with different appearances.
-    /// `.unspecified` releases the window override when System is selected.
-    ///
-    /// `animated` is what keeps the switch from looking broken. Assigning the
-    /// override on its own does not reach the whole screen at once: SwiftUI
-    /// repaints in the next frame, `UINavigationBar` runs its own fade over
-    /// its title and bar buttons, and `UISegmentedControl` redraws its
-    /// selection separately again. For a fifth of a second the title sat in
-    /// the old colour on the new background — invisible — Done passed through
-    /// a grey that belongs to neither appearance, and the Appearance control's
-    /// own pill turned dark while the page around it was still light.
-    ///
-    /// So the switch is made in one frame and the *old* appearance is faded
-    /// out over it instead. Nothing can arrive late, because by the time the
-    /// fade starts every view underneath already holds the new appearance.
-    /// The scene delegate applies the stored choice before the first frame
-    /// with `animated: false`, where there is no old appearance to fade from.
+    /// One window-level source of truth. Applying a trait is not a screen
+    /// transition: no snapshot overlay, forced layout or animation is needed.
+    /// Those can expose two geometries at once while SwiftUI updates its traits.
     @MainActor
-    func applyToWindows(animated: Bool = false) {
+    func applyToWindows() {
         for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
-            for window in scene.windows {
-                guard window.overrideUserInterfaceStyle != userInterfaceStyle else { continue }
-                apply(to: window, fading: animated)
+            for window in scene.windows where window.overrideUserInterfaceStyle != userInterfaceStyle {
+                apply(to: window)
             }
         }
     }
 
-    /// The picture of the old appearance a fade is running under, if one
-    /// is. Nothing in the app needs this; `AppearanceSwitchTests` uses it to
-    /// assert the fade is only ever a picture on top and that it is cleaned up.
     @MainActor
-    static func fadeOverlay(in window: UIWindow) -> UIView? {
-        window.viewWithTag(fadeTag)
-    }
-
-    @MainActor
-    func apply(to window: UIWindow, fading: Bool) {
-        // A fade still on screen from a quick previous tap is stale the moment
-        // a new one starts; leaving it would fade an appearance that is now two
-        // choices old back in over the current one.
-        window.viewWithTag(Self.fadeTag)?.removeFromSuperview()
-
-        let outgoing = fading ? window.snapshotView(afterScreenUpdates: false) : nil
-        if let outgoing {
-            outgoing.tag = Self.fadeTag
-            outgoing.frame = window.bounds
-            outgoing.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-            // The live screen underneath is already the one the person asked
-            // for, so the picture on top must neither take their taps nor be
-            // offered to VoiceOver as a second copy of the screen.
-            outgoing.isUserInteractionEnabled = false
-            outgoing.accessibilityElementsHidden = true
-            window.addSubview(outgoing)
+    func apply(to window: UIWindow) {
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            UIView.performWithoutAnimation {
+                window.overrideUserInterfaceStyle = userInterfaceStyle
+            }
         }
-
-        UIView.performWithoutAnimation {
-            window.overrideUserInterfaceStyle = userInterfaceStyle
-            // Force the pass now. Without it UIKit lays the bar out later, on
-            // its own terms, and animates that change after this block has
-            // suppressed animation.
-            window.layoutIfNeeded()
-        }
-
-        guard let outgoing else { return }
-        UIView.animate(
-            withDuration: Self.switchDuration,
-            delay: 0,
-            options: [.curveEaseInOut, .allowUserInteraction],
-            animations: { outgoing.alpha = 0 },
-            completion: { _ in outgoing.removeFromSuperview() }
-        )
     }
 
 }
@@ -155,7 +94,7 @@ struct SpeakItAppearanceSync: ViewModifier {
     func body(content: Content) -> some View {
         content
             .onAppear { appearance.applyToWindows() }
-            .onChange(of: rawValue) { _, _ in appearance.applyToWindows(animated: true) }
+            .onChange(of: rawValue) { _, _ in appearance.applyToWindows() }
     }
 }
 

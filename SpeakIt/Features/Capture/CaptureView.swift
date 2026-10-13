@@ -61,16 +61,10 @@ enum TutorialCaptureMission: String, Equatable, Sendable {
         let corrections: [SpeechCorrection]
         switch self {
         case .action:
-            // Apple commonly hears the unfamiliar name in this exact context
-            // as the possessive "my". Repair the surrounding phrase instead
-            // of every occurrence of "my", so somebody saying "ask my boss"
-            // still keeps precisely what they said.
-            corrections = [
-                SpeechCorrection(heardPhrase: "ask my about", preferredPhrase: "ask Maya about"),
-                SpeechCorrection(heardPhrase: "ask may about", preferredPhrase: "ask Maya about"),
-                SpeechCorrection(heardPhrase: "ask Mia about", preferredPhrase: "ask Maya about"),
-                SpeechCorrection(heardPhrase: "ask Mya about", preferredPhrase: "ask Maya about")
-            ]
+            // Contextual recognition hints may help with the example, but a
+            // real name such as Mia must never be rewritten to the canned Maya.
+            // The visible result and free retry let the person correct ASR.
+            corrections = []
         case .idea:
             corrections = [
                 SpeechCorrection(
@@ -100,17 +94,19 @@ enum TutorialCaptureMission: String, Equatable, Sendable {
     /// whether to ask again, so the two cannot disagree.
     @MainActor
     func satisfiedItem(in result: CaptureCreationResult) -> CapturedItem? {
+        let eligible = result.items.filter { !$0.isArchived && !$0.isCompleted
+            && (!$0.needsClarification || $0.clarificationRequirement == .time) }
         switch self {
         case .action:
             // The lesson is "a task connected to a person", and the three steps
             // after it walk to that person's page. Both halves have to be real.
-            return result.items.first {
+            return eligible.first {
                 $0.itemType == .personFollowUp && Self.personName(for: $0) != nil
-            } ?? result.items.first {
+            } ?? eligible.first {
                 $0.itemType.isActionable && Self.personName(for: $0) != nil
             }
         case .idea:
-            return result.items.first { $0.itemType == .idea }
+            return eligible.first { $0.itemType == .idea && !$0.needsClarification }
         case .quickAccess:
             // Nothing downstream points at this row. Any saved capture already
             // proves the outside-the-app trigger did its job.
@@ -179,6 +175,7 @@ struct CaptureView: View {
     private let autoDismissesSingleItemConfirmation: Bool
     private let showsGuidedExamples: Bool
     private let tutorialMission: TutorialCaptureMission?
+    private let onTutorialRetry: () -> Void
     private let performance: CapturePerformanceTrace?
     private let onSaveSucceeded: (CaptureCreationResult) -> Void
     private let onCancelled: () -> Void
@@ -203,6 +200,7 @@ struct CaptureView: View {
     @State private var showsCloseOptions = false
     @State private var closesAfterSave = false
     @State private var hasAutoStarted = false
+    @State private var practiceVoiceRetryGeneration = 0
     @State private var activeDraftID: UUID?
     @State private var captureStartedAt: Date?
     @State private var confirmationDismissTask: Task<Void, Never>?
@@ -260,6 +258,7 @@ struct CaptureView: View {
         onSaveSucceeded: @escaping (CaptureCreationResult) -> Void = { _ in },
         onCancelled: @escaping () -> Void = {},
         onTutorialEnded: @escaping () -> Void = {},
+        onTutorialRetry: @escaping () -> Void = {},
         onSaved: @escaping () -> Void
     ) {
         self.onSaved = onSaved
@@ -267,6 +266,7 @@ struct CaptureView: View {
         self.autoDismissesSingleItemConfirmation = autoDismissesSingleItemConfirmation
         self.showsGuidedExamples = showsGuidedExamples
         self.tutorialMission = tutorialMission
+        self.onTutorialRetry = onTutorialRetry
         self.performance = performance
         self.onSaveSucceeded = onSaveSucceeded
         self.onCancelled = onCancelled
@@ -437,6 +437,10 @@ struct CaptureView: View {
                 await startVoiceCapture()
             }
         }
+        .task(id: practiceVoiceRetryGeneration) {
+            guard practiceVoiceRetryGeneration > 0, !showsSavedConfirmation, mode == .voice else { return }
+            await startVoiceCapture()
+        }
     }
 
     private var header: some View {
@@ -466,7 +470,13 @@ struct CaptureView: View {
 
             Spacer()
         }
-        .overlay { SpeakItWordmark().allowsHitTesting(false) }
+        .overlay {
+            // The exit action needs the whole header at accessibility sizes;
+            // a decorative wordmark must not overlap its enlarged label.
+            if !dynamicTypeSize.isAccessibilitySize {
+                SpeakItWordmark().allowsHitTesting(false)
+            }
+        }
         .padding(.horizontal, 20)
         .padding(.top, 12)
     }
@@ -738,198 +748,231 @@ struct CaptureView: View {
     }
 
     private var savedView: some View {
-        VStack(spacing: 20) {
-            Spacer()
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(spacing: 20) {
+                    Spacer()
 
-            SavedCaptureSeal(
-                symbol: savedConfirmationSymbol,
-                celebratesSave: savedConfirmationSymbol == "checkmark"
-                    && savedResult?.isDuplicate == false
-                    && savedResult?.needsReviewCount == 0
-                    && savedResult?.operationOutcome == nil
-            )
-            Text(savedConfirmationTitle)
-                .font(.largeTitle.weight(.semibold))
-            Text(savedConfirmationDetail)
-                .foregroundStyle(Color.speakMuted)
-
-            if let savedResult, savedResult.hasItems {
-                CapturedItemRow(
-                    item: savedResult.primaryItem,
-                    showsCompletionControl: false,
-                    showsCreatedDate: false,
-                    onToggleCompleted: {},
-                    onEdit: {
-                        confirmationDismissTask?.cancel()
-                        showsCaptureReview = true
-                    }
-                )
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .frame(maxWidth: 350)
-                .background(
-                    Color.speakSurface,
-                    in: RoundedRectangle(cornerRadius: 20, style: .continuous)
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(Color.speakDivider, lineWidth: 1)
-                }
-                .accessibilityHint("Shows the final organized item")
-                .onAppear {
-                    performance?.markOrganizedRowVisible(result: savedResult)
-                }
-            }
-
-            if tutorialPracticeMissed, let tutorialMission {
-                VStack(spacing: 10) {
-                    // The practice screen's banner is not on this screen, so the
-                    // sentence the step is built around has to be restated here
-                    // or "try again" gives nothing to try.
-                    Text("“\(tutorialMission.example)”")
-                        .font(.subheadline)
-                        .foregroundStyle(Color.speakInk.opacity(0.82))
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.bottom, 2)
-                        .accessibilityIdentifier("tutorial.missedExample")
-
-                    Button(action: retryTutorialPractice) {
-                        Label("Try again", systemImage: "arrow.counterclockwise")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity, minHeight: 54)
-                    }
-                    .buttonStyle(.speakIt)
-                    .foregroundStyle(Color.speakInverseInk)
-                    .background(
-                        Color.speakInverseSurface,
-                        in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    SavedCaptureSeal(
+                        symbol: savedConfirmationSymbol,
+                        celebratesSave: savedConfirmationSymbol == "checkmark"
+                            && savedResult?.isDuplicate == false
+                            && savedResult?.needsReviewCount == 0
+                            && savedResult?.operationOutcome == nil
                     )
-                    .accessibilityHint("Removes this practice attempt and returns to the step")
-                    .accessibilityIdentifier("tutorial.practiceRetry")
+                    Text(savedConfirmationTitle)
+                        .font(.largeTitle.weight(.semibold))
+                    Text(savedConfirmationDetail)
+                        .foregroundStyle(Color.speakMuted)
 
-                    Button(action: useTutorialExample) {
-                        Text("Use this example")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Color.speakInk)
-                            .frame(maxWidth: .infinity, minHeight: 46)
-                            .contentShape(Rectangle())
+                    if let savedResult, savedResult.hasItems {
+                        ForEach(tutorialMission == nil ? [savedResult.primaryItem] : savedResult.items) { item in
+                            CapturedItemRow(
+                                item: item,
+                                showsCompletionControl: false,
+                                showsCreatedDate: false,
+                                showsFullTitle: true,
+                                onToggleCompleted: {},
+                                onEdit: {
+                                    confirmationDismissTask?.cancel()
+                                    showsCaptureReview = true
+                                }
+                            )
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                            .frame(maxWidth: 350)
+                            .background(
+                                Color.speakSurface,
+                                in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            )
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                    .stroke(Color.speakDivider, lineWidth: 1)
+                            }
+                            .accessibilityHint("Shows the final organized item")
+                            .onAppear {
+                                performance?.markOrganizedRowVisible(result: savedResult)
+                            }
+                        }
                     }
-                    .buttonStyle(.speakIt)
-                    .accessibilityHint("Saves the example sentence for you and continues")
-                    .accessibilityIdentifier("tutorial.practiceUseExample")
-                }
-                .padding(.top, 8)
-                .frame(maxWidth: 330)
-            } else if let savedResult, savedResult.needsInterpretationConfirmation {
-                VStack(spacing: 10) {
-                    Button {
-                        confirmationDismissTask?.cancel()
-                        showsCaptureReview = true
-                    } label: {
-                        Label("Review and edit saved items", systemImage: "square.and.pencil")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity, minHeight: 54)
-                    }
-                    .buttonStyle(.speakIt)
-                    .foregroundStyle(Color.speakInverseInk)
-                    .background(
-                        Color.speakInverseSurface,
-                        in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    )
-                    .accessibilityHint("Edit only the item that needs help while keeping the original words")
-                    .accessibilityIdentifier("capture.clarificationReview")
 
-                    Button(action: retryUnclearCapture) {
-                        Text("Try saying the capture again")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Color.speakInk)
-                            .frame(maxWidth: .infinity, minHeight: 46)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.speakIt)
-                    .accessibilityHint("Keeps this attempt safe until the new one is saved")
-                    .accessibilityIdentifier("capture.clarificationRetry")
+                    if tutorialPracticeMissed, let tutorialMission {
+                        VStack(spacing: 10) {
+                            // The practice screen's banner is not on this screen, so the
+                            // sentence the step is built around has to be restated here
+                            // or "try again" gives nothing to try.
+                            Text("“\(tutorialMission.example)”")
+                                .font(.subheadline)
+                                .foregroundStyle(Color.speakInk.opacity(0.82))
+                                .multilineTextAlignment(.center)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .padding(.bottom, 2)
+                                .accessibilityIdentifier("tutorial.missedExample")
 
-                    Button(action: finishSavedCapture) {
-                        Text("Keep it as saved")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Color.speakMuted)
-                            .frame(maxWidth: .infinity, minHeight: 46)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.speakIt)
+                            Button(action: retryTutorialPractice) {
+                                Label("Try again", systemImage: "arrow.counterclockwise")
+                                    .font(.headline)
+                                    .frame(maxWidth: .infinity, minHeight: 54)
+                            }
+                            .buttonStyle(.speakIt)
+                            .foregroundStyle(Color.speakInverseInk)
+                            .background(
+                                Color.speakInverseSurface,
+                                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            )
+                            .accessibilityHint("Removes this practice attempt and returns to the step")
+                            .accessibilityIdentifier("tutorial.practiceRetry")
 
-                    // Offered only for a thought that stopped mid-sentence.
-                    // Everywhere else, a capture the app merely failed to
-                    // understand still holds words worth keeping, and putting a
-                    // one-tap delete under them invites throwing away the very
-                    // thing this app promises to preserve. A fragment is the
-                    // one case where the person knows there is nothing there.
-                    if isUnfinishedThought {
-                        Button(role: .destructive, action: discardUnfinishedCapture) {
-                            Text("Discard it")
+                            Button(action: useTutorialExample) {
+                                Text("Use this example")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(Color.speakInk)
+                                    .frame(maxWidth: .infinity, minHeight: 46)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.speakIt)
+                            .accessibilityHint("Saves the example sentence for you and continues")
+                            .accessibilityIdentifier("tutorial.practiceUseExample")
+                        }
+                        .padding(.top, 8)
+                        .frame(maxWidth: 330)
+                    } else if tutorialMission != nil, savedResult != nil {
+                        VStack(spacing: 10) {
+                            Text("Does this look right?")
+                                .font(.subheadline)
+                                .foregroundStyle(Color.speakMuted)
+                            Button(action: finishSavedCapture) {
+                                Text("Continue")
+                                    .font(.headline)
+                                    .frame(maxWidth: .infinity, minHeight: 54)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.speakIt)
+                            .foregroundStyle(Color.speakInverseInk)
+                            .background(Color.speakInverseSurface, in: RoundedRectangle(cornerRadius: 18))
+                            .accessibilityIdentifier("capture.confirmationContinue")
+                            Button("Something’s wrong — try again", action: retryTutorialPractice)
                                 .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(Color.speakWarning)
                                 .frame(maxWidth: .infinity, minHeight: 46)
+                                .buttonStyle(.speakIt)
+                                .accessibilityHint("Removes only this practice attempt. Trying again is free.")
+                                .accessibilityIdentifier("tutorial.practiceRetry")
+                        }
+                        .padding(.top, 8)
+                        .frame(maxWidth: 330)
+                    } else if let savedResult, savedResult.needsInterpretationConfirmation {
+                        VStack(spacing: 10) {
+                            Button {
+                                confirmationDismissTask?.cancel()
+                                showsCaptureReview = true
+                            } label: {
+                                Label("Review and edit saved items", systemImage: "square.and.pencil")
+                                    .font(.headline)
+                                    .frame(maxWidth: .infinity, minHeight: 54)
+                            }
+                            .buttonStyle(.speakIt)
+                            .foregroundStyle(Color.speakInverseInk)
+                            .background(
+                                Color.speakInverseSurface,
+                                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            )
+                            .accessibilityHint("Edit only the item that needs help while keeping the original words")
+                            .accessibilityIdentifier("capture.clarificationReview")
+
+                            Button(action: retryUnclearCapture) {
+                                Text("Try saying the capture again")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(Color.speakInk)
+                                    .frame(maxWidth: .infinity, minHeight: 46)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.speakIt)
+                            .accessibilityHint("Keeps this attempt safe until the new one is saved")
+                            .accessibilityIdentifier("capture.clarificationRetry")
+
+                            Button(action: finishSavedCapture) {
+                                Text("Keep it as saved")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(Color.speakMuted)
+                                    .frame(maxWidth: .infinity, minHeight: 46)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.speakIt)
+
+                            // Offered only for a thought that stopped mid-sentence.
+                            // Everywhere else, a capture the app merely failed to
+                            // understand still holds words worth keeping, and putting a
+                            // one-tap delete under them invites throwing away the very
+                            // thing this app promises to preserve. A fragment is the
+                            // one case where the person knows there is nothing there.
+                            if isUnfinishedThought {
+                                Button(role: .destructive, action: discardUnfinishedCapture) {
+                                    Text("Discard it")
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(Color.speakWarning)
+                                        .frame(maxWidth: .infinity, minHeight: 46)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.speakIt)
+                                .accessibilityHint("Deletes this unfinished capture. Nothing is saved.")
+                                .accessibilityIdentifier("capture.discardUnfinished")
+                            }
+                        }
+                        .padding(.top, 8)
+                        .frame(maxWidth: 330)
+                    } else if let savedResult,
+                              savedResult.itemCount > 1 || savedResult.needsReviewCount > 0 {
+                        VStack(spacing: 10) {
+                            Button {
+                                confirmationDismissTask?.cancel()
+                                showsCaptureReview = true
+                            } label: {
+                                Label("Review what was saved", systemImage: "list.bullet.rectangle")
+                                    .font(.headline)
+                                    .frame(maxWidth: .infinity, minHeight: 54)
+                            }
+                            .buttonStyle(.speakIt)
+                            .foregroundStyle(Color.speakInverseInk)
+                            .background(
+                                Color.speakInverseSurface,
+                                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            )
+
+                            Button(action: finishSavedCapture) {
+                                Text("Done")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(Color.speakInk)
+                                    .frame(maxWidth: .infinity, minHeight: 46)
+                                    .contentShape(Rectangle())
+                            }
+                                .buttonStyle(.speakIt)
+                        }
+                        .padding(.top, 8)
+                        .frame(maxWidth: 330)
+                    } else if savedResult != nil, requiresExplicitSavedConfirmation {
+                        Button(action: finishSavedCapture) {
+                            Text("Continue")
+                                .font(.headline)
+                                .foregroundStyle(Color.speakInverseInk)
+                                .frame(maxWidth: .infinity, minHeight: 54)
                                 .contentShape(Rectangle())
                         }
-                        .buttonStyle(.speakIt)
-                        .accessibilityHint("Deletes this unfinished capture. Nothing is saved.")
-                        .accessibilityIdentifier("capture.discardUnfinished")
+                            .buttonStyle(.speakIt)
+                            .frame(maxWidth: 330)
+                            .background(
+                                Color.speakInverseSurface,
+                                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            )
+                            .accessibilityIdentifier("capture.confirmationContinue")
                     }
-                }
-                .padding(.top, 8)
-                .frame(maxWidth: 330)
-            } else if let savedResult,
-                      savedResult.itemCount > 1 || savedResult.needsReviewCount > 0 {
-                VStack(spacing: 10) {
-                    Button {
-                        confirmationDismissTask?.cancel()
-                        showsCaptureReview = true
-                    } label: {
-                        Label("Review what was saved", systemImage: "list.bullet.rectangle")
-                            .font(.headline)
-                            .frame(maxWidth: .infinity, minHeight: 54)
-                    }
-                    .buttonStyle(.speakIt)
-                    .foregroundStyle(Color.speakInverseInk)
-                    .background(
-                        Color.speakInverseSurface,
-                        in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    )
 
-                    Button(action: finishSavedCapture) {
-                        Text("Done")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(Color.speakInk)
-                            .frame(maxWidth: .infinity, minHeight: 46)
-                            .contentShape(Rectangle())
-                    }
-                        .buttonStyle(.speakIt)
+                    Spacer()
                 }
-                .padding(.top, 8)
-                .frame(maxWidth: 330)
-            } else if savedResult != nil, requiresExplicitSavedConfirmation {
-                Button(action: finishSavedCapture) {
-                    Text("Continue")
-                        .font(.headline)
-                        .foregroundStyle(Color.speakInverseInk)
-                        .frame(maxWidth: .infinity, minHeight: 54)
-                        .contentShape(Rectangle())
-                }
-                    .buttonStyle(.speakIt)
-                    .frame(maxWidth: 330)
-                    .background(
-                        Color.speakInverseSurface,
-                        in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    )
-                    .accessibilityIdentifier("capture.confirmationContinue")
+                .padding(.horizontal, 24)
+                .frame(maxWidth: .infinity, minHeight: geometry.size.height)
             }
-
-            Spacer()
+            .scrollBounceBehavior(.basedOnSize)
         }
-        .padding(.horizontal, 24)
     }
 
     /// Shown only for a normal guided first capture. Tutorial missions keep
@@ -1054,7 +1097,7 @@ struct CaptureView: View {
     private var practiceAllowanceNote: String {
         let remaining = subscriptionStore.freeCapturesRemaining
         let noun = remaining == 1 ? "capture starts" : "captures start"
-        return "Practice is free. Your \(remaining) free \(noun) after the tutorial."
+        return "Practice is free and sends no reminders. Your \(remaining) free \(noun) after the tutorial."
     }
 
     private func endTutorial() {
@@ -1427,14 +1470,14 @@ struct CaptureView: View {
         isSaving = true
         Task { @MainActor in
             do {
-                let persistenceSource: CaptureSource = tutorialMission == nil
-                    ? source
-                    : .tutorial
+                let persistenceSource: CaptureSource = tutorialMission != nil || activeDraft?.captureSource == .tutorial
+                    ? .tutorial
+                    : source
                 let result = try await repository.createCaptureResult(
                     text: normalizedText,
                     source: persistenceSource,
                     createdAt: captureStartedAt ?? .now,
-                    schedulesReminders: tutorialMission == nil,
+                    schedulesReminders: persistenceSource != .tutorial,
                     performance: performance
                 )
                 let retrySource = retryingUnclearResult
@@ -1539,7 +1582,7 @@ struct CaptureView: View {
                 // A missed practice is the one confirmation that must wait for a
                 // decision. Closing or auto-dismissing past it is what used to
                 // strand the tutorial on a screen with nothing to tap.
-                if closesAfterSave, !missedTutorialPractice {
+                if closesAfterSave, tutorialMission == nil, !missedTutorialPractice {
                     closesAfterSave = false
                     finishSavedCapture()
                     return
@@ -1672,16 +1715,21 @@ struct CaptureView: View {
     /// captures, and every practice row is deleted when the tutorial ends
     /// anyway. Leaving it behind would put a stray "hello testing" in the
     /// person's real library on their first minute in the app.
-    private func discardTutorialPractice() {
-        guard let savedResult, let repository else { return }
-        for item in savedResult.items {
-            try? repository.delete(item)
+    private func discardTutorialPractice() -> Bool {
+        guard let savedResult, let repository else { return false }
+        do {
+            for item in savedResult.items { try repository.delete(item) }
+            onTutorialRetry()
+            return true
+        } catch {
+            errorMessage = "The practice attempt could not be cleared. Please try again."
+            return false
         }
     }
 
     private func retryTutorialPractice() {
         confirmationDismissTask?.cancel()
-        discardTutorialPractice()
+        guard discardTutorialPractice() else { return }
         savedResult = nil
         typedText = ""
         captureNotice = nil
@@ -1690,6 +1738,8 @@ struct CaptureView: View {
         withAnimation(.spring(response: 0.42, dampingFraction: 0.84)) {
             showsSavedConfirmation = false
         }
+        if mode == .voice { practiceVoiceRetryGeneration += 1 }
+        else { isTextFocused = true }
     }
 
     /// Takes the exact sentence the step is built around, so the person always
@@ -1698,7 +1748,7 @@ struct CaptureView: View {
         guard let tutorialMission else { return }
         let example = tutorialMission.example
         confirmationDismissTask?.cancel()
-        discardTutorialPractice()
+        guard discardTutorialPractice() else { return }
         savedResult = nil
         captureNotice = nil
         voiceNotice = nil
@@ -1746,7 +1796,7 @@ struct CaptureView: View {
     }
 
     private var requiresExplicitSavedConfirmation: Bool {
-        !autoDismissesSingleItemConfirmation || accessibilityVoiceOverEnabled
+        tutorialMission != nil || !autoDismissesSingleItemConfirmation || accessibilityVoiceOverEnabled
     }
 
     private var hasUnsavedCaptureContent: Bool {
@@ -1831,6 +1881,7 @@ struct CaptureView: View {
     }
 
     private func ensureDraft(source: CaptureSource) {
+        let source: CaptureSource = tutorialMission == nil ? source : .tutorial
         if let activeDraftID {
             CaptureDraftStore.updateSource(id: activeDraftID, source: source)
             return

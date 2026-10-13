@@ -143,6 +143,10 @@ struct AccountSettingsView: View {
                         }
                     }
                     .pickerStyle(.segmented)
+                    .transaction { transaction in
+                        transaction.animation = nil
+                        transaction.disablesAnimations = true
+                    }
                 }
 
                 Section("Privacy") {

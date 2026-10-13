@@ -11,6 +11,7 @@ struct CapturedItemRow: View {
     let showsPinnedIndicator: Bool
     let showsPriorityIndicator: Bool
     let showsCreatedDate: Bool
+    let showsFullTitle: Bool
     let trailingDetail: String?
     let onTrailingDetailTap: (() -> Void)?
     let onToggleCompleted: () -> Void
@@ -22,6 +23,7 @@ struct CapturedItemRow: View {
         showsPinnedIndicator: Bool = false,
         showsPriorityIndicator: Bool = false,
         showsCreatedDate: Bool = true,
+        showsFullTitle: Bool = false,
         trailingDetail: String? = nil,
         onTrailingDetailTap: (() -> Void)? = nil,
         onToggleCompleted: @escaping () -> Void,
@@ -32,6 +34,7 @@ struct CapturedItemRow: View {
         self.showsPinnedIndicator = showsPinnedIndicator
         self.showsPriorityIndicator = showsPriorityIndicator
         self.showsCreatedDate = showsCreatedDate
+        self.showsFullTitle = showsFullTitle
         self.trailingDetail = trailingDetail
         self.onTrailingDetailTap = onTrailingDetailTap
         self.onToggleCompleted = onToggleCompleted
@@ -81,8 +84,13 @@ struct CapturedItemRow: View {
                             .foregroundStyle(Color.speakInk)
                             .strikethrough(item.isCompleted)
                             .multilineTextAlignment(.leading)
-                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                            .lineLimit(showsFullTitle || dynamicTypeSize.isAccessibilitySize ? nil : 2)
                             .lineSpacing(1)
+                        if item.captureSession?.captureSource == .tutorial {
+                            Text("Practice · no alerts")
+                                .font(.caption)
+                                .foregroundStyle(Color.speakMuted)
+                        }
 
                         Text(secondaryText)
                             .font(SpeakItTypography.metadata)

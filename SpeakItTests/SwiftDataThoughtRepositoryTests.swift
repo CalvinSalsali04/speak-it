@@ -4344,17 +4344,17 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         )
     }
 
-    func testTutorialMayaRepairIsNarrowAndPreservesTheRestOfTheSpeech() {
+    func testTutorialRecognitionPreservesNamesAndOriginalWording() {
         let mission = TutorialCaptureMission.action
 
         XCTAssertEqual(
             mission.repairVoiceTranscript("Tomorrow at nine, ask my about the proposal"),
-            "Tomorrow at nine, ask Maya about the proposal"
+            "Tomorrow at nine, ask my about the proposal"
         )
         XCTAssertEqual(
             mission.repairVoiceTranscript("Tomorrow at ten, ask Mia about the budget"),
-            "Tomorrow at ten, ask Maya about the budget",
-            "the known name may be repaired, but the person's time and subject must remain untouched"
+            "Tomorrow at ten, ask Mia about the budget",
+            "the example name cannot replace the person's own name"
         )
         XCTAssertEqual(
             mission.repairVoiceTranscript("Tomorrow at nine, ask my boss about the proposal"),

@@ -16,7 +16,7 @@ population:
   * `plus` appears in 63 readable utterances across 8 sources. 41 of them
     appear in each of four files the census's own containment check reports
     as views of one population, and repair views add further occurrences;
-    26 stems carry all 63 rows with one frame taking 50%. Eight sources
+    27 stems carry all 63 rows with one frame taking 49%. Eight sources
     therefore do not establish eight independent bodies of evidence.
   * `wait` appears in 121 over 18 sources, with 71 stems and its largest
     frame, `I was going to ask— wait, ...`, taking 16%. The wider integrated

@@ -176,4 +176,80 @@ final class TutorialPracticeTests: XCTestCase {
             )
         }
     }
+    func testAResultNeedingGroupingReviewCannotAdvanceJustBecauseItNamesAPerson() async throws {
+        let result = try await practiceResult("Call Mia about the budget tomorrow")
+        let item = try XCTUnwrap(result.items.first)
+        item.needsClarification = true
+        item.semanticState = .contested(.uncertainClauseBoundary)
+        XCTAssertNil(TutorialCaptureMission.action.satisfiedItem(in: result))
+    }
+    func testSeveralPracticeMissesAndBothMissionsKeepAllTenCaptures() async throws {
+        var charged = 0
+        for text in ["hello testing", "buy milk", "testing again", TutorialCaptureMission.action.example,
+                     "call Dana", "buy bread", "hello again", TutorialCaptureMission.idea.example] {
+            let result = try await practiceResult(text)
+            if result.createdNewCapture && result.consumesFreeCapture { charged += 1 }
+            XCTAssertEqual(result.session.captureSource, .tutorial)
+        }
+        XCTAssertEqual(charged, 0)
+        XCTAssertEqual(FreePlanAllowance.remainingCaptures(after: charged), 10)
+    }
+    func testPracticeDraftIdentitySurvivesModeChangesAndLaunchRecovery() throws {
+        let previous = CaptureDraftStore.snapshot()
+        CaptureDraftStore.restore([])
+        defer { CaptureDraftStore.restore(previous) }
+        let draft = CaptureDraftStore.begin(source: .tutorial, at: .now.addingTimeInterval(-60))
+        CaptureDraftStore.updateSource(id: draft.id, source: .inAppText)
+        CaptureDraftStore.updateSource(id: draft.id, source: .inAppVoice)
+        CaptureDraftStore.update(id: draft.id, transcript: "Ask Mia about the budget", at: .now.addingTimeInterval(-30))
+        XCTAssertEqual(CaptureDraftStore.draft(id: draft.id)?.captureSource, .tutorial)
+        repository.recoverUnorganizedCaptures()
+        repository.recoverInterruptedCaptureDraft()
+        let sessions = try container.mainContext.fetch(FetchDescriptor<CaptureSession>())
+        let session = try XCTUnwrap(sessions.first { $0.originalTranscription == "Ask Mia about the budget" })
+        XCTAssertEqual(session.captureSource, .tutorial)
+        let result = CaptureCreationResult(session: session, items: session.items)
+        XCTAssertFalse(result.consumesFreeCapture)
+        XCTAssertNil(CaptureDraftStore.draft(id: draft.id))
+    }
+    func testPracticeCannotScheduleAnAlertDuringLaterReconciliation() async throws {
+        let result = try await practiceResult("Tomorrow at 9, call Mia about the budget")
+        XCTAssertTrue(result.items.contains { $0.reminderDate != nil || $0.dueDate != nil })
+        for item in result.items { XCTAssertNil(ReminderScheduleRequest(item: item)) }
+    }
+    func testPracticeOperationsCannotChangeRealSavedThoughts() async throws {
+        let real = try await repository.createCaptureResult(text: "Call Mia about the budget tomorrow", source: .inAppText, createdAt: .now,
+                                                           schedulesReminders: false)
+        let id = real.primaryItem.id
+        _ = try await practiceResult("Cancel the call Mia task")
+        let kept = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<CapturedItem>()).first { $0.id == id })
+        XCTAssertFalse(kept.isCompleted)
+        XCTAssertFalse(kept.isArchived)
+        let practice = try await practiceResult("hello testing")
+        let request = CaptureOperationRequest(operation: .cancel, target: "call Mia", sourceQuote: "cancel the call Mia task", needsReview: false)
+        let outcome = try repository.applyCaptureOperation(request, session: practice.session)
+        guard case .needsConfirmation(_, let candidates) = outcome else { return XCTFail("Practice operations must be held") }
+        XCTAssertTrue(candidates.isEmpty)
+        XCTAssertNotNil(try container.mainContext.fetch(FetchDescriptor<CapturedItem>()).first { $0.id == id })
+    }
+
+    func testOutsidePracticeRemainsFreeAfterASlowOrInterruptedSetup() async throws {
+        let suite = "SpeakIt.Tests.TutorialOutside." + UUID().uuidString
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(FirstRunTutorialPhase.readiness.rawValue, forKey: FirstRunTutorialKeys.phase)
+        defaults.set(Date.now.addingTimeInterval(-3_600).timeIntervalSince1970, forKey: "SpeakIt.captureSetupTestBeganAt")
+        let before = defaults.persistentDomain(forName: suite) ?? [:]
+        let result = try await ExternalCaptureWriter.save("Buy milk", repository: repository, defaults: defaults)
+        XCTAssertEqual(result.confirmationContext, "Practice test · free captures untouched")
+        let saved = try XCTUnwrap(container.mainContext.fetch(FetchDescriptor<CaptureSession>()).first)
+        XCTAssertEqual(saved.captureSource, .tutorial)
+        XCTAssertFalse(CaptureCreationResult(session: saved, items: saved.items).consumesFreeCapture)
+        XCTAssertEqual(NSDictionary(dictionary: defaults.persistentDomain(forName: suite) ?? [:]), NSDictionary(dictionary: before))
+        for phase in FirstRunTutorialPhase.allCases where phase != .readiness {
+            XCTAssertFalse(phase.hasComplimentaryCaptureAnywhereTest(beganAt: 1))
+        }
+        XCTAssertFalse(FirstRunTutorialPhase.readiness.hasComplimentaryCaptureAnywhereTest(beganAt: 0))
+    }
+
 }

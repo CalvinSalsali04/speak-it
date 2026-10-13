@@ -161,6 +161,9 @@ enum CaptureDraftStore {
     static func updateSource(id: UUID, source: CaptureSource) {
         var drafts = allDrafts()
         guard let index = drafts.firstIndex(where: { $0.id == id }) else { return }
+        // Tutorial identity survives mode changes and recovery. Practice can
+        // never become a charged real capture because the keyboard opened.
+        guard drafts[index].captureSource != .tutorial || source == .tutorial else { return }
         drafts[index].captureSourceRawValue = source.rawValue
         drafts[index].updatedAt = .now
         persist(drafts)
