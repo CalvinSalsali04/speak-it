@@ -10184,6 +10184,9 @@ enum RuleBasedThoughtExtractor {
     /// predicates, quotation, corrections and location triggers decline.
     static func literalPurchasePlan(_ source: String, referenceDate: Date,
                                     calendar: Calendar) -> ThoughtExtractionResult? {
+        if let detailed = detailedPurchasePlan(source, referenceDate: referenceDate, calendar: calendar) {
+            return detailed
+        }
         if let followup = purchaseFollowupPlan(source, referenceDate: referenceDate, calendar: calendar) {
             return followup
         }
@@ -10239,6 +10242,13 @@ enum RuleBasedThoughtExtractor {
                 && (!hasExplicitFinitePredicate(entry.product)
                     || (entry.product.split(separator: " ").count == 2
                         && ShoppingGroupParser.namesProductHead(String(entry.product.split(separator: " ").last ?? "")))
+                    // The finite-shaped fallback mistakes “a dog harness”
+                    // for subject + verb because its noun ends in s. Extend
+                    // the existing two-word known-head proof through one
+                    // article; longer clauses still require strict proof.
+                    || (explicitlyBuys && entry.product.split(separator: " ").count == 3
+                        && ["a", "an", "the"].contains(entry.product.split(separator: " ").first?.lowercased() ?? "")
+                        && ShoppingGroupParser.hasKnownProductCore(entry.product))
                     || (explicitlyBuys && ShoppingGroupParser.provesNominalPurchaseObject(entry.product, in: command)))
                 && entry.product.range(of: #"(?i)\b(?:at|from|on|by|also|then)\b"#,
                                        options: .regularExpression) == nil
@@ -10253,6 +10263,59 @@ enum RuleBasedThoughtExtractor {
               items.reduce(into: Set<Int>(), { $0.formUnion($1.sourceUnitIDs) }) == parent.sourceUnitIDs,
               items.reduce(0, { $0 + $1.sourceUnitIDs.count }) == parent.sourceUnitIDs.count else { return nil }
         return .init(items: items, method: .rules)
+    }
+
+    /// A proved literal purchase may distribute an explicit shared detail or
+    /// retain a visible exclusion. Display copies do not duplicate occurrences.
+    private static func detailedPurchasePlan(_ source: String, referenceDate: Date,
+                                             calendar: Calendar) -> ThoughtExtractionResult? {
+        guard let detail = ShoppingGroupParser.captureListDetail(in: source),
+              CaptureOperationDetector.partitionWithOwnership(source).operations.isEmpty,
+              let base = literalPurchasePlan(detail.prefix + detail.metadata, referenceDate: referenceDate, calendar: calendar),
+              base.operations.isEmpty, base.items.count > 1,
+              base.items.allSatisfy({ !$0.needsReview && $0.organization.itemType == .shopping }) else { return nil }
+        var kept = base.items
+        var displayDetail: String?
+        switch detail.scope {
+        case .both:
+            guard kept.count == 2, kept.allSatisfy({ ShoppingGroupParser.acceptsSharedDetail(detail.label, product: $0.sourceQuote) }) else { return nil }
+            displayDetail = detail.label
+        case .all:
+            guard kept.allSatisfy({ ShoppingGroupParser.acceptsSharedDetail(detail.label, product: $0.sourceQuote) }) else { return nil }
+            displayDetail = detail.label
+        case .exclusion(let excluded):
+            let identities = Set(excluded.map(ShoppingGroupParser.productIdentity))
+            // A category exclusion against a modified sibling is ambiguous:
+            // “not bread” cannot silently decide which kind of bread is meant.
+            for item in kept {
+                let identity = ShoppingGroupParser.productIdentity(item.sourceQuote)
+                if !identities.contains(identity), excluded.contains(where: {
+                    $0.split(separator: " ").last?.lowercased() == item.sourceQuote.split(separator: " ").last?.lowercased()
+                }) { return nil }
+            }
+            kept.removeAll { identities.contains(ShoppingGroupParser.productIdentity($0.sourceQuote)) }
+            guard !kept.isEmpty else { return nil }
+        }
+        let ledger = SourceUnitLedger(source)
+        var cursor = source.startIndex, used = Set<Int>()
+        var rows: [(ExtractedThought, Set<Int>)] = []
+        for item in kept {
+            guard let range = source.range(of: item.sourceQuote, options: .caseInsensitive,
+                                           range: cursor..<source.endIndex) else { return nil }
+            cursor = range.upperBound
+            let ids = ledger.ids(in: range)
+            guard !ids.isEmpty, used.isDisjoint(with: ids) else { return nil }
+            used.formUnion(ids); rows.append((item, ids))
+        }
+        let frame = Set(ledger.words.indices).subtracting(used)
+        return .init(items: rows.enumerated().map { index, row in
+            let item = row.0
+            let analysis = item.analysisText + (displayDetail.map { " — " + $0 } ?? "")
+            return ExtractedThought(sourceQuote: item.sourceQuote, rawQuote: source,
+                wasRepaired: item.wasRepaired, analysisText: analysis, suggestedTitle: analysis,
+                organization: item.organization, confidence: item.confidence, needsReview: false,
+                sourceUnitIDs: row.1.union(index == 0 ? frame : []), shoppingGroup: item.shoppingGroup)
+        }, method: .rules)
     }
 
     /// A metadata-only pronoun follow-up may bind to exactly one current
@@ -10463,7 +10526,18 @@ enum RuleBasedThoughtExtractor {
                     confidence: item.confidence, needsReview: item.needsReview,
                     sourceUnitIDs: item.sourceUnitIDs, shoppingGroup: item.shoppingGroup)
                 let entries = plainShoppingEntries(in: projection)
-                return entries.isEmpty ? [item.sourceQuote] : entries.map(\.product)
+                if !entries.isEmpty { return entries.map(\.product) }
+                // A singular purchase never reaches the multi-entry splitter.
+                // Vote on its proved object, not its scheduled “after work” tail.
+                var single = ShoppingGroupParser.withoutStoreContext(in: groupAnalysis)
+                if organization.dueDate != nil || organization.reminderDate != nil {
+                    single = withoutShoppingCalendarTail(single)
+                    single = single.replacingOccurrences(of: #"(?i)\s+after\s+work[.!?]*$"#,
+                                                         with: "", options: .regularExpression)
+                }
+                single = single.replacingOccurrences(of: #"(?i)^(?:buy|purchase|order|get|grab|pick\s+up)\s+"#,
+                                                     with: "", options: .regularExpression)
+                return ShoppingGroupParser.hasKnownProductCore(single) ? [single] : [item.sourceQuote]
             }
         )
 
@@ -10808,12 +10882,20 @@ enum RuleBasedThoughtExtractor {
         }
 
         let verb = normalize(String(title[verbRange])).lowercased()
-        let body = normalize(String(title[bodyRange]))
+        var body = normalize(String(title[bodyRange]))
             .replacingOccurrences(
                 of: #"(?i),\s*(?:but\s+)?(?:not|no|without)\s+[^,.;]+[.;]?\s*$"#,
                 with: "", options: .regularExpression
             )
             .trimmingCharacters(in: CharacterSet(charactersIn: ".;"))
+        let withoutHesitations = body.replacingOccurrences(
+            of: #"(?i)(^|,\s*|\band\s+)(?:um|uh|erm|er)(?:\s*,)?\s+(?=[\p{L}\p{N}])"#,
+            with: "$1", options: .regularExpression)
+        if withoutHesitations != body,
+           body.range(of: #"\b(?:UM|UH|ERM|ER)\b"#, options: .regularExpression) == nil,
+           ShoppingGroupParser.certifiesImplicitProducts(withoutHesitations) {
+            body = withoutHesitations
+        }
         if body.contains(","), let products = ShoppingGroupParser.products(in: body, verb: verb),
            products.allSatisfy({ product in
                namesSomethingToBuy(product) && (!hasExplicitFinitePredicate(product)

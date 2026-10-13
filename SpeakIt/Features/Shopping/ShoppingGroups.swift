@@ -595,6 +595,64 @@ enum ShoppingGroupParser {
 
     /// Positive physical-product evidence after its quantity/package envelope.
     /// Needed for “we need”/“get”, which can otherwise name people or abstractions.
+    struct CaptureListDetail {
+        enum Scope { case all, both, exclusion([String]) }
+        let prefix: String
+        let metadata: String
+        let label: String
+        let scope: Scope
+    }
+
+    /// Only a complete explicit trailing instruction on a current purchase.
+    /// The engine separately proves every product and the remaining metadata.
+    static func captureListDetail(in source: String) -> CaptureListDetail? {
+        guard source.count <= 2_000,
+              source.range(of: #"(?i)^\s*(?:please\s+)?(?:buy|purchase|order|get|grab|pick\s+up)\s+"#, options: .regularExpression) != nil,
+              QuotedSpeechScope.ranges(in: source).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(source),
+              let boundary = source.range(of: #"(?:,\s*|\s+)(?=(?:(?:all|both|each)\s+|but\s+(?:no|not)\s+|(?:except|excluding)\s+))"#,
+                                          options: [.regularExpression, .caseInsensitive, .backwards]) else { return nil }
+        let prefix = String(source[..<boundary.lowerBound])
+        var tail = String(source[boundary.upperBound...]).trimmingCharacters(in: CharacterSet(charactersIn: " .!?"))
+        var metadata = ""
+        if let context = tail.range(of: #"(?i)\s+(?=(?:at|from|on|by|before|after|today|tomorrow|tonight|this|next)\b)"#,
+                                    options: .regularExpression) {
+            metadata = String(tail[context.lowerBound...])
+            tail = String(tail[..<context.lowerBound])
+        }
+        if let exclusion = tail.range(of: #"(?i)^(?:but\s+(?:no|not)|except|excluding)\s+"#, options: .regularExpression) {
+            let object = String(tail[exclusion.upperBound...])
+            guard object.range(of: #"(?i)\b(?:only|just|if|unless|then)\b"#, options: .regularExpression) == nil,
+                  certifiesImplicitProducts(object) else { return nil }
+            let excluded = products(in: object, verb: "buy") ?? [object]
+            return .init(prefix: prefix, metadata: metadata, label: "No " + excluded.joined(separator: ", "), scope: .exclusion(excluded))
+        }
+        let value = #"(?:size\s+(?:xs|s|m|l|xl|xxl|small|medium|large|\d{1,2})|(?:red|blue|green|black|white|yellow|orange|purple|pink|brown|grey|gray|navy|beige))"#
+        guard let regex = NSRegularExpression.speakItCached(#"(?i)^(all|both|each)\s+(?:in\s+)?(\#(value))$"#),
+              let match = regex.firstMatch(in: tail, range: NSRange(tail.startIndex..., in: tail)),
+              let scope = Range(match.range(at: 1), in: tail),
+              let detail = Range(match.range(at: 2), in: tail) else { return nil }
+        return .init(prefix: prefix, metadata: metadata, label: String(tail[detail]),
+                     scope: tail[scope].lowercased() == "both" ? .both : .all)
+    }
+
+    /// Size labels need a wearable/accessory head on every member. A proved
+    /// purchase alone cannot make “milk and shirts, all size medium” coherent.
+    static func acceptsSharedDetail(_ label: String, product: String) -> Bool {
+        guard label.lowercased().hasPrefix("size ") else { return true }
+        let head = product.lowercased().split(whereSeparator: { !$0.isLetter }).last.map(String.init) ?? ""
+        return ["shirt", "shirts", "jacket", "jackets", "coat", "coats", "dress", "dresses",
+                "sweater", "sweaters", "pants", "jeans", "glove", "gloves", "sock", "socks",
+                "shoe", "shoes", "boot", "boots", "hat", "hats", "mitten", "mittens",
+                "pajamas", "harness", "harnesses", "leash", "leashes"].contains(head)
+    }
+
+    static func productIdentity(_ product: String) -> String {
+        let words = product.lowercased().split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        guard let start = nominalCoreStart(words) else { return product.lowercased() }
+        return words[start...].joined(separator: " ")
+    }
+
     static func hasKnownProductCore(_ product: String) -> Bool {
         let words = product.lowercased().split(whereSeparator: { $0.isWhitespace }).map(String.init)
         guard let offset = nominalCoreStart(words), let head = words.last else { return false }
@@ -641,6 +699,7 @@ enum ShoppingGroupParser {
         "notebook", "notebooks", "pen", "pens", "pencil", "pencils", "envelope", "envelopes",
         "bandage", "bandages", "dressing", "dressings", "glove", "gloves", "sock", "socks",
         "shirt", "shirts", "shoe", "shoes", "boot", "boots", "hat", "hats", "mitten", "mittens",
+        "jacket", "jackets", "coat", "coats", "dress", "dresses", "sweater", "sweaters", "pants", "jeans",
         "leash", "leashes", "harness", "harnesses", "bowl", "bowls", "tray", "trays",
         "bulb", "bulbs", "lamp", "lamps", "cushion", "cushions", "pillowcase", "pillowcases",
         "curtain", "curtains", "sheet", "sheets", "towel", "towels",

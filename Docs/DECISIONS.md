@@ -1,5 +1,31 @@
 # Decisions
 
+## 2026-10-13 — Keep shared shopping details explicit and capture-scoped
+
+A bounded current-purchase reader now distributes explicit all/both/each size or
+colour labels over proved products. Both requires exactly two members; size
+requires a wearable/accessory head on every member. Unknown shared recipients,
+conditions or contradictory product types decline this certificate. Claude Opus
+5.5 reviewed synthetic contrasts and identified the mixed-size safeguard.
+
+Explicit but-no/but-not/except/excluding instructions remain visible context of
+one immutable capture. Exact repeated excluded members are omitted from that
+capture's new products only; existing saved items are untouched. Bare no/not is
+not exclusion authority because it may be a spoken correction or a brand.
+Context is derived from the original session, survives first-product removal,
+and never becomes an extra checkable row. Shared display labels do not duplicate
+source ownership. Simple list-member hesitations are removed from display only
+when all remaining products have positive noun evidence; uppercase brand initials
+are retained.
+
+A differential UI check also reproduced an existing main-branch bug: a singular
+scheduled food purchase voted on its full timing text and became Shopping.
+Category voting now reads its positively proved product object after recognized
+timing; the saved wording, schedule and action are unchanged. Largest accessibility
+text exposed another existing overflow: permission-denied voice content placed
+Type instead below an unscrollable screen. Voice and typing bodies now scroll at
+accessibility sizes, matching the existing tutorial behavior.
+
 ## 2026-10-12 — Broader bounded purchase-list interpretation (unreleased)
 
 Explicit current purchase commands, shopping-list headers and named-list

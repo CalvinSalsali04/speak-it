@@ -17,10 +17,12 @@ focused regression coverage. Explicit packing objects can become separate Today
 tasks, without a new grouped checklist screen. Positive physical-product evidence
 is still bounded: an unfamiliar implicit need can remain a complete Memory row.
 Unknown undelimited products, arbitrary cross-sentence references, complex
-exclusions/beneficiaries, shared modifier propagation and general nonpurchase
-checklist semantics remain incomplete. An intact fallback is not successful
-independent item extraction. In particular, shared distributive details may keep
-one whole shopping row; some clear exclusions still create review friction.
+exclusions/beneficiaries and general nonpurchase checklist semantics remain
+incomplete. Explicit shared size/colour and simple trailing exclusions now have
+bounded support. Size requires a known wearable/accessory head; unknown modifiers,
+recipients, conditions, category-level exclusions against modified products and
+ambiguous spoken corrections may keep an intact parent or review row. That safe
+fallback is not successful independent item extraction.
 
 Tutorial attempts remain free through retries and draft recovery, cannot schedule
 real alerts or change real saved thoughts, and can be rejected when the displayed
