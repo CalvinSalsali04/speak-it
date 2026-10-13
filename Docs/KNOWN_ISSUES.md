@@ -1,5 +1,19 @@
 # Known Issues
 
+## Durable confirmation and context-loading follow-up (unreleased)
+
+Longer in-app organization now shows the committed recognized words and an
+explicit organizing state after 250 ms. The intermediate receipt remains
+read-only and cannot dismiss, start another capture or edit a placeholder.
+Fast local results keep the existing final receipt. This improves feedback but
+is not unrestricted background capture or a measured reduction in model time.
+Source-only certificates no longer load the entire saved library first; actual
+context-consuming interpretation still receives complete saved-state snapshots.
+Physical iPhone recognition, latency, interruptions, notification delivery and
+sandbox purchase/restore are not qualified by these source/simulator checks.
+The available iPhone 13 pairing entry failed actual device-service connectivity
+on October 13; no connected iPhone 16 was listed during this follow-up.
+
 ## Synthetic spoken-capture follow-up (unreleased)
 
 A reproduced unfinished “Don’t …” cutoff is repaired with focused real-timer

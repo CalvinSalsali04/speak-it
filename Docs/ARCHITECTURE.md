@@ -41,6 +41,8 @@ makes no destination, reminder or completed-operation claim. The existing final
 result replaces it; fast local results skip the intermediate screen. Quota,
 notification, tutorial and retry accounting remain on their existing final-result
 paths. This does not detach processing or reduce model generation time.
+Saved context is supplied lazily as main-actor value snapshots after current-source
+certificates; a simple certified capture performs no whole-library context fetch.
 
 `PersistenceController.shared` owns the production `ModelContainer`. In-app and outside-the-app capture use the same repository path, so both follow the same extraction, validation, reminder, and durability rules.
 

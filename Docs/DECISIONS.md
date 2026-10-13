@@ -1,5 +1,25 @@
 # Decisions
 
+## 2026-10-13 — Load saved interpretation context only when consumed
+
+The repository previously fetched and snapshotted every saved row before calling
+an engine that often returns a complete current-source certificate. A lazy
+main-actor provider now passes through the engine and is evaluated once after
+those unchanged certificates, before context-consuming interpretation. It
+returns the same complete Sendable value snapshots, Home/Work state and own
+pending-session exclusion. There is no row cap or context truncation. Saved
+mutations still revalidate against current repository state before execution.
+Certificates take no saved-context parameter and cannot silently depend on the
+removed eager fetch. Existing named shopping groups remain repository metadata.
+
+Focused native checks prove no provider call for literal captures or disabled
+runtime, and identical eager/lazy interpretations across a 10,000-value context
+with at most one load. Existing automatic shopping and capture-retention
+classes also pass (30 total checks). This removes demonstrably unnecessary work;
+it does not establish iPhone latency or solve long model-generation waits.
+Claude Opus 5.5 reviewed snapshot timing, identity exclusion and concurrency from
+descriptions only. No source files or real captures were sent.
+
 ## 2026-10-13 — Acknowledge durable words before organization
 
 The capture view previously waited for semantic completion before showing any

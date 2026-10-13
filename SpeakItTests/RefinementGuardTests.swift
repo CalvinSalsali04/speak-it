@@ -11292,3 +11292,66 @@ final class SharedShoppingDetailTests: XCTestCase {
         XCTAssertEqual(remaining.first?.captureSession?.originalTranscription, source)
     }
 }
+
+
+#if DEBUG
+@MainActor
+final class LazySavedCaptureContextTests: XCTestCase {
+    private var configuration: RuntimeExampleConfiguration {
+        RuntimeExampleConfiguration(libraryURL: URL(fileURLWithPath: "/unused-lazy-context.sqlite"),
+            allowProposed: false, retrievalEnabled: false)
+    }
+
+    func testLiteralCapturesDoNotLoadSavedLibraryContext() async {
+        for source in ["Buy milk", "Buy ham, cheese and eggs at Costco tomorrow at 9 a.m.",
+                       "Call my mom", "The spare key is inside the blue kitchen drawer."] {
+            var loads = 0
+            let result = await RuntimeExampleConfiguration.$testConfiguration.withValue(configuration) {
+                await ThoughtExtractionEngine.extract(source, runtimeContextProvider: {
+                    loads += 1
+                    return .empty
+                })
+            }
+            XCTAssertEqual(loads, 0, "A source-only capture must not fetch a growing library: \(source)")
+            XCTAssertFalse(result.items.isEmpty, source)
+        }
+    }
+
+    func testLazyAndEagerInterpretationKeepIdenticalResultsAndLoadAtMostOnce() async {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Toronto")!
+        let reference = ISO8601DateFormatter().date(from: "2026-10-13T14:00:00Z")!
+        let context = RuntimeCaptureContext(savedItems: (0..<10_000).map {
+            RuntimeCaptureContext.SavedItem(id: "saved-\($0)", title: "Saved reference \($0)",
+                modifiedAt: reference, originalText: "Original reference \($0)", itemType: "note")
+        }, hasHome: true, hasWork: false)
+        var totalLoads = 0
+        for source in [
+            "For my saved dentist reminder, change the person from Maya to Noor.",
+            "Please reconsider the timings for the saved plan I mentioned earlier.",
+            "Buy milk and eggs at Costco. Also call Mom tomorrow.",
+            "If the estimate is approved, call the contractor; otherwise keep the quote as reference."
+        ] {
+            let parsed = RuleBasedThoughtExtractor.process(source, referenceDate: reference, calendar: calendar)
+            let rules = ThoughtExtractionResult(items: parsed.items, operations: parsed.operations, method: .rules)
+            let eager = await RuntimeExampleInterpreter.interpret(source, referenceDate: reference,
+                calendar: calendar, context: context, configuration: configuration, rules: rules)
+            var loads = 0
+            let lazy = await RuntimeExampleInterpreter.interpret(source, referenceDate: reference,
+                calendar: calendar, context: .empty, configuration: configuration, rules: rules,
+                contextProvider: { loads += 1; return context })
+            XCTAssertLessThanOrEqual(loads, 1, source)
+            totalLoads += loads
+            XCTAssertEqual(lazy, eager, "Deferring the complete snapshot must not change meaning: \(source)")
+        }
+        XCTAssertGreaterThan(totalLoads, 0, "The comparison must exercise a context-consuming path")
+    }
+
+    func testDisabledRuntimeDoesNotInvokeSavedContextProvider() async {
+        var loads = 0
+        _ = await ThoughtExtractionEngine.extract("Review the saved plan again",
+            permitsOnDeviceIntelligence: false, runtimeContextProvider: { loads += 1; return .empty })
+        XCTAssertEqual(loads, 0)
+    }
+}
+#endif

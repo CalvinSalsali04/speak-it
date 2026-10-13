@@ -9,6 +9,7 @@ Entries before September 2026 were reconstructed from the commit history and
 
 - Show saved original words during longer organization, then the final result.
 - Avoid a second receipt for quick local captures and keep processing read-only.
+- Skip whole-library context loading for captures proved from their own words.
 - Preserve existing tutorial, allowance, retry and reminder handling.
 - Source changes only; physical microphone and device latency remain unqualified.
 

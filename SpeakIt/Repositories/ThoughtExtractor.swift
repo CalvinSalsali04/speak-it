@@ -850,7 +850,8 @@ enum ThoughtExtractionEngine {
         calendar: Calendar = .autoupdatingCurrent,
         permitsOnDeviceIntelligence: Bool = true,
         permitsOperations: Bool = true,
-        runtimeContext: RuntimeCaptureContext = .empty
+        runtimeContext: RuntimeCaptureContext = .empty,
+        runtimeContextProvider: (@MainActor @Sendable () -> RuntimeCaptureContext)? = nil
     ) async -> ThoughtExtractionResult {
         let signpost = CapturePerformanceSignposts.begin("SemanticParsing")
         defer { CapturePerformanceSignposts.end("SemanticParsing", signpost) }
@@ -871,7 +872,7 @@ enum ThoughtExtractionEngine {
             if let result = await RuntimeExampleInterpreter.interpret(
                 transcript, referenceDate: referenceDate, calendar: calendar,
                 context: runtimeContext, configuration: configuration, rules: ThoughtExtractionResult(items: processed.items, operations: processed.operations, method: .rules),
-                ruleTrace:ruleTrace
+                ruleTrace: ruleTrace, contextProvider: runtimeContextProvider
             ) {
                 // The optional interpreter proposes items. It cannot erase a
                 // complete current operation/creation partition by returning
@@ -16737,7 +16738,8 @@ enum RuntimeExampleInterpreter {
 #endif
     static func interpret(_ source: String, referenceDate: Date, calendar: Calendar,
                           context: RuntimeCaptureContext, configuration: RuntimeExampleConfiguration,
-                          rules: ThoughtExtractionResult,ruleTrace: RuntimeRuleTrace? = nil) async -> ThoughtExtractionResult? {
+                          rules: ThoughtExtractionResult,ruleTrace: RuntimeRuleTrace? = nil,
+                          contextProvider: (@MainActor @Sendable () -> RuntimeCaptureContext)? = nil) async -> ThoughtExtractionResult? {
         if let nominal = RuleBasedThoughtExtractor.currentNominalStatusPlan(source,
             referenceDate: referenceDate, calendar: calendar, rules: rules) {
             return nominal
@@ -16790,6 +16792,11 @@ enum RuntimeExampleInterpreter {
            !rules.items[0].needsReview,
            source.range(of: #"^(?i)(?:please\s+)?(?:call|phone)\s+(?:my\s+)?(?:mom|mum|dad|mother|father|grandma|grandpa|brother|sister)(?:\s+(?:today|tomorrow|tonight))?[.!]?$"#,
                         options: .regularExpression) != nil { return rules }
+        // Current-source certificates above cannot consume saved context.
+        // Load one complete value snapshot only when interpretation needs it.
+        let currentContext: RuntimeCaptureContext
+        if let contextProvider { currentContext = await contextProvider() }
+        else { currentContext = context }
 #if canImport(FoundationModels)
         if #available(iOS 26.4, *),
            SystemLanguageModel.default.availability == .available,
@@ -16799,19 +16806,19 @@ enum RuntimeExampleInterpreter {
                 do { examples = try await RuntimeExampleLibrary.shared.select(source, configuration: configuration) }
                 catch { return RuntimeSourceInterpreter.recoverableReview(source) }
                 if let local = RuntimeSourceInterpreter.interpret(source, referenceDate: referenceDate,
-                    calendar: calendar, context: context, examples: examples, configuration:configuration) { return local }
+                    calendar: calendar, context: currentContext, examples: examples, configuration:configuration) { return local }
                 if RuntimeIndependentFramePlan.containsAccountDeclaration(source) {
                     // One bounded ownership call may validate the complete literal
                     // account. Failed/unavailable ownership remains recoverable;
                     // it never falls through to another generative interpretation.
                     if configuration.usesStagedOutline, RuntimeAccountOwnership.scoped(source),
                        let account = await RuntimeAccountOwnership.interpret(source,
-                        referenceDate:referenceDate, calendar:calendar, context:context,
+                        referenceDate:referenceDate, calendar:calendar, context:currentContext,
                         rules:rules, examples:examples) { return account }
                     return RuntimeSourceInterpreter.recoverableReview(source)
                 }
                 return await RuntimeFoundationInterpreter.interpret(source, referenceDate: referenceDate,
-                    calendar: calendar, context: context, configuration: configuration, rules: rules,
+                    calendar: calendar, context: currentContext, configuration: configuration, rules: rules,
                     preselectedExamples: examples, ruleTrace:ruleTrace)
             }
             let deadline = Task {
@@ -16841,7 +16848,7 @@ enum RuntimeExampleInterpreter {
         // the original transcript or permission to guess a saved target.
         let examples = (try? await RuntimeExampleLibrary.shared.select(source, configuration: configuration)) ?? []
         let local = RuntimeSourceInterpreter.interpret(source, referenceDate: referenceDate,
-            calendar: calendar, context: context, examples: examples, configuration:configuration)
+            calendar: calendar, context: currentContext, examples: examples, configuration:configuration)
         if local == nil,RuntimeIndependentFramePlan.containsAccountDeclaration(source) { return RuntimeSourceInterpreter.recoverableReview(source) }
         return local
     }

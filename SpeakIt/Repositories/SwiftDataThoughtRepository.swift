@@ -1155,16 +1155,20 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 referenceDate: createdAt,
                 permitsOnDeviceIntelligence: permitsOnDeviceIntelligence,
                 permitsOperations: source != .tutorial,
-                runtimeContext: source == .tutorial || !permitsOnDeviceIntelligence || RuntimeExampleConfiguration.current == nil ? .empty : RuntimeCaptureContext(savedItems:
-                    ((try? modelContext.fetch(FetchDescriptor<CapturedItem>())) ?? [])
-                        .filter { $0.captureSession?.id != pending.session.id }
-                        .map { RuntimeCaptureContext.SavedItem(id: $0.id.uuidString, title: $0.displayTitle, modifiedAt: $0.lastModifiedAt,
-                            originalText: $0.originalTextSegment, itemType: $0.itemType.rawValue,
-                            personName: $0.personName, dueDate: $0.dueDate, reminderDate: $0.reminderDate,
-                            isReviewed: $0.isReviewed, isArchived: $0.isArchived, isCompleted: $0.completedAt != nil,
-                            snapshot: atomicSnapshot($0)) },
-                    hasHome: SavedPlaceStore.place(for: .home) != nil,
-                    hasWork: SavedPlaceStore.place(for: .work) != nil)
+                runtimeContextProvider: { [self, pendingSessionID = pending.session.id] in
+                    guard source != .tutorial, permitsOnDeviceIntelligence else { return .empty }
+                    return RuntimeCaptureContext(savedItems:
+                        ((try? modelContext.fetch(FetchDescriptor<CapturedItem>())) ?? [])
+                            .filter { $0.captureSession?.id != pendingSessionID }
+                            .map { RuntimeCaptureContext.SavedItem(id: $0.id.uuidString, title: $0.displayTitle,
+                                modifiedAt: $0.lastModifiedAt, originalText: $0.originalTextSegment,
+                                itemType: $0.itemType.rawValue, personName: $0.personName,
+                                dueDate: $0.dueDate, reminderDate: $0.reminderDate,
+                                isReviewed: $0.isReviewed, isArchived: $0.isArchived,
+                                isCompleted: $0.completedAt != nil, snapshot: atomicSnapshot($0)) },
+                        hasHome: SavedPlaceStore.place(for: .home) != nil,
+                        hasWork: SavedPlaceStore.place(for: .work) != nil)
+                }
             )
         }
         performance?.finishSemanticParsing()
