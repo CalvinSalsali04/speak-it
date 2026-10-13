@@ -27,7 +27,9 @@ is still bounded: an unfamiliar implicit need can remain a complete Memory row.
 Unknown undelimited products, arbitrary cross-sentence references, complex
 exclusions/beneficiaries and general nonpurchase checklist semantics remain
 incomplete. Explicit shared size/colour and simple trailing exclusions now have
-bounded support. Size requires a known wearable/accessory head; unknown modifiers,
+bounded support. Size requires a known wearable/accessory head. Conflicting explicit sizes or
+colours decline shared propagation; colour/size words in an unfamiliar brand may
+also conservatively decline. Unknown modifiers,
 recipients, conditions, category-level exclusions against modified products and
 ambiguous spoken corrections may keep an intact parent or review row. That safe
 fallback is not successful independent item extraction.

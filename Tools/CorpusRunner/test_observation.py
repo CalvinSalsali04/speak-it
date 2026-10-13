@@ -913,6 +913,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         recovery and appearance follow-up. Counting rules remain unchanged.
         10227 -> 10280 on 2026-10-13 after endpoint replay, shared shopping
         details and explicit recognition hints. Same literal walk, not accuracy.
+        10280 -> 10287 after shared-attribute conflict contrasts; same walk.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -922,7 +923,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 10280)
+        self.assertEqual(len(space), 10287)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

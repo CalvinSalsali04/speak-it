@@ -639,12 +639,34 @@ enum ShoppingGroupParser {
     /// Size labels need a wearable/accessory head on every member. A proved
     /// purchase alone cannot make “milk and shirts, all size medium” coherent.
     static func acceptsSharedDetail(_ label: String, product: String) -> Bool {
-        guard label.lowercased().hasPrefix("size ") else { return true }
-        let head = product.lowercased().split(whereSeparator: { !$0.isLetter }).last.map(String.init) ?? ""
-        return ["shirt", "shirts", "jacket", "jackets", "coat", "coats", "dress", "dresses",
-                "sweater", "sweaters", "pants", "jeans", "glove", "gloves", "sock", "socks",
-                "shoe", "shoes", "boot", "boots", "hat", "hats", "mitten", "mittens",
-                "pajamas", "harness", "harnesses", "leash", "leashes"].contains(head)
+        let words = product.lowercased()
+            .replacingOccurrences(of: "extra small", with: "xs")
+            .replacingOccurrences(of: "extra large", with: "xl")
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
+        if label.lowercased().hasPrefix("size ") {
+            guard let head = words.last,
+                  ["shirt", "shirts", "jacket", "jackets", "coat", "coats", "dress", "dresses",
+                   "sweater", "sweaters", "pants", "jeans", "glove", "gloves", "sock", "socks",
+                   "shoe", "shoes", "boot", "boots", "hat", "hats", "mitten", "mittens",
+                   "pajamas", "harness", "harnesses", "leash", "leashes"].contains(head) else { return false }
+            func size(_ value: String) -> String {
+                ["small": "s", "medium": "m", "large": "l"][value] ?? value
+            }
+            let target = size(String(label.lowercased().dropFirst(5)))
+            for index in words.indices {
+                let word = words[index]
+                // Bare digits are quantities, never an inferred clothing size.
+                let explicitSize = index > 0 && words[index - 1] == "size"
+                if explicitSize || ["xs", "s", "small", "m", "medium", "l", "large", "xl", "xxl"].contains(word) {
+                    if size(word) != target { return false }
+                }
+            }
+            return true
+        }
+        func colour(_ value: String) -> String { value == "gray" ? "grey" : value }
+        let colours: Set<String> = ["red", "blue", "green", "black", "white", "yellow", "orange",
+                                    "purple", "pink", "brown", "grey", "gray", "navy", "beige"]
+        return words.filter(colours.contains).allSatisfy { colour($0) == colour(label.lowercased()) }
     }
 
     static func productIdentity(_ product: String) -> String {

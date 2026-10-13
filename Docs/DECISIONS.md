@@ -64,7 +64,10 @@ evidence, not causal qualification, a new accuracy rate or a spelling guarantee.
 ## 2026-10-13 — Keep shared shopping details explicit and capture-scoped
 
 A bounded current-purchase reader now distributes explicit all/both/each size or
-colour labels over proved products. Both requires exactly two members; size
+colour labels over proved products. Existing explicit colours or sizes must
+agree with the shared label; a conflicting member declines rather than receiving
+contradictory added metadata. Bare numbers remain quantities. Both requires
+exactly two members; size
 requires a wearable/accessory head on every member. Unknown shared recipients,
 conditions or contradictory product types decline this certificate. Claude Opus
 5.5 reviewed synthetic contrasts and identified the mixed-size safeguard.

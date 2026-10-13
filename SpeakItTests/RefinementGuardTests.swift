@@ -11201,6 +11201,22 @@ final class SharedShoppingDetailTests: XCTestCase {
         XCTAssertNotNil(result.items.first?.organization.dueDate)
         XCTAssertEqual(result.items.first?.rawQuote, source)
     }
+    func testConflictingSharedAttributesDeclineWhileMatchingAttributesRemainUsable() {
+        for source in ["Buy red shirts and a blue jacket, both green.",
+                       "Buy small shirts and a large jacket, both size medium.",
+                       "Buy size 8 shirts and a jacket, both size 10."] {
+            XCTAssertNil(RuleBasedThoughtExtractor.literalPurchasePlan(source, referenceDate: reference, calendar: calendar), source)
+        }
+        for source in ["Buy blue shirts and a blue jacket, both blue.",
+                       "Buy medium shirts and a medium jacket, both size medium.",
+                       "Buy two shirts and a jacket, both size 10.",
+                       "Buy grey shirts and a gray jacket, both grey."] {
+            let result = read(source)
+            XCTAssertEqual(result.items.count, 2, String(reflecting: result))
+            XCTAssertTrue(result.items.allSatisfy { !$0.needsReview && $0.organization.itemType == .shopping })
+            assertOwnership(result, source: source)
+        }
+    }
     func testKnownArticleCompoundDoesNotAuthorizeLongerFiniteClauses() {
         let source = "Buy a dog harness and a leash"
         let result = RuleBasedThoughtExtractor.literalPurchasePlan(source, referenceDate: reference, calendar: calendar)
