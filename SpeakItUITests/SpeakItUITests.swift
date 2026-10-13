@@ -151,6 +151,107 @@ final class SpeakItUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 4))
     }
 
+    func testCompletedBannerStaysDismissedAcrossTabsAndReturnsOnlyForNewCompletion() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--ui-testing-reset", "--ui-testing-skip-welcome", "--load-ui-qa-capture"]
+        app.launchEnvironment["SPEAKIT_UI_QA_TEXT"] = "Call the dentist. Water the plants."
+        app.launchEnvironment["SPEAKIT_RUNTIME_EXAMPLES"] = "0"
+        app.launch()
+        waitForLaunchWorkToFinish(in: app)
+        let section = app.buttons["today.section.noDate"]
+        XCTAssertTrue(section.waitForExistence(timeout: 8))
+        if section.value as? String == "Collapsed" { section.tap() }
+        let completeButtons = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'item.complete.'"))
+        XCTAssertGreaterThanOrEqual(completeButtons.count, 2, app.debugDescription)
+        completeButtons.element(boundBy: 0).tap()
+        let dismiss = app.buttons["Dismiss completed banner"]
+        XCTAssertTrue(dismiss.waitForExistence(timeout: 4))
+        dismiss.tap()
+        app.buttons["dock.memory"].tap()
+        XCTAssertTrue(app.staticTexts["Memory"].waitForExistence(timeout: 4))
+        app.buttons["dock.today"].tap()
+        XCTAssertTrue(app.staticTexts["Today"].waitForExistence(timeout: 4))
+        XCTAssertFalse(dismiss.exists, "A tab switch must not replay the dismissed completion")
+        if section.value as? String == "Collapsed" { section.tap() }
+        completeButtons.element(boundBy: 0).tap()
+        XCTAssertTrue(dismiss.waitForExistence(timeout: 4), "A new completion must present a fresh banner")
+        let capture = XCTAttachment(screenshot: app.screenshot())
+        capture.name = "New completion banner after prior banner was dismissed"
+        capture.lifetime = .keepAlways
+        add(capture)
+        let hidden = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: dismiss)
+        XCTAssertEqual(XCTWaiter.wait(for: [hidden], timeout: 5), .completed)
+        app.buttons["dock.memory"].tap()
+        app.buttons["dock.today"].tap()
+        XCTAssertTrue(app.staticTexts["Today"].waitForExistence(timeout: 4))
+        XCTAssertFalse(dismiss.exists, "The three-second expiry must also survive a tab switch")
+    }
+
+    func testKeepAsOneThoughtProtectsEditsAndSurvivesRelaunch() {
+        let app = XCUIApplication()
+        let storeID = UUID().uuidString
+        app.launchArguments = ["--ui-testing", "--ui-testing-reset", "--ui-testing-skip-welcome", "--load-split-review-qa"]
+        app.launchEnvironment = ["SPEAKIT_UI_QA_STORE_ID": storeID, "SPEAKIT_RUNTIME_EXAMPLES": "0"]
+        app.launch()
+        waitForLaunchWorkToFinish(in: app)
+        let row = app.buttons["Room and garden window. Might be 2 thoughts"]
+        XCTAssertTrue(row.waitForExistence(timeout: 8), app.debugDescription)
+        row.tap()
+        let keep = app.buttons["editor.keepAsOneThought"]
+        for _ in 0..<5 where !keep.isHittable { app.collectionViews.firstMatch.swipeUp() }
+        XCTAssertTrue(keep.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertTrue(keep.isEnabled, "An untouched editor must allow the grouping answer")
+        let title = app.textFields["editor.title"]
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        title.tap()
+        title.typeText(" updated")
+        XCTAssertFalse(keep.isEnabled, "A grouping answer must not discard real unsaved edits")
+        title.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 8))
+        XCTAssertEqual(title.value as? String, "Room and garden window")
+        XCTAssertTrue(keep.isEnabled, "Restoring the original title removes the real edit")
+        for _ in 0..<4 where !keep.isHittable { app.collectionViews.firstMatch.swipeDown() }
+        assertMinimumTouchTarget(keep)
+        let capture = XCTAttachment(screenshot: app.screenshot())
+        capture.name = "Explicit Keep as one thought in grouping review"
+        capture.lifetime = .keepAlways
+        add(capture)
+        keep.tap()
+        XCTAssertTrue(keep.waitForNonExistence(timeout: 5))
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--ui-testing-skip-welcome"]
+        app.launchEnvironment = ["SPEAKIT_UI_QA_STORE_ID": storeID]
+        app.launch()
+        waitForLaunchWorkToFinish(in: app)
+        app.buttons["dock.memory"].tap()
+        let saved = app.buttons["item.edit.Room and garden window"]
+        for _ in 0..<6 where !saved.isHittable { app.swipeUp() }
+        XCTAssertTrue(saved.waitForExistence(timeout: 5), app.debugDescription)
+        saved.tap()
+        XCTAssertFalse(keep.exists, "The saved grouping answer must not repeat after relaunch")
+        let original = app.staticTexts["Original thought. A quiet room and a window over the garden."]
+        for _ in 0..<6 where !original.isHittable { app.collectionViews.firstMatch.swipeUp() }
+        XCTAssertTrue(original.exists, app.debugDescription)
+    }
+
+    func testMemoryHeaderOmitsRememberedCountWithLargeTextAndDarkAppearance() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--ui-testing", "--ui-testing-reset", "--ui-testing-skip-welcome", "--load-ui-qa-capture",
+                               "-SpeakIt.appearance", "dark", "-UIPreferredContentSizeCategoryName",
+                               "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge"]
+        app.launchEnvironment["SPEAKIT_UI_QA_TEXT"] = "The garage code is 4821."
+        app.launchEnvironment["SPEAKIT_RUNTIME_EXAMPLES"] = "0"
+        app.launch()
+        waitForLaunchWorkToFinish(in: app)
+        app.buttons["dock.memory"].tap()
+        XCTAssertTrue(app.staticTexts["Memory"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'thing remembered' OR label CONTAINS[c] 'things remembered'")).firstMatch.exists)
+        XCTAssertTrue(app.buttons["memory.account"].isHittable)
+        let capture = XCTAttachment(screenshot: app.screenshot())
+        capture.name = "Memory header — dark appearance and accessibility text"
+        capture.lifetime = .keepAlways
+        add(capture)
+    }
+
     func testShoppingListOpensAndRemainsResponsive() {
         // The Groceries fixture is "Buy milk after work", which schedules for
         // tomorrow evening, so its card is placed under *Coming up* — and that
@@ -185,6 +286,78 @@ final class SpeakItUITests: XCTestCase {
         XCTAssertTrue(complete.isHittable)
         complete.tap()
         XCTAssertFalse(item.waitForExistence(timeout: 3))
+    }
+
+    func testShoppingAddDoneCommitsAndDismissesWithoutNewline() {
+        let app = launchApp("--ui-testing-skip-welcome", "--load-today-examples", "--expand-today-upcoming")
+        let list = app.buttons["today.shoppingListCard.Groceries"]
+        XCTAssertTrue(list.waitForExistence(timeout: 6), app.debugDescription)
+        list.tap()
+        let add = app.buttons["list.addEntry.Groceries"]
+        XCTAssertTrue(add.waitForExistence(timeout: 4), app.debugDescription)
+        add.tap()
+        let field = app.textFields["list.addField"]
+        XCTAssertTrue(field.waitForExistence(timeout: 4), app.debugDescription)
+        field.tap()
+        field.typeText("Oats, yogurt")
+        XCTAssertEqual(field.value as? String, "Oats, yogurt")
+        // Exercise the actual return-key submission, never the toolbar Add.
+        // A simulator with a connected hardware keyboard sends the same Return.
+        let done = app.keyboards.buttons["Done"]
+        if done.waitForExistence(timeout: 2) {
+            done.tap()
+        } else {
+            field.typeText("\n")
+        }
+        let dismissed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: field)
+        XCTAssertEqual(XCTWaiter.wait(for: [dismissed], timeout: 5), .completed, app.debugDescription)
+        XCTAssertFalse(app.keyboards.firstMatch.exists, "A successful keyboard submit dismisses the keyboard")
+        let oats = app.buttons["list.item.Oats"]
+        let yogurt = app.buttons["list.item.Yogurt"]
+        XCTAssertTrue(oats.waitForExistence(timeout: 4), app.debugDescription)
+        XCTAssertTrue(yogurt.waitForExistence(timeout: 4), app.debugDescription)
+        XCTAssertEqual(app.buttons.matching(identifier: "list.item.Oats").count, 1)
+        XCTAssertEqual(app.buttons.matching(identifier: "list.item.Yogurt").count, 1)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Shopping keyboard Done saved both entries and dismissed"
+        screenshot.lifetime = .keepAlways
+        self.add(screenshot)
+    }
+
+    func testShoppingRowSwipeRemoveCompletesWithoutDeletingCapture() {
+        let app = launchApp("--ui-testing-skip-welcome", "--load-today-examples", "--expand-today-upcoming")
+        let list = app.buttons["today.shoppingListCard.Groceries"]
+        XCTAssertTrue(list.waitForExistence(timeout: 6), app.debugDescription)
+        list.tap()
+        let row = app.buttons["list.item.Buy milk after work"]
+        XCTAssertTrue(row.waitForExistence(timeout: 4), app.debugDescription)
+        row.swipeLeft()
+        let remove = app.buttons["list.remove.Buy milk after work"]
+        XCTAssertTrue(remove.waitForExistence(timeout: 4), app.debugDescription)
+        XCTAssertTrue(remove.isHittable)
+        assertMinimumTouchTarget(remove)
+        let screenshot = XCTAttachment(screenshot: app.screenshot())
+        screenshot.name = "Shopping swipe exposes native X Remove action"
+        screenshot.lifetime = .keepAlways
+        add(screenshot)
+        remove.tap()
+        let removed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: row)
+        XCTAssertEqual(XCTWaiter.wait(for: [removed], timeout: 5), .completed, app.debugDescription)
+
+        app.buttons["dock.today"].tap()
+        app.buttons["today.account"].tap()
+        let completed = app.buttons["Completed"]
+        for _ in 0..<6 where !completed.isHittable { app.collectionViews.firstMatch.swipeUp() }
+        XCTAssertTrue(completed.waitForExistence(timeout: 4), app.debugDescription)
+        completed.tap()
+        XCTAssertTrue(app.navigationBars["Completed"].waitForExistence(timeout: 4), app.debugDescription)
+        let saved = app.buttons["item.edit.Buy milk after work"]
+        XCTAssertTrue(saved.waitForExistence(timeout: 4), "Remove must complete the saved item rather than delete it")
+        saved.tap()
+        let original = app.staticTexts["Original thought. Buy milk after work."]
+        for _ in 0..<8 where !original.isHittable { app.collectionViews.firstMatch.swipeUp() }
+        XCTAssertTrue(original.waitForExistence(timeout: 4), app.debugDescription)
+        XCTAssertEqual(original.label, "Original thought. Buy milk after work.")
     }
 
     /// Tapping the dock's "Today" from inside the List pops straight back to
@@ -1286,13 +1459,13 @@ And email Jonah the final volunteer rota once Priya has approved it. She has loo
         let longCapture = app.buttons["capture.longCapture"]
         XCTAssertTrue(longCapture.waitForExistence(timeout: 5))
         assertMinimumTouchTarget(longCapture)
-        XCTAssertEqual(longCapture.label, "Continuous capture on")
+        XCTAssertEqual(longCapture.label, "Auto finish on")
         XCTAssertTrue(app.staticTexts["Tap to speak"].exists)
 
         // Exercise the capsule edge, then its other edge on the way back.
         // This uses only the mode control; the pulse and permission UI stay idle.
         longCapture.coordinate(withNormalizedOffset: CGVector(dx: 0.10, dy: 0.5)).tap()
-        XCTAssertEqual(longCapture.label, "Auto finish on")
+        XCTAssertEqual(longCapture.label, "Continuous capture on")
         XCTAssertTrue(longCapture.isHittable)
         XCTAssertTrue(app.staticTexts["Tap to speak"].exists)
         XCTAssertFalse(app.alerts.firstMatch.exists)
@@ -1304,7 +1477,7 @@ And email Jonah the final volunteer rota once Priya has approved it. She has loo
         add(longCaptureScreenshot)
 
         longCapture.coordinate(withNormalizedOffset: CGVector(dx: 0.90, dy: 0.5)).tap()
-        XCTAssertEqual(longCapture.label, "Continuous capture on")
+        XCTAssertEqual(longCapture.label, "Auto finish on")
         XCTAssertTrue(app.staticTexts["Tap to speak"].exists)
     }
 
@@ -1325,7 +1498,7 @@ And email Jonah the final volunteer rota once Priya has approved it. She has loo
         XCTAssertTrue(typeInstead.isHittable)
         assertMinimumTouchTarget(longCapture)
         longCapture.tap()
-        XCTAssertEqual(longCapture.label, "Auto finish on")
+        XCTAssertEqual(longCapture.label, "Continuous capture on")
         // Allow the pressed-button transition to settle before visual QA.
         Thread.sleep(forTimeInterval: 0.5)
         let screenshot = XCTAttachment(screenshot: app.screenshot())

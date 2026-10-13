@@ -2876,6 +2876,221 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertEqual(session.originalTranscription, transcript)
     }
 
+    func testKeepAsOneThoughtPersistsWithoutChangingSourceOrSibling() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("Keep-as-one-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("capture.store")
+        func open() throws -> ModelContainer {
+            try ModelContainer(for: PersistenceController.schema, migrationPlan: SpeakItMigrationPlan.self,
+                configurations: [ModelConfiguration(schema: PersistenceController.schema, url: url)])
+        }
+        let transcript = "A quiet room and a window over the garden. Inspect the hinge."
+        let created = Date(timeIntervalSince1970: 1_800_000_000)
+        let siblingDue = created.addingTimeInterval(3_600)
+        let keptID = UUID(), siblingID = UUID(), sessionID = UUID()
+        do {
+            let store = try open()
+            let repository = SwiftDataThoughtRepository(modelContext: store.mainContext,
+                requestsReminderAuthorization: false, permitsOnDeviceIntelligence: false)
+            let session = CaptureSession(id: sessionID, originalTranscription: transcript,
+                createdAt: created, captureSource: .inAppVoice)
+            let kept = CapturedItem(id: keptID,
+                originalTextSegment: "A quiet room and a window over the garden.",
+                displayTitle: "The room and its garden window", itemType: .note,
+                createdAt: created, priority: .high, personName: "Maya",
+                needsClarification: true, lastModifiedAt: created,
+                temporalIntent: TemporalIntent.none, semanticState: .contested(.uncertainClauseBoundary),
+                captureSession: session)
+            let sibling = CapturedItem(id: siblingID, originalTextSegment: "Inspect the hinge.",
+                displayTitle: "Inspect the hinge", itemType: .task, createdAt: created.addingTimeInterval(1),
+                dueDate: siblingDue, isReviewed: true, lastModifiedAt: created,
+                semanticState: .resolved, captureSession: session)
+            store.mainContext.insert(session); store.mainContext.insert(kept); store.mainContext.insert(sibling)
+            try store.mainContext.save()
+            XCTAssertEqual(kept.clarificationRequirement, .splitDecision)
+            try repository.keepAsOneThought(kept)
+            XCTAssertEqual(session.items.count, 2)
+            XCTAssertFalse(kept.needsClarification)
+            XCTAssertTrue(kept.isReviewed)
+            XCTAssertEqual(kept.semanticState, .resolved)
+            XCTAssertNil(kept.clarificationRequirement)
+        }
+        let reopened = try open()
+        let items = try reopened.mainContext.fetch(FetchDescriptor<CapturedItem>())
+        let kept = try XCTUnwrap(items.first { $0.id == keptID })
+        let sibling = try XCTUnwrap(items.first { $0.id == siblingID })
+        let session = try XCTUnwrap(kept.captureSession)
+        XCTAssertEqual(session.id, sessionID)
+        XCTAssertEqual(session.originalTranscription, transcript)
+        XCTAssertEqual(session.items.count, 2)
+        XCTAssertEqual(kept.originalTextSegment, "A quiet room and a window over the garden.")
+        XCTAssertEqual(kept.displayTitle, "The room and its garden window")
+        XCTAssertEqual(kept.itemType, .note)
+        XCTAssertEqual(kept.priority, .high)
+        XCTAssertEqual(kept.personName, "Maya")
+        XCTAssertEqual(kept.createdAt, created)
+        XCTAssertEqual(kept.temporalIntent, TemporalIntent.none)
+        XCTAssertNil(kept.dueDate); XCTAssertNil(kept.reminderDate)
+        XCTAssertNil(RecurrenceStore.rule(for: kept.id))
+        XCTAssertTrue(kept.isReviewed); XCTAssertFalse(kept.needsClarification)
+        XCTAssertNil(kept.clarificationRequirement)
+        XCTAssertEqual(sibling.originalTextSegment, "Inspect the hinge.")
+        XCTAssertEqual(sibling.displayTitle, "Inspect the hinge")
+        XCTAssertEqual(sibling.itemType, .task)
+        XCTAssertEqual(sibling.dueDate, siblingDue)
+        XCTAssertNil(sibling.reminderDate)
+        XCTAssertEqual(sibling.lastModifiedAt, created)
+        XCTAssertEqual(sibling.semanticState, .resolved)
+        XCTAssertFalse(sibling.needsClarification)
+    }
+
+    func testKeepAsOneLegacyUnclearThoughtStillNeedsItsType() throws {
+        let transcript = "The room and the garden"
+        let session = CaptureSession(originalTranscription: transcript)
+        let item = CapturedItem(originalTextSegment: transcript, displayTitle: transcript,
+            itemType: .unclear, needsClarification: true, captureSession: session)
+        container.mainContext.insert(session); container.mainContext.insert(item)
+        try container.mainContext.save()
+        XCTAssertEqual(item.clarificationRequirement, .splitDecision)
+        try repository.keepAsOneThought(item)
+        let context = ModelContext(container)
+        let saved = try XCTUnwrap(context.fetch(FetchDescriptor<CapturedItem>()).first { $0.id == item.id })
+        XCTAssertEqual(saved.clarificationRequirement, .type)
+        XCTAssertTrue(saved.needsClarification)
+        XCTAssertTrue(saved.isReviewed)
+        XCTAssertEqual(saved.originalTextSegment, transcript)
+        XCTAssertEqual(saved.captureSession?.originalTranscription, transcript)
+        XCTAssertNil(saved.dueDate); XCTAssertNil(saved.reminderDate)
+    }
+
+    func testKeepAsOneCannotDismissOtherReviewGapsOrPendingOperations() throws {
+        let source = "Call Maya and bring the folder"
+        let time = TemporalIntent(kind: .none, sourceText: source)
+        let condition = TemporalIntent(kind: .none, sourceText: source, unsupportedTrigger: .condition)
+        let location = LocationIntent(event: .arrive, place: .home, sourceText: source)
+        let fixtures: [(SemanticState, TemporalIntent, LocationIntent?, ClarificationRequirement)] = [
+            (.underspecified(.ambiguousTemporalScope), time, nil, .ambiguousTemporalScope),
+            (.contested(.uncertainClauseBoundary), condition, nil, .unsupportedConditionTrigger),
+            (.contested(.uncertainClauseBoundary), time, location, .locationTrigger)
+        ]
+        for (state, timing, place, requirement) in fixtures {
+            let session = CaptureSession(originalTranscription: source)
+            let item = CapturedItem(originalTextSegment: source, displayTitle: source,
+                itemType: .task, needsClarification: true, temporalIntent: timing,
+                locationIntent: place, semanticState: state, captureSession: session)
+            container.mainContext.insert(session); container.mainContext.insert(item)
+            try container.mainContext.save()
+            XCTAssertEqual(item.clarificationRequirement, requirement)
+            XCTAssertThrowsError(try repository.keepAsOneThought(item))
+            XCTAssertTrue(item.needsClarification); XCTAssertFalse(item.isReviewed)
+            XCTAssertEqual(item.semanticState, state)
+            XCTAssertEqual(item.temporalIntent, timing)
+            XCTAssertEqual(item.locationIntent, place)
+            // Reviewing grouping suppresses only the legacy heuristic, never
+            // an independently recorded timing/place requirement.
+            item.isReviewed = true
+            XCTAssertEqual(item.clarificationRequirement, requirement)
+            XCTAssertNil(item.dueDate); XCTAssertNil(item.reminderDate)
+        }
+        let session = CaptureSession(originalTranscription: source)
+        let item = CapturedItem(originalTextSegment: source, displayTitle: source,
+            itemType: .unclear, needsClarification: true,
+            semanticState: .contested(.uncertainClauseBoundary), captureSession: session)
+        container.mainContext.insert(session); container.mainContext.insert(item)
+        try container.mainContext.save()
+        PendingOperationStore.set(operation: .cancel, candidateIDs: [UUID()], for: item.id)
+        defer { PendingOperationStore.remove(item.id) }
+        let pending = PendingOperationStore.record(for: item.id)
+        XCTAssertEqual(item.clarificationRequirement, .pendingOperation)
+        XCTAssertThrowsError(try repository.keepAsOneThought(item))
+        XCTAssertThrowsError(try repository.undoOrganization(session))
+        XCTAssertEqual(PendingOperationStore.record(for: item.id), pending)
+        XCTAssertTrue(item.needsClarification); XCTAssertFalse(item.isReviewed)
+        XCTAssertEqual(item.semanticState, .contested(.uncertainClauseBoundary))
+        XCTAssertEqual(session.originalTranscription, source)
+    }
+
+    func testKeepAsOneRecordedSplitDoesNotInventTimingOrAnswerMissingPerson() throws {
+        let source = "Inspect the hinge and its bracket"
+        for type in [ItemType.task, .personFollowUp] {
+            let session = CaptureSession(originalTranscription: source)
+            let item = CapturedItem(originalTextSegment: source, displayTitle: source,
+                itemType: type, needsClarification: true,
+                semanticState: .contested(.uncertainClauseBoundary), captureSession: session)
+            container.mainContext.insert(session); container.mainContext.insert(item)
+            try container.mainContext.save()
+            try repository.keepAsOneThought(item)
+            XCTAssertEqual(item.itemType, type)
+            XCTAssertEqual(item.semanticState, .resolved)
+            XCTAssertNil(item.dueDate); XCTAssertNil(item.reminderDate)
+            XCTAssertNil(RecurrenceStore.rule(for: item.id))
+            if type == .personFollowUp {
+                XCTAssertTrue(item.needsClarification)
+                XCTAssertEqual(item.clarificationRequirement, .person)
+            } else {
+                XCTAssertFalse(item.needsClarification)
+                XCTAssertNil(item.clarificationRequirement)
+            }
+        }
+    }
+
+    func testKeepAsOneAndUndoPreservePendingSavedChoice() throws {
+        let source = "Change my saved reminder and keep this note"
+        let session = CaptureSession(originalTranscription: source)
+        let item = CapturedItem(originalTextSegment: source, displayTitle: source,
+            itemType: .unclear, needsClarification: true,
+            semanticState: .contested(.uncertainClauseBoundary), captureSession: session)
+        let sibling = CapturedItem(originalTextSegment: "keep this note", displayTitle: "Keep this note",
+            itemType: .note, captureSession: session)
+        let state = CaptureOperationState(phase: .pendingChoice, operation: .reschedule,
+            sourceQuote: source, targetWords: "saved reminder", candidateIDs: [UUID()],
+            reviewItemID: item.id, targetID: nil, targetTitle: nil, expectedOldTimingText: nil,
+            newTimingText: nil, oldDueDate: nil, oldReminderDate: nil, newDueDate: nil,
+            newReminderDate: nil, resolvedAt: nil)
+        session.operationStateData = try JSONEncoder().encode(state)
+        let originalState = session.operationStateData
+        container.mainContext.insert(session); container.mainContext.insert(item); container.mainContext.insert(sibling)
+        try container.mainContext.save()
+        XCTAssertThrowsError(try repository.keepAsOneThought(item))
+        XCTAssertThrowsError(try repository.undoOrganization(session))
+        XCTAssertEqual(session.operationStateData, originalState)
+        XCTAssertEqual(Set(session.items.map(\.id)), Set([item.id, sibling.id]))
+        XCTAssertEqual(item.originalTextSegment, source)
+        XCTAssertTrue(item.needsClarification); XCTAssertFalse(item.isReviewed)
+        XCTAssertEqual(sibling.displayTitle, "Keep this note")
+    }
+
+    func testUndoWrongOrganizationKeepsOriginalWithoutAnotherSplitSuggestion() throws {
+        let transcript = "Buy milk and call the dentist"
+        let first = try repository.createCapture(text: transcript, source: .inAppVoice,
+            createdAt: .now, schedulesReminder: false)
+        let session = try XCTUnwrap(first.captureSession)
+        XCTAssertEqual(session.items.count, 2)
+        try repository.undoOrganization(session)
+        let context = ModelContext(container)
+        let saved = try XCTUnwrap(context.fetch(FetchDescriptor<CaptureSession>()).first { $0.id == session.id })
+        let kept = try XCTUnwrap(saved.items.first)
+        XCTAssertEqual(saved.items.count, 1)
+        XCTAssertEqual(saved.originalTranscription, transcript)
+        XCTAssertEqual(kept.originalTextSegment, transcript)
+        XCTAssertEqual(kept.displayTitle, transcript)
+        XCTAssertEqual(kept.itemType, .unclear)
+        XCTAssertTrue(kept.isReviewed); XCTAssertTrue(kept.needsClarification)
+        XCTAssertEqual(kept.clarificationRequirement, .type)
+        XCTAssertNil(kept.dueDate); XCTAssertNil(kept.reminderDate)
+        XCTAssertNil(RecurrenceStore.rule(for: kept.id))
+        let reopenedRepository = SwiftDataThoughtRepository(modelContext: context,
+            requestsReminderAuthorization: false, permitsOnDeviceIntelligence: false)
+        try reopenedRepository.update(kept, with: ItemEdits(title: transcript, itemType: .note,
+            category: .general, dueDate: nil, reminderDate: nil, priority: .normal,
+            personName: nil, needsClarification: false))
+        XCTAssertEqual(kept.itemType, .note)
+        XCTAssertNil(kept.clarificationRequirement)
+        XCTAssertEqual(saved.originalTranscription, transcript)
+    }
+
     func testOneHundredActionPairsAreSeparatedPredictably() {
         let actions = [
             "Buy milk", "Call dentist", "Email Jordan", "Submit report", "Book haircut",
@@ -3313,12 +3528,12 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertLessThan(completed, continuing)
     }
 
-    func testContinuousInAppDefaultNeverSelectsAnAutomaticPause() {
+    func testInAppDefaultAutomaticallyFinishesAndContinuousRemainsExplicit() {
         let transcript = "Buy milk."
-        XCTAssertEqual(SpeechTranscriber.inAppDefaultEndpointMode, .longCapture)
-        XCTAssertNil(SpeechTranscriber.automaticPauseDecision(
+        XCTAssertEqual(SpeechTranscriber.inAppDefaultEndpointMode, .automatic)
+        XCTAssertEqual(SpeechTranscriber.automaticPauseDecision(
             for: transcript, mode: SpeechTranscriber.inAppDefaultEndpointMode
-        ))
+        )?.finishAfter, .milliseconds(1_900))
         XCTAssertEqual(
             SpeechTranscriber.automaticPauseDecision(for: transcript, mode: .automatic)?.finishAfter,
             .milliseconds(1_900)

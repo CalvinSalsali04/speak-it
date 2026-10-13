@@ -457,12 +457,17 @@ protocol ThoughtRepository: AnyObject, Sendable {
     func pendingCaptureOperationChoices(for item: CapturedItem) throws -> [CapturedItem]
     func choosePendingCaptureOperation(_ item: CapturedItem, targetID: UUID) throws
     func split(_ item: CapturedItem, into parts: [String]) throws
+    func keepAsOneThought(_ item: CapturedItem) throws
     func merge(_ items: [CapturedItem]) throws
     func undoOrganization(_ session: CaptureSession) throws
     func reorganize(_ session: CaptureSession) throws
 }
 
 extension ThoughtRepository {
+    func keepAsOneThought(_ item: CapturedItem) throws {
+        throw RepositoryError.saveFailed("Confirming this thought is unavailable.")
+    }
+
     func pendingCaptureOperationChoices(for item: CapturedItem) throws -> [CapturedItem] { [] }
     func choosePendingCaptureOperation(_ item: CapturedItem, targetID: UUID) throws {
         throw RepositoryError.saveFailed("That saved-item choice is unavailable.")

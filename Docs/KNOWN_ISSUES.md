@@ -1,5 +1,17 @@
 # Known Issues
 
+## Build 22 list and voice behavior
+
+“Remind me to complete my scientific computation and real time systems
+assignment” is one task. It still needs a reminder time; no hour is guessed.
+Swipe X Remove completes a list item just like its circle, retaining it in
+Settings → Completed. Keep as one thought answers grouping only.
+Auto finish waits longer for incomplete phrasing, so it is not an immediate
+stop at every brief pause. Real microphone endpointing, interruptions and
+model latency on iPhone 13/16 still require hands-on QA. Focused regressions
+and UI checks do not establish a new global capture-accuracy percentage.
+
+
 ## Build 21 full-bank trial — device support and accuracy limits
 
 The bundled development bank occupies about 1.42 GB before distribution

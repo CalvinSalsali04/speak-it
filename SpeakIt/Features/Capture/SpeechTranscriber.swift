@@ -79,9 +79,9 @@ final class SpeechTranscriber: ObservableObject {
         case longCapture
     }
 
-    // The in-app screen has a Finish control, so it can safely keep listening
-    // through ordinary thinking pauses. Other entry points choose explicitly.
-    static let inAppDefaultEndpointMode: EndpointMode = .longCapture
+    // Ordinary capture is hands-free after starting. Continuous dictation
+    // remains an explicit option for pauses longer than the adaptive windows.
+    static let inAppDefaultEndpointMode: EndpointMode = .automatic
 
     enum State: Equatable {
         case idle

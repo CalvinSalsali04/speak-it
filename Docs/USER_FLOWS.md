@@ -51,7 +51,7 @@
 2. Tap the animated pulse to begin listening.
 3. Grant microphone and speech-recognition permission when first requested.
 4. Speak while the pulse responds to audio level and live text appears.
-5. Continuous capture is on by default: keep speaking through thinking pauses, then tap the pulse to Finish. The visible control can switch to **Auto finish** for automatic saving after a natural pause; switching back to continuous is possible while listening. The same control is available when an outside-the-app route starts the in-app voice screen automatically.
+5. **Auto finish** is on by default: a natural pause finalizes and saves an ordinary completed thought without another tap. The visible control can switch to **Continuous capture** for thinking pauses and long recordings, then tap the pulse to Finish. Switching modes is possible while listening. The same control is available when an outside-the-app route starts the in-app voice screen automatically.
 6. Finalize the transcription, separate independent intentions, save them under one untouched capture, play success haptics, and show the Remembered animation.
 7. If recognition fails after producing text, move that text into the typing interface instead of discarding it.
 8. Keep X visible while the keyboard is onscreen. Once speech exists, closing follows the same Save & Close / Discard rule as typing.
@@ -150,3 +150,17 @@ clarification dialogue.
 2. Tap **Delete permanently**.
 3. Confirm the destructive action.
 4. Delete the item. If its capture session has no other items, delete that session too.
+
+## List entry and grouping review — Build 22
+
+- Keyboard Done saves comma-separated list entries and dismisses the entry
+  sheet after persistence succeeds. A failed save keeps the sheet and draft.
+- Swipe a list row left and tap the X Remove action as an alternative to the
+  circle. Both mark it complete, preserve the original capture, and allow
+  recovery through Settings → Completed.
+- A split question offers **Keep as one thought** in the item editor and capture
+  details. This confirms grouping; another missing time, person or type still
+  needs its own answer. **Undo organization** can restore the untouched original
+  when an already-split capture is wrong, unless a saved-item change is pending.
+- The completion banner dismisses after three seconds or X, and stays dismissed
+  across Today/Memory navigation. A new completion can show it again.

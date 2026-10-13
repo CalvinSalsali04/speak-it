@@ -36,6 +36,11 @@ struct CaptureSessionReviewView: View {
         return state?.phase == .performed ? state : nil
     }
 
+    private var hasPendingChange: Bool {
+        CaptureOperationState.read(from: session.operationStateData)?.phase == .pendingChoice
+            || items.contains { PendingOperationStore.record(for: $0.id) != nil }
+    }
+
     var body: some View {
         List {
             if session.processingStatus != .complete {
@@ -102,12 +107,14 @@ struct CaptureSessionReviewView: View {
                         canMerge: nextItem(after: item) != nil,
                         editAction: { beginEditing(item) },
                         splitAction: { beginSplitting(item) },
+                        keepAsOneAction: item.clarificationRequirement == .splitDecision && !hasPendingChange
+                            ? { keepAsOne(item) } : nil,
                         mergeAction: { mergeWithNext(item) }
                     )
                 }
             } }
 
-            if savedChange == nil { Section {
+            if savedChange == nil, !hasPendingChange { Section {
                 Button {
                     // Re-reading the transcript rewrites every field on every
                     // row in this capture — title, type, category, priority,
@@ -127,7 +134,7 @@ struct CaptureSessionReviewView: View {
             } header: {
                 Text("Recovery")
             } footer: {
-                Text("Undo keeps the complete original capture as one reviewable item. Nothing you said is deleted.")
+                Text("Undo keeps the complete original capture as one item. You can then choose Task or Note without splitting it again. Nothing you said is deleted.")
             } }
         }
         .accessibilityIdentifier("capture.review.content")
@@ -169,8 +176,10 @@ struct CaptureSessionReviewView: View {
             titleVisibility: .visible
         ) {
             Button("Keep as one original thought") {
-                perform { try repository?.undoOrganization(session) }
-                onStructuralChange()
+                perform {
+                    try repository?.undoOrganization(session)
+                    onStructuralChange()
+                }
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -182,6 +191,13 @@ struct CaptureSessionReviewView: View {
     private func beginSplitting(_ item: CapturedItem) {
         itemCountBeforeSplit = session.items.count
         splitTarget = item
+    }
+
+    private func keepAsOne(_ item: CapturedItem) {
+        perform {
+            try repository?.keepAsOneThought(item)
+            onStructuralChange()
+        }
     }
 
     private func beginEditing(_ item: CapturedItem) {
@@ -233,6 +249,7 @@ private struct CaptureReviewItemRow: View {
     let canMerge: Bool
     let editAction: () -> Void
     let splitAction: () -> Void
+    let keepAsOneAction: (() -> Void)?
     let mergeAction: () -> Void
 
     var body: some View {
@@ -279,6 +296,14 @@ private struct CaptureReviewItemRow: View {
             }
             .font(.caption.weight(.semibold))
             .buttonStyle(.speakIt)
+
+            if let keepAsOneAction {
+                Button("Keep as one thought", action: keepAsOneAction)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .buttonStyle(.speakIt)
+                    .accessibilityHint("Keeps this item's words together without changing the original capture or other items")
+                    .accessibilityIdentifier("capture.review.keepAsOneThought")
+            }
         }
         .padding(.vertical, 4)
     }

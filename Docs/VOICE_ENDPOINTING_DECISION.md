@@ -4,11 +4,10 @@
 **Decision date:** 2026-08-24  
 **Audience:** Product, engineering, QA, and beta support
 
-> **September 27 default change.** The in-app voice screen now starts in
-> continuous capture and waits for explicit Finish. The automatic windows
-> below apply when the person explicitly chooses Auto finish. The older
-> default and beta release gate in this document are historical; see the
-> recording lifecycle qualification runbook for the current device gate.
+> **October 12, Build 22 default change.** The in-app voice screen starts in
+> **Auto finish** again, so an ordinary completed thought saves after a natural
+> pause without a second tap. Continuous capture remains an explicit option
+> for thinking pauses and long recordings; its protected recovery is unchanged.
 
 > **Window sizes, corrected.** The finished-sentence window is **1.9 s**
 > (`completeThoughtPauseMilliseconds`), settled in build 16 — this document
@@ -37,8 +36,8 @@ The implemented behavior is:
 ## Continuous capture
 
 The capture screen offers **Continuous capture** before recording and while listening,
-including when an outside-the-app route starts voice automatically. It is on by
-default. When on, neither the 1.9/4/8-second natural-pause timers nor the
+including when an outside-the-app route starts voice automatically. Auto finish
+is the default; Continuous is an explicit choice. When Continuous is on, neither the 1.9/4/8-second natural-pause timers nor the
 10-second no-speech timer ends the recording. The screen says **Long capture ·
 Listening** and tells the person to tap the pulse to finish and save. Switching
 back to automatic mode resumes the normal endpoint policy from the current

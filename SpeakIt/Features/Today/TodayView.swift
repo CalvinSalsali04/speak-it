@@ -181,6 +181,39 @@ enum TodayActionTiming: Hashable {
     }
 }
 
+/// A completion is an event, not the number of completed rows. Remembering
+/// presented events survives the destination being rebuilt on a tab switch.
+enum CompletedTodayBannerHistory {
+    static func decode(_ rawValue: String) -> Set<String> {
+        guard let data = rawValue.data(using: .utf8),
+              let events = try? JSONDecoder().decode(Set<String>.self, from: data) else { return [] }
+        return events
+    }
+
+    static func encode(_ events: Set<String>) -> String {
+        guard let data = try? JSONEncoder().encode(events.sorted()),
+              let rawValue = String(data: data, encoding: .utf8) else { return "[]" }
+        return rawValue
+    }
+
+    static func hasNewCompletion(current: Set<String>, presented: String) -> Bool {
+        !current.subtracting(decode(presented)).isEmpty
+    }
+
+    static func recording(current: Set<String>, presented: String) -> String {
+        encode(decode(presented).union(current))
+    }
+
+    static func dayKey(for date: Date, calendar: Calendar = .autoupdatingCurrent) -> Double {
+        let parts = calendar.dateComponents([.year, .month, .day], from: date)
+        return Double((parts.year ?? 0) * 10_000 + (parts.month ?? 0) * 100 + (parts.day ?? 0))
+    }
+
+    static func eventID(itemID: UUID, completedAt: Date) -> String {
+        "\(itemID.uuidString):\(completedAt.timeIntervalSinceReferenceDate)"
+    }
+}
+
 struct TodayView: View {
     @Environment(\.dockScrollClearance) private var dockScrollClearance
     /// Built once with the view, not once per `body`: a publisher created
@@ -229,7 +262,11 @@ struct TodayView: View {
     @State private var recoveryAudioDrafts: [CaptureDraftStore.Draft] = []
     @State private var reminderAccessStatus = ReminderAccessStatus.ready
     @State private var completionUndo: CompletionUndo?
-    @State private var hasDismissedCompletedToday = false
+    @State private var completionBannerID: UUID?
+    @AppStorage("SpeakIt.completedTodayPresentedEvents")
+    private var presentedCompletionEvents = "[]"
+    @AppStorage("SpeakIt.completedTodayPresentedDay")
+    private var presentedCompletionDay = 0.0
     @StateObject private var dockScrollTracker = DockScrollTracker()
     @State private var reportsDockVisible = true
     @State private var showsUpcoming = TodayView.initialShowsUpcoming
@@ -363,6 +400,14 @@ struct TodayView: View {
                 return Calendar.autoupdatingCurrent.isDate(completedAt, inSameDayAs: referenceNow)
             }
             .sorted { ($0.completedAt ?? .distantPast) > ($1.completedAt ?? .distantPast) }
+    }
+
+    private var completionEvents: Set<String> {
+        Set(completedToday.compactMap { item in
+            item.completedAt.map {
+                CompletedTodayBannerHistory.eventID(itemID: item.id, completedAt: $0)
+            }
+        })
     }
 
     private var shoppingItems: [CapturedItem] {
@@ -520,7 +565,7 @@ struct TodayView: View {
                     }
                 }
 
-                if !completedToday.isEmpty && !hasDismissedCompletedToday {
+                if !completedToday.isEmpty && completionBannerID != nil {
                     completedTodayLink
                 }
 
@@ -631,6 +676,7 @@ struct TodayView: View {
         }
         .onAppear {
             referenceNow = .now
+            presentNewCompletionBanner()
             reloadRecoveryAudioDrafts()
             reportsDockVisible = true
             onDockVisibilityChange(true)
@@ -645,6 +691,16 @@ struct TodayView: View {
                noDate.isEmpty, needsReview.isEmpty {
                 showsUpcoming = true
             }
+        }
+        .onChange(of: completionEvents) { _, _ in
+            presentNewCompletionBanner()
+        }
+        .task(id: completionBannerID) {
+            guard let bannerID = completionBannerID else { return }
+            do { try await Task.sleep(for: .seconds(3)) }
+            catch { return }
+            guard completionBannerID == bannerID else { return }
+            dismissCompletionBanner()
         }
         .onReceive(minuteTimer) { date in
             referenceNow = date
@@ -881,9 +937,7 @@ struct TodayView: View {
             .accessibilityHint("Opens your completed task history")
 
             Button {
-                withAnimation(.easeOut(duration: 0.2)) {
-                    hasDismissedCompletedToday = true
-                }
+                dismissCompletionBanner()
             } label: {
                 Image(systemName: "xmark")
                     .font(.caption.weight(.semibold))
@@ -894,11 +948,13 @@ struct TodayView: View {
             .buttonStyle(.speakIt)
             .accessibilityLabel("Dismiss completed banner")
             .accessibilityHint("Hides this banner until your next completed task")
+            .accessibilityIdentifier("today.dismissCompletedBanner")
         }
         .background(
             Color.speakSurface,
             in: RoundedRectangle(cornerRadius: 17, style: .continuous)
         )
+        .accessibilityIdentifier("today.completedBanner")
         .overlay {
             RoundedRectangle(cornerRadius: 17, style: .continuous)
                 .stroke(Color.speakDivider, lineWidth: 1)
@@ -1690,7 +1746,7 @@ struct TodayView: View {
         let count = completedToday.count
         let message = count > 1 ? "Task completed · \(count) today" : "Task completed"
         let notice = CompletionUndo(item: item, message: message)
-        hasDismissedCompletedToday = false
+        presentNewCompletionBanner()
         withAnimation(.snappy(duration: 0.24)) {
             completionUndo = notice
         }
@@ -1707,6 +1763,36 @@ struct TodayView: View {
         performCompletionChange(notice.item, completed: false, offersUndo: false)
         withAnimation(.easeOut(duration: 0.18)) {
             completionUndo = nil
+        }
+    }
+
+    private func presentNewCompletionBanner() {
+        let events = completionEvents
+        let day = CompletedTodayBannerHistory.dayKey(for: referenceNow)
+        if presentedCompletionDay != day {
+            presentedCompletionEvents = "[]"
+            presentedCompletionDay = day
+        }
+        let hasNewCompletion = CompletedTodayBannerHistory.hasNewCompletion(
+            current: events, presented: presentedCompletionEvents
+        )
+        // Consume the event when shown. If the tab is left during the three
+        // seconds, rebuilding Today must not present the same completion again.
+        // Keep today's presented events even if a row is undone or archived.
+        // Restoring it is not a new completion. Reset the ledger on a new day.
+        presentedCompletionEvents = CompletedTodayBannerHistory.recording(
+            current: events, presented: presentedCompletionEvents
+        )
+        if events.isEmpty {
+            completionBannerID = nil
+        } else if hasNewCompletion {
+            completionBannerID = UUID()
+        }
+    }
+
+    private func dismissCompletionBanner() {
+        withAnimation(accessibilityReduceMotion ? nil : .easeOut(duration: 0.2)) {
+            completionBannerID = nil
         }
     }
 }

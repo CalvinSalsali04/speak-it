@@ -1,5 +1,38 @@
 # Decisions
 
+## 2026-10-12 — Build 22 list entry, explicit grouping, and completion events
+
+List entry uses a single-line field whose Done action shares the synchronous,
+repository-backed Add path. A successful save dismisses the sheet; failure
+retains its words. Native trailing swipe exposes X Remove through the same
+completion path as the circle, retaining history and immutable transcripts.
+
+The completion banner records presented item ID/completion-time pairs in a
+local, per-day preferences ledger. Dismissal, tab recreation and restoration
+of an archived item cannot replay an already-presented completion. A genuinely
+new completion gets its own three-second presentation. Memory drops the
+redundant remembered-count eyebrow.
+
+An explicit Keep as one thought answer resolves only the clause-boundary gap;
+unknown type/person/timing and pending saved-item changes remain protected.
+Existing reviewed state persists the legacy grouping answer without a schema
+change. The editor retains its opening snapshot in State and initializes empty
+date controls from the same captured instants as that snapshot; an untouched
+form no longer appears edited and disables the grouping answer. Undo organization restores the original capture without repeating the
+legacy split heuristic, and declines pending saved-item changes.
+
+Past own shopping context with a current need can form independently checkable
+products under a recognized store; future location alerts, historical needs
+and independent commands cannot borrow that proof. Coordinated course names
+under one assignment head stay one task. Untimed Remind me still asks when.
+
+Auto finish is the ordinary in-app default at the user’s request. Adaptive
+1.9/4/8-second windows and explicit Continuous protected recovery are unchanged.
+Claude Opus 5.5 supplied a bounded logic review; its suggestions were checked
+against actual synchronous save guards, structured review precedence, and the
+requested swipe-as-circle behavior. That review is not execution evidence.
+
+
 ## 2026-10-12 — Source-proved local interpretation before optional generation
 
 Complete factual notes and explicit own tasks can resolve locally only when a
@@ -5354,3 +5387,5 @@ Two new assertions tested stronger tracking contracts that their entrypoints do 
 
 
 2026-10-12 frozen28 focused result: 177 passed, one failed and two skipped (180 total). The unchanged quoted-antecedent negative exposed a real rules-path safety gap: a stop immediately inside a closing ASCII quote did not expose the subsequent unproved field request to the review guard, and ordinary extraction created a resolved Today task. Only the conservative unproved-field scan now accepts balanced quoted-stop boundaries. Positive saved-field parsing and saved-item authority stay unchanged. Twelve quotation/stop controls, reported/conditional and unclosed-quote controls, plus a real-repository regression retain the entire uncertain capture, preserve saved rows and forbid a resolved Today edit. Frozen28 corpus/Release/host and signed archive succeeded, but the safety failure prevents qualification or delivery. The next source requires its own focused/full/corpus/Release checks before the declared normal330 comparison.
+
+The integration corpus check also exposed two inherited contrast-reminder splits. A separate “but remind me” thought is now allowed only after a knowledge clause. An existing action or deadline keeps its dependent reminder on the same item, including separate due and notification dates. Independent “and”, semicolon, and sentence boundaries remain separate. Two focused regressions cover both directions.

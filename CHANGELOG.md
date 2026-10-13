@@ -5,6 +5,19 @@ Notable changes to Speak It, newest first. Build numbers are
 Entries before September 2026 were reconstructed from the commit history and
 `Docs/DECISIONS.md`, so they are summaries rather than a contemporaneous record.
 
+## Build 22 — prepared 2026-10-12
+
+- Saves list entries with keyboard Done and adds swipe-left X Remove through
+  the existing completion path, preserving original captures and history.
+- Understands a past Costco visit with a current ham, cheese and eggs need as
+  three list items; coordinated course names remain one assignment task.
+- Adds Keep as one thought to grouping review and protects unrelated missing
+  details and pending saved-item changes. Undo organization restores the original.
+- Stops the completed banner replaying on Today/Memory navigation after X or
+  its three-second expiry. Removes Memory’s remembered-count eyebrow.
+- Starts ordinary voice capture with Auto finish; Continuous remains available.
+- Carries forward the complete Build 21 source and 510,000-row local bank.
+
 ## Build 21 — prepared 2026-10-12
 
 - Resolves complete, independently proved factual notes and explicit own tasks

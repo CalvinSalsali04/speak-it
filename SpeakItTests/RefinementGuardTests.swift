@@ -9,6 +9,166 @@ import FoundationModels
 @testable import SpeakIt
 
 @MainActor
+final class Build22ListAndAssignmentTests: XCTestCase {
+    private var calendar: Calendar {
+        var value = Calendar(identifier: .gregorian)
+        value.timeZone = TimeZone(identifier: "America/Toronto")!
+        return value
+    }
+    private let reference = ISO8601DateFormatter().date(from: "2026-08-03T14:00:00Z")!
+
+    func testContrastReminderKeepsOneActionAndDistinctDeadlineNotificationFields() throws {
+        let deadlineSource = "It's due Friday but remind me Wednesday"
+        XCTAssertEqual(RuleBasedThoughtExtractor.splitClauses(deadlineSource).count, 1)
+        let deadline = ThoughtExtractionEngine.extractWithRules(deadlineSource,
+            referenceDate: reference, calendar: calendar)
+        XCTAssertEqual(deadline.items.count, 1, String(reflecting: deadline))
+        let item = try XCTUnwrap(deadline.items.first)
+        XCTAssertEqual(item.organization.dueDate,
+            ISO8601DateFormatter().date(from: "2026-08-07T04:00:00Z"))
+        XCTAssertEqual(item.organization.reminderDate,
+            ISO8601DateFormatter().date(from: "2026-08-05T13:00:00Z"))
+        XCTAssertEqual(item.organization.reminderDelivery, .notification)
+        XCTAssertEqual(item.organization.temporalIntent.day,
+            CalendarDay(year: 2026, month: 8, day: 7))
+        XCTAssertEqual(item.rawQuote, deadlineSource)
+
+        let actionSource = "Finish the report but remind me to email Sam first"
+        XCTAssertEqual(RuleBasedThoughtExtractor.splitClauses(actionSource).count, 1)
+        let action = ThoughtExtractionEngine.extractWithRules(actionSource,
+            referenceDate: reference, calendar: calendar)
+        XCTAssertEqual(action.items.count, 1, String(reflecting: action))
+        let kept = try XCTUnwrap(action.items.first)
+        let title = ThoughtTitleFormatter.polished(kept.suggestedTitle ?? kept.sourceQuote,
+            itemType: kept.organization.itemType, personName: kept.organization.personName)
+        XCTAssertEqual(title, "Finish the report")
+        XCTAssertTrue(kept.organization.itemType.isActionable)
+        XCTAssertEqual(kept.rawQuote, actionSource)
+        XCTAssertTrue(kept.sourceQuote.contains("email Sam first"))
+        XCTAssertNil(kept.organization.reminderDate)
+    }
+
+    func testKnowledgeContrastAndExplicitIndependentRemindersKeepSeparateRows() throws {
+        let fact = "The cleaner has already taken the rugs, but remind me tomorrow to ask when they will be ready."
+        let factResult = ThoughtExtractionEngine.extractWithRules(fact,
+            referenceDate: reference, calendar: calendar)
+        XCTAssertEqual(factResult.items.count, 2, String(reflecting: factResult))
+        let memory = try XCTUnwrap(factResult.items.first { $0.organization.itemType == .note })
+        XCTAssertTrue(memory.sourceQuote.contains("cleaner has already taken the rugs"))
+        XCTAssertNil(memory.organization.dueDate)
+        XCTAssertNil(memory.organization.reminderDate)
+        let reminder = try XCTUnwrap(factResult.items.first { $0.organization.itemType.isActionable })
+        XCTAssertEqual(reminder.organization.temporalIntent.day,
+            CalendarDay(year: 2026, month: 8, day: 4))
+        XCTAssertNotNil(reminder.organization.reminderDate)
+
+        for source in [
+            "Finish the report and remind me tomorrow at 5 PM to call Nora.",
+            "Finish the report; remind me tomorrow at 5 PM to call Nora.",
+            "Finish the report. Remind me tomorrow at 5 PM to call Nora."
+        ] {
+            let result = ThoughtExtractionEngine.extractWithRules(source,
+                referenceDate: reference, calendar: calendar)
+            XCTAssertEqual(result.items.count, 2, source + "\n" + String(reflecting: result))
+            XCTAssertTrue(result.items.contains { $0.analysisText.localizedCaseInsensitiveContains("finish the report") })
+            let separate = try XCTUnwrap(result.items.first {
+                $0.analysisText.localizedCaseInsensitiveContains("call Nora")
+            }, source)
+            XCTAssertEqual(separate.organization.reminderDate,
+                ISO8601DateFormatter().date(from: "2026-08-04T21:00:00Z"), source)
+            XCTAssertTrue(separate.organization.itemType.isActionable)
+        }
+    }
+
+    func testPastShoppingTripWithCurrentNeedCreatesIndependentCostcoProductsWithoutLocationAlert() throws {
+        let source = "When I got to Costco I need ham, cheese and eggs."
+        let rules = RuleBasedThoughtExtractor.process(source, referenceDate: reference, calendar: calendar)
+        let result = ThoughtExtractionEngine.extractWithRules(source, referenceDate: reference, calendar: calendar)
+        XCTAssertTrue(rules.operations.isEmpty)
+        XCTAssertEqual(result.items, rules.items)
+        XCTAssertEqual(result.items.count, 3, String(reflecting: result))
+        XCTAssertEqual(result.items.map(\.sourceQuote), ["ham", "cheese", "eggs"])
+        XCTAssertTrue(result.items.allSatisfy { $0.shoppingGroup == "Costco"
+            && $0.organization.itemType == .shopping && !$0.needsReview
+            && $0.organization.locationIntent == nil && $0.organization.reminderDate == nil
+            && $0.organization.dueDate == nil && $0.organization.reminderDelivery == .none
+            && $0.rawQuote == source })
+        let ids = result.items.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) }
+        XCTAssertEqual(ids, Set(SourceUnitLedger(source).words.indices))
+        XCTAssertEqual(result.items.reduce(0) { $0 + $1.sourceUnitIDs.count }, ids.count)
+        XCTAssertEqual(RuntimeCompleteLiteralCertificate.interpret(source,
+            referenceDate: reference, calendar: calendar,
+            rules: .init(items: rules.items, operations: rules.operations, method: .rules)), result)
+    }
+
+    func testPastShoppingContextProofDeclinesFutureHistoryForeignAndIndependentAction() {
+        for source in [
+            "When I get to Costco I need ham, cheese and eggs.",
+            "When I got to Costco I needed ham, cheese and eggs.",
+            "When Maya got to Costco she needs ham, cheese and eggs.",
+            "When I got to Costco I need ham, cheese and eggs, and call Nora.",
+            "When I got to Costco remind me to buy ham, cheese and eggs."
+        ] {
+            XCTAssertNil(RuleBasedThoughtExtractor.pastTripShoppingPlan(source,
+                referenceDate: reference, calendar: calendar), source)
+        }
+        let otherStore = "When we arrived at Sobeys, we need milk, bread and eggs."
+        let result = ThoughtExtractionEngine.extractWithRules(otherStore, referenceDate: reference, calendar: calendar)
+        XCTAssertEqual(result.items.count, 3, String(reflecting: result))
+        XCTAssertTrue(result.items.allSatisfy { $0.shoppingGroup == "Sobeys"
+            && $0.organization.locationIntent == nil && $0.rawQuote == otherStore })
+    }
+
+    func testSharedCourseNamesStayOneAssignmentAndUntimedReminderKeepsOnlyTimingQuestion() throws {
+        let source = "Remind me to complete my scientific computation and real time systems assignment."
+        XCTAssertEqual(RuleBasedThoughtExtractor.splitClauses(source).count, 1)
+        let result = ThoughtExtractionEngine.extractWithRules(source, referenceDate: reference, calendar: calendar)
+        XCTAssertEqual(result.items.count, 1, String(reflecting: result))
+        let item = try XCTUnwrap(result.items.first)
+        XCTAssertEqual(item.organization.itemType, .task)
+        XCTAssertEqual(item.rawQuote, source)
+        XCTAssertTrue(item.analysisText.localizedCaseInsensitiveContains("scientific computation and real time systems assignment"))
+        XCTAssertNil(item.organization.locationIntent)
+        XCTAssertNil(item.organization.reminderDate)
+        XCTAssertNil(item.organization.dueDate)
+        XCTAssertTrue(item.organization.needsClarification,
+            "The requested alert still needs a trigger; course-name coordination does not supply one")
+        XCTAssertNotEqual(item.organization.state.gap, .uncertainClauseBoundary)
+    }
+
+    func testSharedAssignmentWithExplicitTimeResolvesAndIndependentCommandStillSplits() throws {
+        let source = "Remind me tomorrow at 5 PM to complete my scientific computation and real time systems assignment."
+        let result = ThoughtExtractionEngine.extractWithRules(source, referenceDate: reference, calendar: calendar)
+        XCTAssertEqual(result.items.count, 1, String(reflecting: result))
+        let item = try XCTUnwrap(result.items.first)
+        XCTAssertEqual(item.organization.itemType, .task)
+        XCTAssertFalse(item.needsReview)
+        XCTAssertFalse(item.organization.needsClarification)
+        XCTAssertEqual(item.organization.reminderDate,
+            ISO8601DateFormatter().date(from: "2026-08-04T21:00:00Z"))
+        XCTAssertTrue(item.analysisText.localizedCaseInsensitiveContains("scientific computation and real time systems assignment"))
+        let independent = "Remind me tomorrow at 5 PM to complete my scientific computation assignment and call Nora."
+        let separate = ThoughtExtractionEngine.extractWithRules(independent, referenceDate: reference, calendar: calendar)
+        XCTAssertEqual(separate.items.count, 2, String(reflecting: separate))
+        XCTAssertTrue(separate.items.contains { $0.analysisText.localizedCaseInsensitiveContains("complete my scientific computation assignment") })
+        XCTAssertTrue(separate.items.contains { $0.analysisText.localizedCaseInsensitiveContains("call Nora") })
+    }
+
+    func testActualFutureLocationReminderKeepsOneLocationIntentAndUnreadablePlaceStaysHeld() throws {
+        let source = "When I get to Costco, remind me to buy ham, cheese and eggs."
+        let result = ThoughtExtractionEngine.extractWithRules(source, referenceDate: reference, calendar: calendar)
+        XCTAssertEqual(result.items.count, 1, String(reflecting: result))
+        XCTAssertNotNil(result.items.first?.organization.locationIntent)
+        XCTAssertNil(result.items.first?.organization.reminderDate)
+        let incomplete = "Remind me to buy ham, cheese and eggs when I get to."
+        let held = ThoughtExtractionEngine.extractWithRules(incomplete, referenceDate: reference, calendar: calendar)
+        XCTAssertEqual(held.items.count, 1, String(reflecting: held))
+        XCTAssertTrue(held.items.first?.needsReview == true)
+        XCTAssertNil(held.items.first?.organization.reminderDate)
+    }
+}
+
+@MainActor
 final class CompleteLiteralSourceCertificateTests: XCTestCase {
     private var calendar: Calendar {
         var value = Calendar(identifier: .gregorian)

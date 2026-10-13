@@ -461,6 +461,13 @@ struct RootView: View {
                 )
             }
             if ProcessInfo.processInfo.arguments.contains("--ui-testing"),
+               ProcessInfo.processInfo.arguments.contains("--load-split-review-qa"),
+               let repository = repository as? SwiftDataThoughtRepository,
+               !UserDefaults.standard.bool(forKey: "SpeakIt.hasLoadedSplitReviewQA") {
+                try? repository.seedSplitDecisionQA()
+                UserDefaults.standard.set(true, forKey: "SpeakIt.hasLoadedSplitReviewQA")
+            }
+            if ProcessInfo.processInfo.arguments.contains("--ui-testing"),
                ProcessInfo.processInfo.arguments.contains("--load-runtime-review-qa"),
                let repository = repository as? SwiftDataThoughtRepository,
                !UserDefaults.standard.bool(forKey: "SpeakIt.hasLoadedRuntimeReviewQA") {

@@ -490,10 +490,11 @@ final class CapturedItem: Identifiable {
     /// True when this item still carries its capture's entire transcript and that
     /// transcript reads like it holds more than one intention. Extraction keeps a
     /// capture whole when splitting it would be unsafe (negation, reported speech,
-    /// destructive phrasing) and when the person undoes an organization, and both
-    /// land here.
+    /// destructive phrasing). An explicit grouping decision closes that question.
     private var holdsWholeUnsplitTranscript: Bool {
-        guard let session = captureSession, session.items.count == 1 else { return false }
+        // A user-confirmed grouping is durable. Other recorded gaps still
+        // take priority above; reviewing one thought does not answer them.
+        guard !isReviewed, let session = captureSession, session.items.count == 1 else { return false }
         let transcript = session.originalTranscription.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !transcript.isEmpty,
               originalTextSegment.trimmingCharacters(in: .whitespacesAndNewlines) == transcript else {

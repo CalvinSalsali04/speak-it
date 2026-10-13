@@ -2530,6 +2530,17 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         try persistChanges()
     }
 
+    func seedSplitDecisionQA() throws {
+        let original = "A quiet room and a window over the garden."
+        let session = CaptureSession(originalTranscription: original, captureSource: .sample, processingStatus: .complete)
+        let item = CapturedItem(originalTextSegment: original, displayTitle: "Room and garden window",
+            itemType: .note, needsClarification: true,
+            semanticState: .contested(.uncertainClauseBoundary), captureSession: session)
+        modelContext.insert(session)
+        modelContext.insert(item)
+        try persistChanges()
+    }
+
     func seedRuntimeClarificationQA() throws {
         let clock = Date.now; var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = .autoupdatingCurrent
@@ -2794,6 +2805,33 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         }
     }
 
+    func keepAsOneThought(_ item: CapturedItem) throws {
+        let operation = CaptureOperationState.read(from: item.captureSession?.operationStateData)
+        guard PendingOperationStore.record(for: item.id) == nil,
+              !(operation?.phase == .pendingChoice
+                && (operation?.reviewItemID == nil || operation?.reviewItemID == item.id)) else {
+            throw RepositoryError.saveFailed("Confirm or decline the saved change separately.")
+        }
+        guard item.clarificationRequirement == .splitDecision else {
+            throw RepositoryError.saveFailed("This item needs a different answer before it can leave review.")
+        }
+
+        let recordedSplit = item.semanticState?.gap == .uncertainClauseBoundary
+        if recordedSplit { item.semanticState = .resolved }
+        item.isReviewed = true
+        // Grouping says nothing about an unknown destination or recipient.
+        // A legacy row has only one review Bool; do not assume that its missing
+        // time was answered just because the broad split heuristic came first.
+        let missingPerson = item.itemType == .personFollowUp
+            && item.personName?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false
+        item.needsClarification = item.itemType == .unclear || missingPerson
+            || (!recordedSplit && item.itemType.isActionable && item.reminderDate == nil)
+        item.lastModifiedAt = .now
+        try persistChanges()
+        // This decision never reparses the words, changes timing, or requests
+        // notification permission. Original capture and sibling rows stay put.
+    }
+
     func split(_ item: CapturedItem, into parts: [String]) throws {
         let normalizedParts = parts
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -2913,8 +2951,13 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     }
 
     func undoOrganization(_ session: CaptureSession) throws {
-        guard CaptureOperationState.read(from: session.operationStateData)?.phase != .performed else {
+        let operation = CaptureOperationState.read(from: session.operationStateData)
+        guard operation?.phase != .performed else {
             throw RepositoryError.saveFailed("This capture records a saved change. Edit the saved item to change it again.")
+        }
+        guard operation?.phase != .pendingChoice,
+              session.items.allSatisfy({ PendingOperationStore.record(for: $0.id) == nil }) else {
+            throw RepositoryError.saveFailed("Confirm or decline the saved change before undoing organization.")
         }
         let previousRecurrences = RecurrenceStore.snapshots()
         ensureFallbackItem(for: session)
@@ -2947,7 +2990,10 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             ),
             to: target,
             createdAt: session.createdAt,
-            reviewed: false
+            // Undo is an explicit grouping decision, not another request for
+            // the splitter to reconsider the same transcript. Type stays
+            // unclear and review stays on until the person chooses a purpose.
+            reviewed: true
         )
         let removedIDs = removed.map(\.id)
         removed.forEach(modelContext.delete)

@@ -113,7 +113,7 @@ struct ItemEditorView: View {
         let needsClarification: Bool
         let locationIntent: LocationIntent?
     }
-    private let openingValues: OpeningValues
+    @State private var openingValues: OpeningValues
 
     /// True once anything on the form differs from how it opened.
     ///
@@ -159,11 +159,13 @@ struct ItemEditorView: View {
         _itemType = State(initialValue: item.itemType)
         _category = State(initialValue: item.category)
         _priority = State(initialValue: item.priority)
+        let initialDueDate = item.dueDate ?? .now
+        let initialReminderDate = item.reminderDate ?? initialDueDate
         _hasDueDate = State(initialValue: item.dueDate != nil)
-        _dueDate = State(initialValue: item.dueDate ?? .now)
+        _dueDate = State(initialValue: initialDueDate)
         _dueDateHasTime = State(initialValue: !item.isDateOnly)
         _hasReminder = State(initialValue: item.reminderDate != nil)
-        _reminderDate = State(initialValue: item.reminderDate ?? item.dueDate ?? .now)
+        _reminderDate = State(initialValue: initialReminderDate)
         let recurrence = RecurrenceStore.rule(for: item.id)
         _repeats = State(initialValue: recurrence != nil)
         _recurrenceFrequency = State(initialValue: recurrence?.frequency ?? .weekly)
@@ -171,16 +173,16 @@ struct ItemEditorView: View {
         _recurrenceAfterCompletion = State(initialValue: recurrence?.anchor == .completionDate)
         _personName = State(initialValue: item.personName ?? "")
         _needsClarification = State(initialValue: item.needsClarification)
-        openingValues = OpeningValues(
+        _openingValues = State(initialValue: OpeningValues(
             title: item.displayTitle,
             itemType: item.itemType,
             category: item.category,
             priority: item.priority,
             hasDueDate: item.dueDate != nil,
-            dueDate: item.dueDate ?? .now,
+            dueDate: initialDueDate,
             dueDateHasTime: !item.isDateOnly,
             hasReminder: item.reminderDate != nil,
-            reminderDate: item.reminderDate ?? item.dueDate ?? .now,
+            reminderDate: initialReminderDate,
             repeats: recurrence != nil,
             recurrenceFrequency: recurrence?.frequency ?? .weekly,
             recurrenceInterval: recurrence?.interval ?? 1,
@@ -188,7 +190,7 @@ struct ItemEditorView: View {
             personName: item.personName ?? "",
             needsClarification: item.needsClarification,
             locationIntent: item.locationIntent
-        )
+        ))
     }
 
     var body: some View {
@@ -360,6 +362,25 @@ struct ItemEditorView: View {
                             Button(confirmation) { confirmedRequiredValue = true }
                                 .frame(minHeight: 44)
                                 .accessibilityIdentifier("editor.confirmRequiredValue")
+                        }
+                        if requirement == .splitDecision {
+                            Button("Keep as one thought") {
+                                perform(dismissAfterward: true) {
+                                    guard let repository else {
+                                        throw RepositoryError.saveFailed("Local storage is unavailable.")
+                                    }
+                                    try repository.keepAsOneThought(item)
+                                }
+                            }
+                            .frame(minHeight: 44)
+                            .disabled(hasUnsavedChanges)
+                            .accessibilityHint("Confirms only that these words belong together. Other review requirements stay saved.")
+                            .accessibilityIdentifier("editor.keepAsOneThought")
+                            if hasUnsavedChanges {
+                                Text("Save your edits before confirming this is one thought.")
+                                    .font(.footnote)
+                                    .foregroundStyle(.secondary)
+                            }
                         }
                         if !isRequirementResolved, requirement.editorField == .locationTrigger
                             || requirement.editorField == .combinedTimeAndPlace {

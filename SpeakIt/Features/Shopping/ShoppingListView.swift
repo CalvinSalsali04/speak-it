@@ -100,6 +100,8 @@ struct ShoppingListView: View {
     @State private var collapsedGroups: Set<String> = []
     @State private var addTarget: AddTarget?
     @State private var newEntryText = ""
+    @State private var addErrorMessage: String?
+    @FocusState private var isNewEntryFocused: Bool
     @State private var showsProGate = false
     @State private var hasInitializedCollapse = false
 
@@ -287,6 +289,7 @@ struct ShoppingListView: View {
             return
         }
         newEntryText = ""
+        addErrorMessage = nil
         addTarget = AddTarget(group: group)
     }
 
@@ -294,9 +297,11 @@ struct ShoppingListView: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Milk, eggs, cheese", text: $newEntryText, axis: .vertical)
+                    TextField("Milk, eggs, cheese", text: $newEntryText)
                         .font(SpeakItTypography.itemTitle)
+                        .focused($isNewEntryFocused)
                         .submitLabel(.done)
+                        .onSubmit { commitNewEntries(to: group) }
                         .accessibilityIdentifier("list.addField")
                 } footer: {
                     Text("Separate items with commas. Tap the microphone on the keyboard to speak them.")
@@ -306,7 +311,10 @@ struct ShoppingListView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { addTarget = nil }
+                    Button("Cancel") {
+                        isNewEntryFocused = false
+                        addTarget = nil
+                    }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Add") { commitNewEntries(to: group) }
@@ -316,6 +324,7 @@ struct ShoppingListView: View {
             }
         }
         .presentationDetents([.height(230), .medium])
+        .repositoryErrorAlert($addErrorMessage)
     }
 
     private var parsedEntries: [String] {
@@ -326,8 +335,10 @@ struct ShoppingListView: View {
     }
 
     private func commitNewEntries(to group: String) {
+        // A queued keyboard submit must not save the same dismissed sheet twice.
+        guard addTarget?.group == group else { return }
         guard let repository else {
-            errorMessage = "Local storage is unavailable."
+            addErrorMessage = "Local storage is unavailable."
             return
         }
         let entries = parsedEntries
@@ -342,10 +353,12 @@ struct ShoppingListView: View {
                 needsReviewCount: 0,
                 plan: subscriptionStore.hasProAccess ? .pro : .free
             ))
+            isNewEntryFocused = false
             addTarget = nil
             collapsedGroups.remove(group)
         } catch {
-            errorMessage = error.localizedDescription
+            // Keep the sheet and its words available for another save attempt.
+            addErrorMessage = error.localizedDescription
         }
     }
 
@@ -392,6 +405,7 @@ struct ShoppingListView: View {
             }
             .buttonStyle(.speakIt)
             .accessibilityLabel("Complete \(item.displayTitle)")
+            .accessibilityHint("Marks this item complete and removes it from this list")
             .accessibilityIdentifier("list.complete.\(item.displayTitle)")
 
             Button { selectedItem = item } label: {
@@ -413,9 +427,20 @@ struct ShoppingListView: View {
             }
             .buttonStyle(.speakIt)
             .accessibilityLabel("Edit \(item.displayTitle)")
+            .accessibilityHint("Swipe left to remove this item from the list")
+            .accessibilityAction(named: Text("Remove from list")) { complete(item) }
             .accessibilityIdentifier("list.item.\(item.displayTitle)")
         }
         .padding(.vertical, 6)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button { complete(item) } label: {
+                Label("Remove", systemImage: "xmark")
+            }
+            .tint(Color.speakWarning)
+            .accessibilityLabel("Remove \(item.displayTitle) from list")
+            .accessibilityHint("Marks this item complete and keeps the original capture")
+            .accessibilityIdentifier("list.remove.\(item.displayTitle)")
+        }
         .listRowInsets(EdgeInsets(top: 0, leading: 14, bottom: 0, trailing: 18))
         .listRowSeparatorTint(Color.speakDivider)
         .listRowBackground(Color.speakBackground)

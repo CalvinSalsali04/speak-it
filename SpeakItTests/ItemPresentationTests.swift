@@ -553,3 +553,55 @@ final class ItemPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.formattedTimingText, presentation.primaryTimingText)
     }
 }
+
+
+@MainActor
+final class CompletedTodayBannerHistoryTests: XCTestCase {
+    func testPresentedCompletionDoesNotReplayAfterDestinationRecreation() {
+        let first = CompletedTodayBannerHistory.eventID(itemID: UUID(), completedAt: Date(timeIntervalSince1970: 100))
+        XCTAssertTrue(CompletedTodayBannerHistory.hasNewCompletion(current: [first], presented: "[]"))
+        let stored = CompletedTodayBannerHistory.encode([first])
+        XCTAssertFalse(CompletedTodayBannerHistory.hasNewCompletion(current: [first], presented: stored))
+    }
+
+    func testNewCompletionShowsEvenWhenCountStaysTheSame() {
+        let itemID = UUID()
+        let first = CompletedTodayBannerHistory.eventID(itemID: itemID, completedAt: Date(timeIntervalSince1970: 100))
+        let redone = CompletedTodayBannerHistory.eventID(itemID: itemID, completedAt: Date(timeIntervalSince1970: 101))
+        XCTAssertTrue(CompletedTodayBannerHistory.hasNewCompletion(current: [redone], presented: CompletedTodayBannerHistory.encode([first])))
+    }
+
+    func testUndoAndEmptyHistoryDoNotCreateCompletionEvents() {
+        let first = CompletedTodayBannerHistory.eventID(itemID: UUID(), completedAt: Date(timeIntervalSince1970: 100))
+        let second = CompletedTodayBannerHistory.eventID(itemID: UUID(), completedAt: Date(timeIntervalSince1970: 101))
+        let stored = CompletedTodayBannerHistory.encode([first, second])
+        XCTAssertFalse(CompletedTodayBannerHistory.hasNewCompletion(current: [first], presented: stored))
+        XCTAssertFalse(CompletedTodayBannerHistory.hasNewCompletion(current: [], presented: stored))
+    }
+
+    func testRestoringAnArchivedCompletionDoesNotReplayTheBanner() {
+        let event = CompletedTodayBannerHistory.eventID(itemID: UUID(), completedAt: Date(timeIntervalSince1970: 100))
+        let shown = CompletedTodayBannerHistory.recording(current: [event], presented: "[]")
+        let archived = CompletedTodayBannerHistory.recording(current: [], presented: shown)
+        XCTAssertFalse(CompletedTodayBannerHistory.hasNewCompletion(current: [event], presented: archived))
+    }
+
+    func testSameCalendarDateDoesNotResetPresentedEventsWhenTimeZoneChanges() {
+        let date = ISO8601DateFormatter().date(from: "2026-10-12T20:00:00Z")!
+        var toronto = Calendar(identifier: .gregorian)
+        toronto.timeZone = TimeZone(identifier: "America/Toronto")!
+        var vancouver = toronto
+        vancouver.timeZone = TimeZone(identifier: "America/Vancouver")!
+        XCTAssertEqual(CompletedTodayBannerHistory.dayKey(for: date, calendar: toronto),
+                       CompletedTodayBannerHistory.dayKey(for: date, calendar: vancouver))
+        XCTAssertNotEqual(CompletedTodayBannerHistory.dayKey(for: date, calendar: toronto),
+                          CompletedTodayBannerHistory.dayKey(for: date.addingTimeInterval(86_400), calendar: toronto))
+    }
+
+    func testDistinctTasksWithSameTimestampAreDistinctEvents() {
+        let date = Date(timeIntervalSince1970: 100)
+        let first = CompletedTodayBannerHistory.eventID(itemID: UUID(), completedAt: date)
+        let second = CompletedTodayBannerHistory.eventID(itemID: UUID(), completedAt: date)
+        XCTAssertTrue(CompletedTodayBannerHistory.hasNewCompletion(current: [first, second], presented: CompletedTodayBannerHistory.encode([first])))
+    }
+}

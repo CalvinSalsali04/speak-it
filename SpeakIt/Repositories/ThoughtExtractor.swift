@@ -2579,6 +2579,11 @@ enum RuleBasedThoughtExtractor {
         let normalized = normalize(transcript)
         guard !normalized.isEmpty else { return ([], []) }
 
+        if let shopping = pastTripShoppingPlan(transcript,
+            referenceDate: referenceDate, calendar: calendar) {
+            return (shopping.items, shopping.operations)
+        }
+
         // Bind a nominal task's status before partitioning can detach it
         // and apply it to an older saved row. A proved status closes only its
         // own task; an unproved status keeps that exact prefix for review.
@@ -10176,6 +10181,54 @@ enum RuleBasedThoughtExtractor {
         )
     }
 
+    /// A complete past shopping-trip adjunct followed by a CURRENT product
+    /// need names a shopping list, not future place monitoring. Normal rules
+    /// and source certification recompute this same bounded whole-source plan.
+    static func pastTripShoppingPlan(_ source: String, referenceDate: Date,
+                                     calendar: Calendar) -> ThoughtExtractionResult? {
+        guard !Task.isCancelled, source.count <= 2_000 else { return nil }
+        let normalized = normalize(source)
+        guard let trip = pastTripShoppingContext(in: normalized) else { return nil }
+        let organization = ThoughtOrganizer.organize(trip.body,
+            referenceDate: referenceDate, calendar: calendar)
+        guard organization.itemType == .shopping, !organization.needsClarification,
+              organization.state == .resolved, organization.dueDate == nil,
+              organization.reminderDate == nil, organization.reminderDelivery == .none,
+              organization.recurrenceRule == nil, organization.locationIntent == nil else { return nil }
+        let parent = ExtractedThought(sourceQuote: normalized, rawQuote: source,
+            wasRepaired: normalized != source, analysisText: trip.body, suggestedTitle: nil,
+            organization: organization, confidence: 1, needsReview: false,
+            sourceUnitIDs: Set(SourceUnitLedger(normalized).words.indices),
+            shoppingGroup: trip.store)
+        let items = shapingShoppingLists([parent], capture: normalized,
+            sourceForOwnership: normalized, rawCapture: source)
+        guard items.count > 1, items.allSatisfy({ $0.organization.itemType == .shopping }) else { return nil }
+        return .init(items: items, method: .rules)
+    }
+
+    /// Whole-source past arrival + present own shopping need. The destination
+    /// is only a list name: a future arrival, reminder request, history-only
+    /// need, foreign speaker, or any residual non-product content declines.
+    private static func pastTripShoppingContext(in source: String) -> (body: String, store: String)? {
+        guard source.count <= 2_000, QuotedSpeechScope.ranges(in: source).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(source),
+              let regex = NSRegularExpression.speakItCached(
+                #"(?i)^\s*when\s+(?:i|we)\s+(?:got\s+to|arrived\s+at|went\s+to)\s+([\p{L}\p{M}][\p{L}\p{M}'’&. -]{0,79}?)\s*,?\s+((?:i|we)\s+need\s+(.+?))[.!?]*\s*$"#),
+              let match = regex.firstMatch(in: source, range: NSRange(source.startIndex..., in: source)),
+              let placeRange = Range(match.range(at: 1), in: source),
+              let bodyRange = Range(match.range(at: 2), in: source),
+              let productsRange = Range(match.range(at: 3), in: source) else { return nil }
+        let place = normalize(String(source[placeRange]))
+        let products = normalize(String(source[productsRange]))
+            .trimmingCharacters(in: CharacterSet(charactersIn: ".!?"))
+        guard let store = ShoppingGroupParser.storeName(in: "go to " + place),
+              store.caseInsensitiveCompare(place) == .orderedSame,
+              let entries = ShoppingGroupParser.recognizedProducts(in: products),
+              entries.count > 1,
+              ShoppingGroupParser.namesOnlyProducts(products) else { return nil }
+        return (normalize(String(source[bodyRange])).trimmingCharacters(in: CharacterSet(charactersIn: ".!?")), store)
+    }
+
     /// Names the list each shopping row belongs on, and folds a bare
     /// "go to Costco" companion clause into that name.
     ///
@@ -10216,6 +10269,7 @@ enum RuleBasedThoughtExtractor {
             result[index].shoppingGroup = ShoppingGroupParser.storeName(
                 in: items[index].rawQuote
             ) ?? ShoppingGroupParser.storeName(in: items[index].sourceQuote)
+                ?? pastTripShoppingContext(in: items[index].rawQuote)?.store
                 ?? defaultGroup
         }
 
@@ -12236,11 +12290,14 @@ enum RuleBasedThoughtExtractor {
                         of: #"(?i)^(?:i|we)\s+(?:will|should|must|need\s+to|have\s+to|am\s+going\s+to|are\s+going\s+to)\b"#,
                         options: .regularExpression
                     ) != nil
-                    // A current reminder speech act can follow a completed
-                    // fact just as a first-person modal can. Its own matrix
-                    // supplies the obligation; the preceding history is not
-                    // the action to title or schedule. Report, quotation and
-                    // denied-complement guards above still own their tails.
+                    // A current reminder speech act can follow independent
+                    // knowledge. Do not extend that split to an existing
+                    // action or deadline: "finish the report but remind me
+                    // Wednesday" supplies that item's reminder clause, whose
+                    // timing the organizer reads separately from its due date.
+                    // An ambiguous head also grants no independent fact proof.
+                    // Report, quotation and denied-complement guards above
+                    // still own their tails.
                     let reminderAct = ClauseScope.read(tail).act
                     let explicitReminder = tail.range(
                         of: #"(?i)^(?:please\s+)?remind\s+me\b"#,
@@ -12248,6 +12305,7 @@ enum RuleBasedThoughtExtractor {
                         && (reminderAct == .direct || reminderAct == .reminding)
                         && ReminderPhrasing.requestsReminder(tail)
                         && ActionabilityReader.read(tail).belongsOnToday
+                        && ActionabilityReader.read(head) == .knowledge
                     let unresolvedSelection = ActionabilityReader.SelectionState
                         .read(head.lowercased()) == .unresolved
                     let unadoptedAction = ActionabilityReader.isUnadoptedAction(head)
@@ -12613,6 +12671,31 @@ enum RuleBasedThoughtExtractor {
         return clauses.isEmpty ? [part] : clauses
     }
 
+    /// Two coordinated modifiers can share one explicitly singular work
+    /// object: "complete my X and Y assignment" names one deliverable. The
+    /// head is spoken once, at the end; a repeated head, command, subject,
+    /// trigger, negation or extra clause keeps ordinary independent parsing.
+    private static func sharesSingularWorkObject(left: String, right: String) -> Bool {
+        let action = ActionabilityReader.actionBody(left)
+        let heads = #"(?:assignment|essay|report|project|presentation|document|exam)"#
+        guard let prefix = NSRegularExpression.speakItCached(
+                #"(?i)^(?:complete|finish|submit|hand\s+in|prepare|write|edit|review)\s+(?:my|our|the|a|an)\s+([\p{L}\p{M}'’ -]+)$"#),
+              let first = prefix.firstMatch(in: action, range: NSRange(action.startIndex..., in: action)),
+              let leftRange = Range(first.range(at: 1), in: action),
+              let suffix = NSRegularExpression.speakItCached(
+                #"(?i)^([\p{L}\p{M}'’ -]+?)\s+"# + heads + #"[.!?]*$"#),
+              let last = suffix.firstMatch(in: right, range: NSRange(right.startIndex..., in: right)),
+              let rightRange = Range(last.range(at: 1), in: right) else { return false }
+        let blocked = #"(?i)\b(?:i|we|you|he|she|they|it|my|our|your|his|her|their|the|a|an|is|are|was|were|has|have|had|will|must|should|can|could|would|need|needs|to|for|from|with|at|on|in|by|if|unless|when|once|before|after|until|because|and|or|but|then|also|plus|not|no|never|today|tomorrow|tonight|remind|notify|alert|"#
+            + ActionabilityReader.actionVerb + "|" + ActionabilityReader.headOnlyImperativeVerb
+            + "|" + heads + #")\b"#
+        return [String(action[leftRange]), String(right[rightRange])].allSatisfy { modifier in
+            let words = modifier.split(whereSeparator: \.isWhitespace)
+            return (1...6).contains(words.count)
+                && modifier.range(of: blocked, options: .regularExpression) == nil
+        }
+    }
+
     /// True when a conjunct stands on its own rather than extending a list.
     ///
     /// Takes spans into a `SentenceContext` rather than two loose strings, so
@@ -12634,6 +12717,7 @@ enum RuleBasedThoughtExtractor {
         }
         let left = normalize(String(context.text[leftRange]))
         guard !trimmed.isEmpty, !left.isEmpty else { return false }
+        if sharesSingularWorkObject(left: left, right: trimmed) { return false }
         if let aside = trimmed.range(of: #"(?i)\s+(?:i\s+(?:guess|suppose|think)|perhaps|maybe)[.!?]*$"#,
                                      options: .regularExpression),
            left.range(of: #"(?i)\b(?:with|between|for|from|to)\s+[\p{L}'’-]+(?:\s+[\p{L}'’-]+)?$"#,
@@ -16006,6 +16090,10 @@ enum RuntimeCompleteLiteralCertificate {
     static func interpret(_ source: String, referenceDate: Date, calendar: Calendar,
                           rules: ThoughtExtractionResult? = nil) -> ThoughtExtractionResult? {
         if let corrected = calendarRepair(source, referenceDate: referenceDate, calendar: calendar) { return corrected }
+        if let shopping = RuleBasedThoughtExtractor.pastTripShoppingPlan(source,
+            referenceDate: referenceDate, calendar: calendar), rules == nil || rules == shopping {
+            return shopping
+        }
         guard !Task.isCancelled, !source.isEmpty, source.count <= 12_000,
               source.range(of: repair, options: .regularExpression) == nil,
               // Honorific/place abbreviations require the established rules
