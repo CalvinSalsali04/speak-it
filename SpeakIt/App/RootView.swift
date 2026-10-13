@@ -711,6 +711,7 @@ struct RootView: View {
             HStack(spacing: 6) {
                 Text(title)
                     .font(.subheadline.weight(.medium))
+                    .lineLimit(1)
 
                 if let badgeCount, badgeCount > 0 {
                     Text(badgeCount > 99 ? "99+" : "\(badgeCount)")
@@ -722,6 +723,10 @@ struct RootView: View {
                         .accessibilityHidden(true)
                 }
             }
+            // Compact navigation labels must remain readable without turning
+            // the dock into a panel that covers half the capture/list screen.
+            // Content elsewhere still follows the person's full text size.
+            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
             .foregroundStyle(
                 selectedDestination == destination ? Color.speakInk : Color.speakMuted
             )

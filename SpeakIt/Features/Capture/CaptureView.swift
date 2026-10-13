@@ -483,7 +483,7 @@ struct CaptureView: View {
 
     @ViewBuilder
     private var voiceView: some View {
-        if tutorialMission != nil {
+        if tutorialMission != nil || dynamicTypeSize.isAccessibilitySize {
             ScrollView {
                 voiceContent
             }
@@ -623,7 +623,7 @@ struct CaptureView: View {
 
     @ViewBuilder
     private var typingView: some View {
-        if tutorialMission != nil {
+        if tutorialMission != nil || dynamicTypeSize.isAccessibilitySize {
             ScrollView {
                 typingContent
             }

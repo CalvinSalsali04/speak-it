@@ -288,6 +288,124 @@ final class SpeakItUITests: XCTestCase {
         XCTAssertFalse(item.waitForExistence(timeout: 3))
     }
 
+    func testSharedShoppingDetailsAndCaptureScopedExclusionsRemainUsable() {
+        for arguments in [
+            ["--ui-testing-skip-welcome", "-SpeakIt.appearance", "light"],
+            ["--ui-testing-skip-welcome", "-SpeakIt.appearance", "dark", "--ui-testing-dynamic-type-axxxl"]
+        ] {
+            let app = launchAppForShoppingDetail(arguments)
+            XCTAssertLessThanOrEqual(app.buttons["dock.today"].frame.height, 80)
+            XCTAssertLessThanOrEqual(app.buttons["dock.memory"].frame.height, 80)
+            saveTypedCapture("Buy milk and eggs, but no bread.", in: app)
+            let receiptClose = app.buttons["capture.close"]
+            if receiptClose.waitForExistence(timeout: 2) { receiptClose.tap() }
+            let groceries = app.buttons["today.shoppingListCard.Groceries"]
+            XCTAssertTrue(groceries.waitForExistence(timeout: 10))
+            groceries.tap()
+            let instruction = app.staticTexts.matching(NSPredicate(format: "identifier BEGINSWITH 'list.captureInstruction.'")).firstMatch
+            XCTAssertTrue(instruction.waitForExistence(timeout: 5))
+            XCTAssertTrue(instruction.label.contains("No bread"))
+            XCTAssertFalse(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'list.item.' AND label CONTAINS[c] 'buy bread'")).firstMatch.exists)
+            let milk = app.buttons["list.complete.Buy milk"]
+            for _ in 0..<5 where !milk.isHittable { app.swipeUp() }
+            XCTAssertTrue(milk.isHittable)
+            milk.tap()
+            XCTAssertFalse(app.buttons["list.item.Buy milk"].exists)
+            XCTAssertTrue(instruction.label.contains("No bread"))
+            XCTAssertFalse(instruction.label.contains("milk"))
+            captureFlowScreenshot("shopping-exclusion-context-" + (arguments.contains("dark") ? "dark-largest" : "light"))
+            app.buttons["dock.today"].tap()
+            saveTypedCapture("Buy two shirts and a jacket, all size medium.", in: app)
+            if receiptClose.waitForExistence(timeout: 2) { receiptClose.tap() }
+            let shopping = app.buttons["today.shoppingListCard.Shopping"]
+            XCTAssertTrue(shopping.waitForExistence(timeout: 10))
+            shopping.tap()
+            let group = app.buttons["list.group.Shopping"]
+            if group.label.contains("collapsed") { group.tap() }
+            let shirts = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'list.item.' AND label CONTAINS[c] 'two shirts' AND label CONTAINS[c] 'size medium'")).firstMatch
+            for _ in 0..<5 where !shirts.isHittable { app.swipeUp() }
+            XCTAssertTrue(shirts.isHittable)
+            let jacket = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'list.item.' AND label CONTAINS[c] 'jacket' AND label CONTAINS[c] 'size medium'")).firstMatch
+            for _ in 0..<5 where !jacket.isHittable { app.swipeUp() }
+            XCTAssertTrue(jacket.isHittable)
+            for _ in 0..<5 where shirts.frame.maxY > app.buttons["dock.capture"].frame.minY - 20 { app.swipeUp() }
+            XCTAssertTrue(shirts.isHittable)
+            XCTAssertLessThanOrEqual(shirts.frame.maxY, app.buttons["dock.capture"].frame.minY - 20)
+            captureFlowScreenshot("shopping-shared-size-" + (arguments.contains("dark") ? "dark-largest" : "light"))
+            app.terminate()
+        }
+    }
+
+    private func launchAppForShoppingDetail(_ arguments: [String]) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--ui-testing-reset"] + arguments
+        app.launchEnvironment["SPEAKIT_RUNTIME_EXAMPLES"] = "0"
+        app.launch()
+        return app
+    }
+
+    func testRecognitionHintRequiresSavingEditAndCanBeRemoved() {
+        let app = launchAppForShoppingDetail(["--ui-testing-skip-welcome", "-SpeakIt.appearance", "dark"])
+        saveTypedCapture("Call John.", in: app)
+        let receiptClose = app.buttons["capture.close"]
+        if receiptClose.waitForExistence(timeout: 2) { receiptClose.tap() }
+        let edit = app.buttons["item.edit.Call John"]
+        XCTAssertTrue(edit.waitForExistence(timeout: 8), app.debugDescription)
+        edit.tap()
+        XCTAssertFalse(app.buttons["editor.recognitionHint"].exists)
+        func prepareHint() {
+            let title = app.textFields["editor.title"]
+            XCTAssertTrue(title.waitForExistence(timeout: 5), app.debugDescription)
+            title.tap()
+            title.press(forDuration: 1.2)
+            let selectAll = app.buttons["Select All"]
+            let compact = app.menuItems["Select All"]
+            for _ in 0..<3 where !selectAll.exists && !compact.exists {
+                let forward = app.buttons["Forward"]
+                guard forward.waitForExistence(timeout: 2) else { break }
+                forward.tap()
+            }
+            XCTAssertTrue(selectAll.exists || compact.exists, app.debugDescription)
+            (selectAll.exists ? selectAll : compact).tap()
+            title.typeText("Call Joan")
+            XCTAssertEqual(title.value as? String, "Call Joan")
+            let hint = app.buttons["editor.recognitionHint"]
+            XCTAssertTrue(hint.waitForExistence(timeout: 4), app.debugDescription)
+            hint.tap()
+            let field = app.textFields["speechHint.phrase"]
+            XCTAssertTrue(field.waitForExistence(timeout: 5))
+            field.tap(); field.typeText("Joan")
+            app.buttons["speechHint.confirm"].tap()
+            XCTAssertTrue(app.staticTexts["Voice hint: Joan. Remembered when you save."].waitForExistence(timeout: 5))
+        }
+        prepareHint()
+        app.navigationBars["Edit Thought"].buttons["Cancel"].tap()
+        app.buttons["today.account"].tap()
+        app.buttons["Names & phrases"].tap()
+        XCTAssertFalse(app.staticTexts["speechHint.Joan"].exists, "Cancelling the edit must discard its pending hint")
+        app.navigationBars["Names & phrases"].buttons["Done"].tap()
+        app.navigationBars.buttons["Done"].firstMatch.tap()
+        XCTAssertTrue(edit.waitForExistence(timeout: 5)); edit.tap()
+        prepareHint()
+        app.navigationBars["Edit Thought"].buttons["Save"].tap()
+        let corrected = app.buttons["item.edit.Call Joan"]
+        XCTAssertTrue(corrected.waitForExistence(timeout: 6), app.debugDescription)
+        corrected.tap()
+        let original = app.staticTexts["Original thought. Call John."]
+        for _ in 0..<6 where !original.isHittable { app.swipeUp() }
+        XCTAssertTrue(original.exists, app.debugDescription)
+        app.navigationBars["Edit Thought"].buttons["Cancel"].tap()
+        app.buttons["today.account"].tap()
+        app.buttons["Names & phrases"].tap()
+        let savedHint = app.staticTexts["speechHint.Joan"]
+        XCTAssertTrue(savedHint.waitForExistence(timeout: 5), app.debugDescription)
+        captureFlowScreenshot("local-recognition-hint-dark")
+        savedHint.swipeLeft()
+        app.buttons["Delete"].firstMatch.tap()
+        XCTAssertTrue(savedHint.waitForNonExistence(timeout: 4))
+    }
+
     func testShoppingAddDoneCommitsAndDismissesWithoutNewline() {
         let app = launchApp("--ui-testing-skip-welcome", "--load-today-examples", "--expand-today-upcoming")
         let list = app.buttons["today.shoppingListCard.Groceries"]
@@ -2270,10 +2388,13 @@ And email Jonah the final volunteer rota once Priya has approved it. She has loo
 
         let typeInstead = app.buttons["capture.typeInstead"]
         XCTAssertTrue(typeInstead.waitForExistence(timeout: 8), "type instead", file: file, line: line)
+        for _ in 0..<5 where !typeInstead.isHittable { app.swipeUp() }
+        XCTAssertTrue(typeInstead.isHittable, app.debugDescription, file: file, line: line)
         typeInstead.coordinate(withNormalizedOffset: CGVector(dx: 0.90, dy: 0.5)).tap()
 
         let editor = app.textViews["capture.text"]
-        XCTAssertTrue(editor.waitForExistence(timeout: 6), "text editor", file: file, line: line)
+        XCTAssertTrue(editor.waitForExistence(timeout: 6), app.debugDescription, file: file, line: line)
+        for _ in 0..<5 where !editor.isHittable { app.swipeUp() }
         editor.tap()
         editor.typeText(text)
 
@@ -2283,6 +2404,7 @@ And email Jonah the final volunteer rota once Priya has approved it. She has loo
 
         let save = app.buttons["capture.save"]
         XCTAssertTrue(save.waitForExistence(timeout: 4), "save", file: file, line: line)
+        for _ in 0..<5 where !save.isHittable { app.swipeUp() }
         save.coordinate(withNormalizedOffset: CGVector(dx: 0.06, dy: 0.5)).tap()
 
         XCTAssertTrue(

@@ -5,6 +5,20 @@ Notable changes to Speak It, newest first. Build numbers are
 Entries before September 2026 were reconstructed from the commit history and
 `Docs/DECISIONS.md`, so they are summaries rather than a contemporaneous record.
 
+## Unreleased — capture confidence follow-up
+
+- Preserve unfinished negative speech across a pause; qualify actual endpoint
+  timers and durable saving with recorded synthetic recognizer callbacks.
+- Share explicit compatible shopping sizes/colours and retain simple exclusions
+  with their original capture; keep quantity, store and timing ownership intact.
+- Keep singular scheduled food purchases in Groceries and allow scrolling of
+  voice/typing screens at accessibility text sizes.
+- Offer explicit removable local voice hints after saved-item corrections,
+  without automatic word replacement or learning from tutorial edits.
+- Keep list headings readable and bottom navigation compact at accessibility
+  text sizes; distinguish voice hints from explicit automatic replacements.
+- Source changes only; no distribution build or upload.
+
 ## Unreleased — everyday capture and tutorial readiness
 
 - Understand polite shopping/list requests, own physical-product needs with

@@ -224,3 +224,13 @@ large library and belongs to the next performance pass:
   items; four cards, one pass each. One pass, four counts.
 - **`makeICloudSnapshot` fetches the whole table after every save**, on the
   main actor, debounced two seconds.
+
+## October 13 bounded startup investigation
+
+`Tools/CaptureStartup` is a reproducible Mac/debug diagnostic of live production
+functions. First/second literal-path requests were 0.2942/0.0740 s, and forced
+model-stage requests were 7.7862/2.3350 s. Both model results remained review
+items. Two requests establish neither p95 nor cold-cache or iPhone behavior.
+They exclude the microphone, reference bank, repository persistence and row
+rendering. No prewarm behavior was added; there is no measured phone benefit.
+The existing real-device signposts above remain the product latency contract.

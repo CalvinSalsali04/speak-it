@@ -34,6 +34,25 @@ enum ShoppingListProjection {
         }
     }
 
+    struct CaptureInstruction: Identifiable {
+        let id: UUID
+        let caption: String
+    }
+
+    /// Capture-scoped context survives deleting the first product. It neither
+    /// changes later captures nor supplies a new checkable item or saved field.
+    @MainActor
+    static func captureInstructions(in items: [CapturedItem]) -> [CaptureInstruction] {
+        var seen = Set<UUID>()
+        return openItems(in: items).compactMap { item in
+            guard let session = item.captureSession, seen.insert(session.id).inserted,
+                  let detail = ShoppingGroupParser.captureListDetail(in: session.originalTranscription),
+                  case .exclusion = detail.scope else { return nil }
+            let labels = items.filter { $0.captureSession?.id == session.id && contains($0) }.map(\.displayTitle)
+            return CaptureInstruction(id: session.id, caption: labels.joined(separator: ", ") + " — " + detail.label)
+        }
+    }
+
     static func contains(_ item: CapturedItem) -> Bool {
         item.itemType == .shopping && !item.isArchived && !item.isCompleted
     }
@@ -86,6 +105,7 @@ struct ShoppingListView: View {
     }
 
     @Environment(\.thoughtRepository) private var repository
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var subscriptionStore: SubscriptionStore
 
     let items: [CapturedItem]
@@ -135,6 +155,15 @@ struct ShoppingListView: View {
                 ForEach(groupedLists) { group in
                     groupHeaderRow(group)
                     if !collapsedGroups.contains(group.name) {
+                        ForEach(ShoppingListProjection.captureInstructions(in: group.items)) { instruction in
+                            Text(instruction.caption)
+                                .font(SpeakItTypography.metadata)
+                                .foregroundStyle(Color.speakMuted)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityIdentifier("list.captureInstruction.\(instruction.id)")
+                                .listRowSeparator(.hidden)
+                                .listRowBackground(Color.clear)
+                        }
                         ForEach(group.items) { item in
                             shoppingRow(item)
                         }
@@ -224,16 +253,27 @@ struct ShoppingListView: View {
                     .foregroundStyle(Color.speakMuted)
                     .rotationEffect(.degrees(isCollapsed ? 0 : 90))
 
-                Text(group.name)
-                    .font(SpeakItTypography.itemTitle.weight(.semibold))
-                    .foregroundStyle(Color.speakInk)
-                    .lineLimit(1)
-
-                Spacer(minLength: 8)
-
-                Text(itemCountLabel(group.items.count))
-                    .font(SpeakItTypography.metadata)
-                    .foregroundStyle(Color.speakMuted)
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(group.name)
+                            .font(SpeakItTypography.itemTitle.weight(.semibold))
+                            .foregroundStyle(Color.speakInk)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Text(itemCountLabel(group.items.count))
+                            .font(SpeakItTypography.metadata)
+                            .foregroundStyle(Color.speakMuted)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Text(group.name)
+                        .font(SpeakItTypography.itemTitle.weight(.semibold))
+                        .foregroundStyle(Color.speakInk)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 8)
+                    Text(itemCountLabel(group.items.count))
+                        .font(SpeakItTypography.metadata)
+                        .foregroundStyle(Color.speakMuted)
+                }
             }
             .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             .contentShape(Rectangle())
@@ -414,7 +454,10 @@ struct ShoppingListView: View {
                         .font(SpeakItTypography.itemTitle)
                         .foregroundStyle(Color.speakInk)
                         .multilineTextAlignment(.leading)
-                        .lineLimit(2)
+                        // Product details are part of what is being bought.
+                        // Keep shared sizes/colours readable rather than hiding
+                        // them behind a two-line product-name limit.
+                        .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
 
                     // A timed entry ("remind me to get eggs in an hour") keeps

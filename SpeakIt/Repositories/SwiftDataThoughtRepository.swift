@@ -2690,7 +2690,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         if locationChanged {
             reconcileLocationReminders()
         }
-        if let personName = item.personName {
+        if item.captureSession?.captureSource != .tutorial, let personName = item.personName {
             SpeechVocabularyStore.rememberContextualPhrases([personName])
         }
     }

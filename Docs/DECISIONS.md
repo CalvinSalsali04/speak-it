@@ -1,5 +1,95 @@
 # Decisions
 
+## 2026-10-13 — Keep compact navigation usable at accessibility text sizes
+
+Passing interaction checks did not reveal that list group names truncated while
+Today/Memory dock labels wrapped into a panel covering much of the screen.
+Screenshot review did. Group names and counts now stack at accessibility sizes,
+and product labels retain all lines. Only compact dock labels cap at xxxLarge;
+content elsewhere retains the requested accessibility size. Stable identifiers,
+44-point targets, row actions and section membership remain unchanged. Focused
+light/dark-largest list flows and dock navigation pass with screenshot inspection.
+Names & phrases also separates optional voice hints from explicit automatic
+replacement mappings, avoiding an oversized “No corrections yet” card below an
+already confirmed hint.
+
+## 2026-10-13 — Measure startup without guessing a phone optimization
+
+Tools/CaptureStartup executes two fixed synthetic cases through live production
+functions in an unoptimized Mac DEBUG harness. It separates the ordinary literal
+path from a deliberately forced model stage, records first/second requests within
+one process, and neither controls model eviction nor measures microphone,
+SwiftData, UI, bank retrieval, battery or iPhone latency. It never starts a mic or
+reads saved user thoughts. The two model results remained review items; returned
+output is not successful semantic accuracy. Exact timing and commands are in the
+tool README and retained local evidence.
+
+Claude Opus 5.5 agreed that Mac timing alone cannot justify phone prewarming.
+Keep startup behavior unchanged: certified ordinary captures avoid a generative
+wait, while complex model interpretation retains its current cancellation and
+recovery. The runtime path precedes legacy refinement and has a separate
+20-second cooperative cancellation timer; the legacy two-second race does not
+bound an accepted runtime result. Complex captures can still take seconds.
+A warmup proposal must demonstrate an improvement in real-phone
+last-word-to-persisted-visible-row latency without worsening microphone readiness
+or routes. iPhone 13 has no Foundation Models path to prewarm. Apple documents
+LanguageModelSession.prewarm(promptPrefix:), but merely calling it would not
+establish a product benefit, especially when generation uses new sessions.
+
+## 2026-10-13 — Confirm recognition hints while correcting a saved item
+
+After editing a real item's title or person, Help recognize a word offers a
+separate, explicit local name/term hint. It remains pending until the repository
+successfully saves the edit; Cancel and failed persistence cannot teach it.
+Tutorial captures hide this action, and manual tutorial person edits no longer
+enter learned recognition context. The immutable original is never changed.
+
+Hints bias Apple's contextual strings; they do not create heard-to-preferred
+replacement rules. Existing explicit correction mappings keep their existing
+behavior. Confirmed hints rank after those mappings and before automatically
+learned names, deduplicate by folded spelling, retain at most 80 terms, and share
+the existing total 100-phrase recognition cap. Negation/command/function terms
+are refused. Hints are visible and removable in Names & phrases, use an app-local
+UserDefaults key, and never enter analytics. No data-erasure UI is introduced;
+the store exposes complete hint clearing and the existing test-only app reset
+also clears that key.
+
+Claude Opus 5.5 reviewed and agreed to user-initiated hints rather than guessed
+sound-alike detection. A single existing exposed synthetic recording improved
+from “Namdi” to “Nnamdi” with identical audio and explicit context. Other
+words stayed the same; punctuation changed. The no-hint trace came from the
+earlier cohort rather than a matched repeat, so this is illustrative mechanism
+evidence, not causal qualification, a new accuracy rate or a spelling guarantee.
+
+## 2026-10-13 — Keep shared shopping details explicit and capture-scoped
+
+A bounded current-purchase reader now distributes explicit all/both/each size or
+colour labels over proved products. Existing explicit colours or sizes must
+agree with the shared label; a conflicting member declines rather than receiving
+contradictory added metadata. Bare numbers remain quantities. Both requires
+exactly two members; size
+requires a wearable/accessory head on every member. Unknown shared recipients,
+conditions or contradictory product types decline this certificate. Claude Opus
+5.5 reviewed synthetic contrasts and identified the mixed-size safeguard.
+
+Explicit but-no/but-not/except/excluding instructions remain visible context of
+one immutable capture. Exact repeated excluded members are omitted from that
+capture's new products only; existing saved items are untouched. Bare no/not is
+not exclusion authority because it may be a spoken correction or a brand.
+Context is derived from the original session, survives first-product removal,
+and never becomes an extra checkable row. Shared display labels do not duplicate
+source ownership. Simple list-member hesitations are removed from display only
+when all remaining products have positive noun evidence; uppercase brand initials
+are retained.
+
+A differential UI check also reproduced an existing main-branch bug: a singular
+scheduled food purchase voted on its full timing text and became Shopping.
+Category voting now reads its positively proved product object after recognized
+timing; the saved wording, schedule and action are unchanged. Largest accessibility
+text exposed another existing overflow: permission-denied voice content placed
+Type instead below an unscrollable screen. Voice and typing bodies now scroll at
+accessibility sizes, matching the existing tutorial behavior.
+
 ## 2026-10-12 — Broader bounded purchase-list interpretation (unreleased)
 
 Explicit current purchase commands, shopping-list headers and named-list
@@ -5606,3 +5696,30 @@ ending the tutorial/test clears eligibility, rather than elapsed time changing
 billing. A repository-backed outside-capture test verifies the practice source
 and unchanged usage defaults after an hour, with other phases/absent markers
 remaining ineligible.
+
+## 2026-10-13 — Sequential confidence follow-up: audio replay first
+
+A local synthetic replay tool compiles the production speech backend unchanged.
+It freezes twelve scripts and generates 36 voice/noise variants, retaining the
+input/audio hashes and actual transcript events. File ASR, real-time callback
+cadence, app endpoint/repository replay and physical-phone evidence remain
+separate. There is no microphone recording or phone installation in this pass.
+
+The actual “Don't … book the flight yet” trace exposed a missing unfinished
+negative-command opener: the app finalized after the first fragment. Closed
+“do not”/“don't” spellings now use the existing eight-second continuation
+window; completed negatives keep 1.9 seconds. Six focused endpoint/callback
+methods pass, and replaying the recorded ASR cadence through real timers and
+SwiftData saves the complete original once. A new fixture compile error was
+corrected before its successful execution; it is not counted as a product fail.
+
+All 36 shipping-backend audio replays completed, but raw lexical identity was
+only 16/36. A matched comparison using identical accent/punctuation normalization
+was 18/36 for each Apple module, with one existing exact match lost by the newer
+module. Three same-audio real-time controls confirmed that pacing alone did not
+remove the observed word errors. These are exposed synthetic development
+results, not human or semantic accuracy. No recognizer switch is justified.
+Named words, isolated TTS prosody, incomplete/ambiguous sentence endings and
+actual phone routes remain limitations. Claude Opus 5.5 reviewed descriptions
+and challenged the separation between real ASR cadence and hand-written timer
+fixtures; that gap is now explicitly covered without claiming phone equivalence.

@@ -1,5 +1,22 @@
 # Known Issues
 
+## Synthetic spoken-capture follow-up (unreleased)
+
+A reproduced unfinished “Don’t …” cutoff is repaired with focused real-timer
+and repository replay. Generated voices still expose recognition errors in names
+and some products. Completing an ASR stream is not successful capture accuracy.
+The matched alternate-recognizer experiment did not justify changing engines.
+Explicit local name/term hints are available after editing a real saved item;
+recognition bias may help a familiar term but can also influence similar names.
+They are removable, bounded, and do not guarantee spelling or rewrite originals.
+Complex runtime interpretation can still take several seconds: its current
+work is cancelled cooperatively after 20 seconds, separately from the legacy
+refiner's two-second race. Neither is a guarantee of two-second full capture
+latency. The Mac startup diagnostic bypasses early certificates and does not
+qualify last-word-to-persisted-visible-row timing or a prewarm benefit.
+Synthetic file/noise replay does not qualify phone microphones, routes, competing
+speakers, human prosody, or physical stop-to-visible-row latency.
+
 ## Everyday list and tutorial follow-up (unreleased)
 
 Polite explicit requests, own product needs with bounded store/date context,
@@ -8,10 +25,14 @@ focused regression coverage. Explicit packing objects can become separate Today
 tasks, without a new grouped checklist screen. Positive physical-product evidence
 is still bounded: an unfamiliar implicit need can remain a complete Memory row.
 Unknown undelimited products, arbitrary cross-sentence references, complex
-exclusions/beneficiaries, shared modifier propagation and general nonpurchase
-checklist semantics remain incomplete. An intact fallback is not successful
-independent item extraction. In particular, shared distributive details may keep
-one whole shopping row; some clear exclusions still create review friction.
+exclusions/beneficiaries and general nonpurchase checklist semantics remain
+incomplete. Explicit shared size/colour and simple trailing exclusions now have
+bounded support. Size requires a known wearable/accessory head. Conflicting explicit sizes or
+colours decline shared propagation; colour/size words in an unfamiliar brand may
+also conservatively decline. Unknown modifiers,
+recipients, conditions, category-level exclusions against modified products and
+ambiguous spoken corrections may keep an intact parent or review row. That safe
+fallback is not successful independent item extraction.
 
 Tutorial attempts remain free through retries and draft recovery, cannot schedule
 real alerts or change real saved thoughts, and can be rejected when the displayed

@@ -186,3 +186,14 @@ clarification dialogue.
   when an already-split capture is wrong, unless a saved-item change is pending.
 - The completion banner dismisses after three seconds or X, and stays dismissed
   across Today/Memory navigation. A new completion can show it again.
+
+## Correct a voice recognition term
+
+1. Edit a saved real item's title or person. Its original thought remains read-only.
+2. Optionally choose **Help recognize a word**, enter one short name or term, and
+   choose **Use hint**. The editor states that it will be remembered when saved.
+3. **Save** persists the item before adding that local recognition hint. **Cancel**
+   discards both unsaved edits and the pending hint.
+4. Manage/remove hints in Settings → **Names & phrases**. A hint can influence
+   similar-sounding words; it never automatically replaces transcript words.
+   Tutorial edits do not offer or teach these hints.
