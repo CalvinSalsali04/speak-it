@@ -850,7 +850,8 @@ enum ThoughtExtractionEngine {
         calendar: Calendar = .autoupdatingCurrent,
         permitsOnDeviceIntelligence: Bool = true,
         permitsOperations: Bool = true,
-        runtimeContext: RuntimeCaptureContext = .empty
+        runtimeContext: RuntimeCaptureContext = .empty,
+        runtimeContextProvider: (@MainActor @Sendable () -> RuntimeCaptureContext)? = nil
     ) async -> ThoughtExtractionResult {
         let signpost = CapturePerformanceSignposts.begin("SemanticParsing")
         defer { CapturePerformanceSignposts.end("SemanticParsing", signpost) }
@@ -871,7 +872,7 @@ enum ThoughtExtractionEngine {
             if let result = await RuntimeExampleInterpreter.interpret(
                 transcript, referenceDate: referenceDate, calendar: calendar,
                 context: runtimeContext, configuration: configuration, rules: ThoughtExtractionResult(items: processed.items, operations: processed.operations, method: .rules),
-                ruleTrace:ruleTrace
+                ruleTrace: ruleTrace, contextProvider: runtimeContextProvider
             ) {
                 // The optional interpreter proposes items. It cannot erase a
                 // complete current operation/creation partition by returning
@@ -2880,6 +2881,31 @@ enum RuleBasedThoughtExtractor {
             && timingSentences.dropFirst().allSatisfy {
                 $0.range(of: localTemporalRevisionPattern, options: .regularExpression) != nil
             }
+        // ASR punctuation does not make a verbless timing restriction an
+        // independent thought. A later bound must not disappear while its
+        // earlier reminder becomes executable. Unsupported separated scopes
+        // stay together for review; ordinary independent actions do not match.
+        let hasSeparatedTimingScope = spokenSentences.count > 1
+            && spokenSentences.contains { sentence in
+            let phrase = sentence.trimmingCharacters(in:
+                CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters))
+            let action = ActionabilityReader.actionBody(phrase)
+            // A fronted date with its own action is independent: "Every
+            // Friday buy eggs" is not a bound on the previous reminder.
+            guard action.caseInsensitiveCompare(phrase) == .orderedSame
+                    || !ActionabilityReader.read(action).belongsOnToday else { return false }
+            return phrase.range(of: #"(?i)^(?:(?:starting|beginning|until|through|ending|except|unless|besides|every)\b|(?:apart\s+from|other\s+than|but\s+not|ends\s+on)\b|(?:only|not)\s+(?:on|after|before|during)\b|from\s+.+\s+on\b)"#,
+                                options: .regularExpression) != nil
+        } && spokenSentences.contains {
+            ReminderPhrasing.requestsReminder($0)
+                || RecurrenceIntentParser.parse($0.lowercased()) != nil
+        }
+        let hasOwnedClockReview = RecurrenceIntentParser.parse(creating.lowercased()) == nil
+            && !hasSeparatedTimingScope
+            && spokenSentences.contains {
+                if case .unresolvedTimeScope = captureDiscourseReference(in: $0) { return true }
+                return false
+            }
         let segments: [Segment]
         if unresolvedSharedScope && selfCorrected != splitCompounds && !datedShoppingPlan {
             segments = [Segment(quote: creating, analysisText: creating,
@@ -2899,10 +2925,17 @@ enum RuleBasedThoughtExtractor {
             // revision validator consumes them, rather than treating their
             // successive "until" phrases as one unsupported condition.
             segments = timingSentences.flatMap { segmentedThoughts(in: $0) }
-        } else if numberedIntents == nil,
+        } else if hasSeparatedTimingScope {
+            // The current stored timing model cannot prove a detached bound
+            // belongs to a particular schedule. Preserve every word and grant
+            // no alert authority rather than silently running without it.
+            segments = [Segment(quote: creating, analysisText: creating,
+                                suggestedTitle: nil, forcesReview: true)]
+        } else if numberedIntents == nil, !hasOwnedClockReview,
                   ThoughtOrganizer.hasUnresolvedTimingConstraint(creating) {
-            // Preserve the whole unsupported constraint. A partial recurrence
-            // extracted from its prefix must never arm an unrelated alarm.
+            // Only positively owned non-repeating clock commentary may leave
+            // this hold, so its independent folder purchase can survive. A
+            // sentence boundary alone never waives an unsupported constraint.
             segments = [Segment(quote: creating, analysisText: creating, suggestedTitle: nil)]
         } else if let explicitAdoption {
             segments = [Segment(quote: explicitAdoption.sourceQuote,
@@ -10563,6 +10596,9 @@ enum RuleBasedThoughtExtractor {
                 ?? defaultGroup
         }
 
+        // A bare trip needs retail evidence or an immediately coordinated
+        // purchase frame. An unfamiliar name never authorizes folding across
+        // a sentence, sequence marker or separately owned calendar.
         if let store {
             func adjacentRawSpan(
                 trip: ExtractedThought, item: ExtractedThought
@@ -10580,9 +10616,14 @@ enum RuleBasedThoughtExtractor {
                 let bridge = String(rawCapture[tripRange.upperBound..<itemRange.lowerBound])
                 let connectors: Set<String> = ["and", "then", "also", "plus", "so",
                                                "uh", "um", "oh", "just"]
-                guard SourceUnitLedger(bridge).words.allSatisfy({
-                    connectors.contains($0.text)
-                }) else { return nil }
+                let bridgeWords = SourceUnitLedger(bridge).words.map(\.text)
+                guard bridgeWords.allSatisfy({ connectors.contains($0) }) else { return nil }
+                if !ShoppingGroupParser.isRecognizedStoreName(store) {
+                    guard bridgeWords == ["and"],
+                          bridge.range(of: #"[.!?;]"#, options: .regularExpression) == nil,
+                          trip.organization.dueDate == item.organization.dueDate,
+                          trip.organization.reminderDate == item.organization.reminderDate else { return nil }
+                }
                 return String(rawCapture[tripRange.lowerBound..<itemRange.upperBound])
             }
             let grouped = result
@@ -14765,6 +14806,13 @@ enum RuleBasedThoughtExtractor {
                 .trimmingCharacters(in: CharacterSet(charactersIn: " ?"))
             return canonicalizedListCommand(inner, namingStore: namingStore)
         }
+        // A typed task list admits an executable gerund, but never supplies
+        // purchase authority. Reading/packing titles stay on their own path.
+        let taskFrame = #"(?i)^\s*(?:please\s+)?(?:add|put|throw)\s+(.+?)\s+(?:to|on|onto|in)\s+(?:my\s+|the\s+|our\s+)?(?:to[- ]?do|action|task)\s+(?:check)?list\s*[.!]?\s*$"#
+        if let regex = NSRegularExpression.speakItCached(taskFrame),
+           let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+           let contents = Range(match.range(at: 1), in: text),
+           let action = listContentAction(String(text[contents])) { return action }
         if text.range(of: #"(?i)\b(?:packing|reading|wish|guest|inventory|swimming|to[- ]?do|action|task)\s+(?:check)?list\b"#,
                       options: .regularExpression) != nil { return text }
         // Placing an existing task on a dated list supplies metadata. Its
@@ -14843,7 +14891,20 @@ enum RuleBasedThoughtExtractor {
             if text.range(of: #"(?i)^\s*(?:my|our)\s+(?:grocery|shopping)\s+list\s+is\b"#,
                           options: .regularExpression) != nil,
                !ShoppingGroupParser.certifiesImplicitProducts(String(text[contents])) { return text }
-            return listCommand(String(text[contents]), name: String(text[name]).replacingOccurrences(of: #"(?i)\s+list$"#, with: "", options: .regularExpression))
+            let label = String(text[name]).replacingOccurrences(of: #"(?i)\s+list$"#, with: "", options: .regularExpression)
+            let body = String(text[contents])
+            // A calendar between the heading and its products is list
+            // metadata. Move only the proved prefix in analysis; all source
+            // occurrences remain on the immutable parent and product owners.
+            if let timing = leadingTemporalContext(in: body),
+               let span = body.range(of: timing, options: [.anchored, .caseInsensitive]) {
+                let products = String(body[span.upperBound...])
+                    .trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: ":,")))
+                if ShoppingGroupParser.certifiesImplicitProducts(products) {
+                    return listCommand(products, name: label) + " " + timing
+                }
+            }
+            return listCommand(body, name: label)
         }
         // A fronted store plus a current noun need is a purchase envelope;
         // requiring the need frame avoids treating a purpose as a store.
@@ -16592,6 +16653,8 @@ enum RuntimeCompleteLiteralCertificate {
         })
         guard allIDs.subtracting(processedIDs).isSubset(of: seamIDs) else { return nil }
         var titles: [Int: String] = [:]
+        var analyses: [Int: String] = [:]
+        var groups: [Int: String] = [:]
         for item in rules.items {
             guard !item.sourceUnitIDs.isEmpty, item.sourceUnitIDs.isSubset(of: allIDs) else { return nil }
             let owners = literal.items.indices.filter {
@@ -16616,8 +16679,16 @@ enum RuntimeCompleteLiteralCertificate {
                 // supply no authority for type, metadata or review waiver.
                 titles[owner] = item.suggestedTitle ?? ThoughtTitleFormatter.polished(
                     item.analysisText, itemType: old.itemType, personName: old.personName)
+                // Preserve canonical analysis and grouping after semantic
+                // agreement, just as established display framing is retained.
+                analyses[owner] = item.analysisText
+                if let group = item.shoppingGroup { groups[owner] = group }
             } else {
-                guard old.itemType == .unclear || old.itemType == current.itemType,
+                // A generic literal predicate cannot supply a missing object
+                // or decide that a single untyped review was meaningful.
+                guard old.state.gap != .ambiguousObject,
+                      !(old.itemType == .unclear && literal.items.count == rules.items.count),
+                      old.itemType == .unclear || old.itemType == current.itemType,
                       old.personName == nil || old.personName == current.personName,
                       old.dueDate == nil || old.dueDate == current.dueDate,
                       old.reminderDate == nil || old.reminderDate == current.reminderDate,
@@ -16629,17 +16700,29 @@ enum RuntimeCompleteLiteralCertificate {
         }
         let items = literal.items.enumerated().map { index, item in
             ExtractedThought(sourceQuote: item.sourceQuote, rawQuote: item.rawQuote,
-                wasRepaired: item.wasRepaired, analysisText: item.analysisText,
+                wasRepaired: item.wasRepaired, analysisText: analyses[index] ?? item.analysisText,
                 suggestedTitle: titles[index] ?? item.suggestedTitle,
                 organization: item.organization, confidence: item.confidence,
                 needsReview: item.needsReview, sourceUnitIDs: item.sourceUnitIDs,
-                shoppingGroup: item.shoppingGroup)
+                shoppingGroup: item.shoppingGroup ?? groups[index])
         }
         return .init(items: items, method: literal.method)
     }
     static func interpret(_ source: String, referenceDate: Date, calendar: Calendar,
                           rules: ThoughtExtractionResult? = nil) -> ThoughtExtractionResult? {
-        if let corrected = calendarRepair(source, referenceDate: referenceDate, calendar: calendar) { return corrected }
+        if let corrected = calendarRepair(source, referenceDate: referenceDate, calendar: calendar) {
+            let previous: ThoughtExtractionResult
+            if let rules { previous = rules }
+            else {
+                let reading = RuleBasedThoughtExtractor.process(source, referenceDate: referenceDate, calendar: calendar)
+                previous = .init(items: reading.items, operations: reading.operations, method: .rules)
+            }
+            guard !previous.items.contains(where: {
+                $0.organization.state.gap == .ambiguousObject
+                    || ($0.needsReview && $0.organization.itemType == .unclear)
+            }) else { return nil }
+            return corrected
+        }
         if let rules, let arrival = arrivalReminder(source, rules: rules) { return arrival }
         if let shopping = RuleBasedThoughtExtractor.literalPurchasePlan(source,
             referenceDate: referenceDate, calendar: calendar)
@@ -16737,7 +16820,8 @@ enum RuntimeExampleInterpreter {
 #endif
     static func interpret(_ source: String, referenceDate: Date, calendar: Calendar,
                           context: RuntimeCaptureContext, configuration: RuntimeExampleConfiguration,
-                          rules: ThoughtExtractionResult,ruleTrace: RuntimeRuleTrace? = nil) async -> ThoughtExtractionResult? {
+                          rules: ThoughtExtractionResult,ruleTrace: RuntimeRuleTrace? = nil,
+                          contextProvider: (@MainActor @Sendable () -> RuntimeCaptureContext)? = nil) async -> ThoughtExtractionResult? {
         if let nominal = RuleBasedThoughtExtractor.currentNominalStatusPlan(source,
             referenceDate: referenceDate, calendar: calendar, rules: rules) {
             return nominal
@@ -16790,6 +16874,11 @@ enum RuntimeExampleInterpreter {
            !rules.items[0].needsReview,
            source.range(of: #"^(?i)(?:please\s+)?(?:call|phone)\s+(?:my\s+)?(?:mom|mum|dad|mother|father|grandma|grandpa|brother|sister)(?:\s+(?:today|tomorrow|tonight))?[.!]?$"#,
                         options: .regularExpression) != nil { return rules }
+        // Current-source certificates above cannot consume saved context.
+        // Load one complete value snapshot only when interpretation needs it.
+        let currentContext: RuntimeCaptureContext
+        if let contextProvider { currentContext = await contextProvider() }
+        else { currentContext = context }
 #if canImport(FoundationModels)
         if #available(iOS 26.4, *),
            SystemLanguageModel.default.availability == .available,
@@ -16799,19 +16888,19 @@ enum RuntimeExampleInterpreter {
                 do { examples = try await RuntimeExampleLibrary.shared.select(source, configuration: configuration) }
                 catch { return RuntimeSourceInterpreter.recoverableReview(source) }
                 if let local = RuntimeSourceInterpreter.interpret(source, referenceDate: referenceDate,
-                    calendar: calendar, context: context, examples: examples, configuration:configuration) { return local }
+                    calendar: calendar, context: currentContext, examples: examples, configuration:configuration) { return local }
                 if RuntimeIndependentFramePlan.containsAccountDeclaration(source) {
                     // One bounded ownership call may validate the complete literal
                     // account. Failed/unavailable ownership remains recoverable;
                     // it never falls through to another generative interpretation.
                     if configuration.usesStagedOutline, RuntimeAccountOwnership.scoped(source),
                        let account = await RuntimeAccountOwnership.interpret(source,
-                        referenceDate:referenceDate, calendar:calendar, context:context,
+                        referenceDate:referenceDate, calendar:calendar, context:currentContext,
                         rules:rules, examples:examples) { return account }
                     return RuntimeSourceInterpreter.recoverableReview(source)
                 }
                 return await RuntimeFoundationInterpreter.interpret(source, referenceDate: referenceDate,
-                    calendar: calendar, context: context, configuration: configuration, rules: rules,
+                    calendar: calendar, context: currentContext, configuration: configuration, rules: rules,
                     preselectedExamples: examples, ruleTrace:ruleTrace)
             }
             let deadline = Task {
@@ -16841,7 +16930,7 @@ enum RuntimeExampleInterpreter {
         // the original transcript or permission to guess a saved target.
         let examples = (try? await RuntimeExampleLibrary.shared.select(source, configuration: configuration)) ?? []
         let local = RuntimeSourceInterpreter.interpret(source, referenceDate: referenceDate,
-            calendar: calendar, context: context, examples: examples, configuration:configuration)
+            calendar: calendar, context: currentContext, examples: examples, configuration:configuration)
         if local == nil,RuntimeIndependentFramePlan.containsAccountDeclaration(source) { return RuntimeSourceInterpreter.recoverableReview(source) }
         return local
     }

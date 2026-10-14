@@ -696,6 +696,97 @@ final class SpeakItUITests: XCTestCase {
         app.navigationBars.buttons["Cancel"].tap()
     }
 
+    func testOrganizationFailureKeepsSavedWordsAndClosesWithoutUnsavedDraftClaim() {
+        let app = XCUIApplication()
+        let storeID = UUID().uuidString
+        app.launchArguments = ["--ui-testing", "--ui-testing-reset", "--ui-testing-skip-welcome",
+                               "--ui-testing-fail-organization"]
+        app.launchEnvironment = ["SPEAKIT_UI_QA_STORE_ID": storeID, "SPEAKIT_RUNTIME_EXAMPLES": "0"]
+        app.launch(); waitForLaunchWorkToFinish(in: app)
+        app.buttons["dock.capture"].tap()
+        let editor = app.textViews["capture.text"]
+        // Let automatic voice-start recovery settle first. Otherwise a Type
+        // instead element can disappear between its existence check and tap.
+        // This receipt/recovery test intentionally verifies typed saving.
+        if !editor.waitForExistence(timeout: 4) {
+            let typing = app.buttons["capture.typeInstead"]
+            XCTAssertTrue(typing.exists, app.debugDescription)
+            typing.tap()
+        }
+        XCTAssertTrue(editor.waitForExistence(timeout: 5)); editor.tap()
+        let text = "The spare key is inside the blue kitchen drawer."
+        editor.typeText(text)
+        app.buttons["capture.finishTyping"].tap()
+        app.buttons["capture.save"].tap()
+        let alert = app.alerts.firstMatch
+        XCTAssertTrue(alert.waitForExistence(timeout: 5))
+        XCTAssertTrue(alert.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Your original words were saved")).firstMatch.exists)
+        alert.buttons["OK"].tap()
+        // Capture normalization trims only outer keyboard whitespace.
+        XCTAssertEqual((editor.value as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       text, "Failure must keep every original word and internal character")
+        app.buttons["capture.close"].tap()
+        XCTAssertTrue(app.buttons["dock.memory"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Keep this thought?"].exists)
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--ui-testing-skip-welcome"]
+        app.launch(); waitForLaunchWorkToFinish(in: app)
+        app.buttons["dock.memory"].tap()
+        let rows = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "spare key"))
+        XCTAssertTrue(rows.firstMatch.waitForExistence(timeout: 6), app.debugDescription)
+        XCTAssertEqual(rows.count, 1, "Recovery must organize the same session, not insert another capture")
+        let proof = XCTAttachment(screenshot: app.screenshot())
+        proof.name = "Saved original recovered once after organization failure"
+        proof.lifetime = .keepAlways; add(proof)
+    }
+
+    func testDurableReceiptPrecedesFinalOrganizationAndDoesNotDuplicateOnRelaunch() {
+        checkDurableReceipt(appearance: "light", largeText: false)
+    }
+
+    func testDurableReceiptIsReadableInDarkModeAtLargestTextSize() {
+        checkDurableReceipt(appearance: "dark", largeText: true)
+    }
+
+    private func checkDurableReceipt(appearance: String, largeText: Bool) {
+        let app = XCUIApplication()
+        let storeID = UUID().uuidString
+        app.launchArguments = ["--ui-testing", "--ui-testing-reset", "--ui-testing-skip-welcome",
+                               "--ui-testing-delay-organization", "-SpeakIt.appearance", appearance]
+        if largeText { app.launchArguments.append("--ui-testing-dynamic-type-axxxl") }
+        app.launchEnvironment = ["SPEAKIT_UI_QA_STORE_ID": storeID, "SPEAKIT_RUNTIME_EXAMPLES": "0"]
+        app.launch()
+        waitForLaunchWorkToFinish(in: app)
+        app.buttons["dock.capture"].tap()
+        let typing = app.buttons["capture.typeInstead"]
+        XCTAssertTrue(typing.waitForExistence(timeout: 8)); typing.tap()
+        let editor = app.textViews["capture.text"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5)); editor.tap()
+        let text = "The spare key is inside the blue kitchen drawer."
+        editor.typeText(text)
+        app.buttons["capture.finishTyping"].tap()
+        app.buttons["capture.save"].tap()
+        let receipt = app.staticTexts["capture.durableSaved"]
+        XCTAssertTrue(receipt.waitForExistence(timeout: 3), app.debugDescription)
+        XCTAssertEqual(receipt.label, "Saved on this iPhone")
+        XCTAssertEqual(app.staticTexts["capture.durableTranscript"].label, text)
+        XCTAssertTrue(app.staticTexts["capture.organizing"].exists)
+        XCTAssertFalse(app.buttons["capture.close"].isEnabled,
+                       "A provisional row cannot be edited or discarded during organization")
+        let proof = XCTAttachment(screenshot: app.screenshot())
+        proof.name = "Durable original before organization — \(appearance) largeText=\(largeText)"
+        proof.lifetime = .keepAlways; add(proof)
+        XCTAssertTrue(app.staticTexts["Remembered"].waitForExistence(timeout: 12))
+        XCTAssertFalse(app.staticTexts["capture.organizing"].exists)
+        app.terminate()
+        app.launchArguments = ["--ui-testing", "--ui-testing-skip-welcome"]
+        app.launch()
+        waitForLaunchWorkToFinish(in: app)
+        app.buttons["dock.memory"].tap()
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label CONTAINS[c] %@", "spare key")).firstMatch
+            .waitForExistence(timeout: 6), app.debugDescription)
+    }
+
     func testCaptureTypingFlowAndKeyboardDismissal() {
         let app = launchApp("--ui-testing-skip-welcome")
 

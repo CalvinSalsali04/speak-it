@@ -551,10 +551,15 @@ And email Jonah the final volunteer rota once Priya has approved it. She has loo
         }
         // The opposite control: approval already given, recipient never corrected.
         let opposite = read("Priya has approved the rota. Email Jonah the final rota.")
-        XCTAssertEqual(opposite.count, 1, opposite.map(\.analysisText).joined(separator: " | "))
-        XCTAssertEqual(opposite.first?.organization.personName, "Jonah")
-        XCTAssertTrue(opposite.first?.sourceQuote.contains("Priya has approved the rota.") ?? false)
-        XCTAssertFalse(opposite.first?.needsReview ?? true)
+        // A complete short perfect fact stays findable in Memory and also
+        // supplies literal context to the one current communication.
+        XCTAssertEqual(opposite.count, 2, opposite.map(\.analysisText).joined(separator: " | "))
+        let communication = try XCTUnwrap(opposite.first { $0.organization.itemType.isActionable })
+        XCTAssertEqual(communication.organization.personName, "Jonah")
+        XCTAssertTrue(communication.sourceQuote.contains("Priya has approved the rota."))
+        XCTAssertFalse(communication.needsReview)
+        XCTAssertTrue(opposite.contains { $0.organization.itemType == .note
+            && !$0.needsReview && $0.sourceQuote == "Priya has approved the rota." })
         // A genuinely separate second email keeps its own recipient and object.
         let two = read("Email Jonah the rota once Priya approves. Email Nora the budget.")
         XCTAssertTrue(two.contains { $0.organization.personName == "Jonah" && $0.analysisText.contains("rota") })
@@ -4271,9 +4276,10 @@ And email Jonah the final volunteer rota once Priya has approved it. She has loo
         XCTAssertEqual(ThoughtExtractionEngine.extractWithRules(
             "Pick up the kids and the dog tomorrow"
         ).items.count, 1)
-        XCTAssertEqual(ThoughtExtractionEngine.extractWithRules(
-            "Buy milk and the newspaper"
-        ).items.count, 1)
+        let purchases = ThoughtExtractionEngine.extractWithRules("Buy milk and the newspaper").items
+        XCTAssertEqual(purchases.count, 2)
+        XCTAssertTrue(purchases.allSatisfy { $0.organization.itemType == .shopping && !$0.needsReview })
+        XCTAssertEqual(purchases.map(\.analysisText), ["buy milk", "buy the newspaper"])
         XCTAssertEqual(ThoughtExtractionEngine.extractWithRules(
             "Buy milk and then also bread"
         ).items.count, 2)

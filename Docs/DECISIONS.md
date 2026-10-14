@@ -1,5 +1,64 @@
 # Decisions
 
+## 2026-10-13 — Sentence punctuation cannot waive a timing constraint
+
+A final adverse replay found that allowing every multi-sentence capture past the
+unsupported-timing hold detached “Until December” from its repeating reminder.
+The bypass now requires positively owned, non-repeating unresolved-clock
+commentary. A separate bare scope before or after its reminder beginning with “except”, “starting”, “until”,
+“only on” or related timing markers keeps the source together for review when a
+prior reminder or recurrence exists. It grants no notification or recurrence
+authority. A fronted temporal phrase with its own recognized action remains
+independent. This also closes a pre-existing detached-exception case.
+
+This is a conservative safety boundary, not support for arbitrary recurrence
+bounds: a supported start spoken after an ASR sentence boundary may require
+review. The original remains available without re-speaking. Focused controls
+cover separated recurrence bounds, the clock-commentary/weekday contrast,
+ordinary independent purchases and independently dated purchases. Claude Opus
+5.5 identified the verbless-scope contrast from synthetic descriptions only.
+
+## 2026-10-13 — Load saved interpretation context only when consumed
+
+The repository previously fetched and snapshotted every saved row before calling
+an engine that often returns a complete current-source certificate. A lazy
+main-actor provider now passes through the engine and is evaluated once after
+those unchanged certificates, before context-consuming interpretation. It
+returns the same complete Sendable value snapshots, Home/Work state and own
+pending-session exclusion. There is no row cap or context truncation. Saved
+mutations still revalidate against current repository state before execution.
+Certificates take no saved-context parameter and cannot silently depend on the
+removed eager fetch. Existing named shopping groups remain repository metadata.
+
+Focused native checks prove no provider call for literal captures or disabled
+runtime, and identical eager/lazy interpretations across a 10,000-value context
+with at most one load. Existing automatic shopping and capture-retention
+classes also pass (30 total checks). This removes demonstrably unnecessary work;
+it does not establish iPhone latency or solve long model-generation waits.
+Claude Opus 5.5 reviewed snapshot timing, identity exclusion and concurrency from
+descriptions only. No source files or real captures were sent.
+
+## 2026-10-13 — Acknowledge durable words before organization
+
+The capture view previously waited for semantic completion before showing any
+saved result, despite the repository already committing the immutable original
+and fallback first. A scoped callback now publishes a value-only receipt after
+that commit, never a mutable placeholder. After 250 ms of continued processing
+the screen shows the words as saved and organization as unfinished; quick
+results retain one receipt. The intermediate state is read-only, with existing
+close/save exclusion and final-result quota/reminder behavior unchanged. No
+early dismissal or cancellation-on-disappearance was introduced. Raw-save
+failure cannot publish the receipt; a later thrown failure distinguishes saved
+words from unfinished organization. This improves feedback, not model latency.
+
+File-backed native checks reopen the store during the callback, verify pending
+original/no alert before final rows, duplicate suppression and free practice.
+The storage-failure class verifies no acknowledgement on a read-only store. Two
+actual UI journeys cover intermediate/final states and relaunch in light and
+dark largest text. Physical microphone, hardware latency and app/service
+integration remain separate qualification gates. Claude Opus 5.5 reviewed the
+design descriptions and risks; no source files or real captures were sent.
+
 ## 2026-10-13 — Keep compact navigation usable at accessibility text sizes
 
 Passing interaction checks did not reveal that list group names truncated while
@@ -5723,3 +5782,60 @@ Named words, isolated TTS prosody, incomplete/ambiguous sentence endings and
 actual phone routes remain limitations. Claude Opus 5.5 reviewed descriptions
 and challenged the separation between real ASR cadence and hand-written timer
 fixtures; that gap is now explicitly covered without claiming phone equivalence.
+
+
+## 2026-10-13 — Saved recovery and scoped capture regression closure
+
+A manually configured reminder date now has one shared configured delivery-kind
+reader for row presentation and scheduling. Original wording remains cached
+separately. The configured kind does not assert system authorization, eligibility
+or actual registration. A pending organization failure cannot turn an already
+committed capture back into an unsaved draft. Explicitly reviewed whole fallback
+rows are the latest human decision and survive launch recovery unchanged.
+
+The full unit run exposed a complete-literal shortcut that replaced a held
+missing-object reading with an executable predicate. The shortcut now declines
+ambiguous objects and a single untyped review; calendar repair cannot supply
+that unstated object either. When source ownership and all semantics agree,
+canonical task analysis and shopping grouping are preserved rather than rebuilt
+from the raw request. A named task-list frame permits a proved gerund action
+without granting purchase authority to reading, packing or arbitrary list names.
+
+Unsupported timing holds its own sentence instead of absorbing later independent
+sentences. A known store can retain its name across a bounded elapsed delay;
+ordinary parsing still decides the actual reminder. A grocery header's proved
+fronted calendar can move in analysis while original occurrence ownership stays
+unchanged. Late bare-trip folding requires retail evidence or an immediately coordinated
+purchase frame with matching calendars. Unfamiliar names cannot bridge sentence
+stops, sequence markers or independent dates; the existing visit-purpose reader
+continues to handle its supported frames. Collecting
+rental, hired, borrowed, reserved or preordered objects retains its action and
+place fields; an explicit purchase verb still establishes shopping intent.
+
+Several old assertions conflicted with already approved behavior: current
+products are independently checkable even with a definite article, complete short
+perfect facts remain findable in Memory as well as literal reminder context,
+shopping siblings preserve a parent raw quote rather than identical product/raw
+quotes, and a populated suggestion identical to the displayed fallback title is
+not a wording regression. Those contracts are explicitly audited with their
+opposite controls retained. “Get” is declared presentation scaffolding for proved
+product needs and supplies no original-source authority. Failed receipts remain
+available; synthetic passes do not establish universal or population accuracy.
+
+Verification on the final application source: the canonical scorer self-checks
+passed, then the final compiled corpus replay retained 1,428 clean of 1,434,
+zero blocking/critical/behavioral/metadata disagreements and six unchanged
+cosmetic differences. The two failed grocery renderings were rerun only for
+their blocking frozen source, both clean. Twenty-four affected application
+methods from the broad native inventory now pass in focused batches; the full
+rendering methods were not repeated. All four review-boundary checks, including
+the asynchronous local-runtime entry point, pass. A method-only run selected
+zero tests and is excluded from that evidence. Manual reminder presentation,
+raw-save failure and reviewed/unreviewed recovery controls pass. Three changed
+receipt UI journeys pass, including dark/largest text and saved-error closure
+plus one-item relaunch recovery. The latter spent roughly eight minutes in
+XCTest quiescence waits; that duration is not a measured app or phone save time.
+Final unsigned Release compilation passed. No physical iPhone, Apple sandbox,
+real notification delivery or installed-update result is implied. The original
+2,233-check run remains a failing historical receipt; five StoreKit setup and
+language-environment failures are not relabelled as passes.

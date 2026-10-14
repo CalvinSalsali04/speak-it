@@ -60,6 +60,16 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
 
         if let sessions = try? modelContext.fetch(descriptor) {
             for session in sessions {
+                // An explicit edit of the complete pending fallback is the
+                // newest user decision. Never replay its older original over
+                // that edit (or execute an older operation) on the next launch.
+                if let item = session.items.first, session.items.count == 1,
+                   item.isReviewed, item.originalTextSegment == session.originalTranscription {
+                    session.processingStatus = .complete
+                    session.processingError = nil
+                    try? persistChanges()
+                    continue
+                }
                 // Recovery re-reads the words at every launch. If those words
                 // trap the rules pipeline, one capture becomes a crash on
                 // every launch until the app is deleted. The launch is counted
@@ -1113,7 +1123,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         source: CaptureSource,
         createdAt: Date,
         schedulesReminders: Bool = true,
-        performance: CapturePerformanceTrace? = nil
+        performance: CapturePerformanceTrace? = nil,
+        onDurablySaved: (@MainActor (DurableCaptureReceipt) -> Void)? = nil
     ) async throws -> CaptureCreationResult {
         let normalizedText = try normalizedCaptureText(text)
         if let duplicate = try recentDuplicate(
@@ -1131,6 +1142,24 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             createdAt: createdAt
         )
 
+        onDurablySaved?(DurableCaptureReceipt(
+            sessionID: pending.session.id,
+            originalTranscription: pending.session.originalTranscription,
+            isPractice: pending.session.captureSource == .tutorial
+        ))
+#if DEBUG
+        // Hold the real persisted-to-organized boundary for deterministic UI QA.
+        // A release build has neither this argument nor a delayed save path.
+        if ProcessInfo.processInfo.arguments.contains("--ui-testing"),
+           ProcessInfo.processInfo.arguments.contains("--ui-testing-fail-organization") {
+            throw RepositoryError.saveFailed("Synthetic organization failure after durable save")
+        }
+        if ProcessInfo.processInfo.arguments.contains("--ui-testing"),
+           ProcessInfo.processInfo.arguments.contains("--ui-testing-delay-organization") {
+            try await Task.sleep(for: .seconds(4))
+        }
+#endif
+
         performance?.beginSemanticParsing()
         let extraction = await CapturePerformanceContext.$stageRecorder.withValue(
             performance?.stageRecorder
@@ -1140,16 +1169,20 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 referenceDate: createdAt,
                 permitsOnDeviceIntelligence: permitsOnDeviceIntelligence,
                 permitsOperations: source != .tutorial,
-                runtimeContext: source == .tutorial || !permitsOnDeviceIntelligence || RuntimeExampleConfiguration.current == nil ? .empty : RuntimeCaptureContext(savedItems:
-                    ((try? modelContext.fetch(FetchDescriptor<CapturedItem>())) ?? [])
-                        .filter { $0.captureSession?.id != pending.session.id }
-                        .map { RuntimeCaptureContext.SavedItem(id: $0.id.uuidString, title: $0.displayTitle, modifiedAt: $0.lastModifiedAt,
-                            originalText: $0.originalTextSegment, itemType: $0.itemType.rawValue,
-                            personName: $0.personName, dueDate: $0.dueDate, reminderDate: $0.reminderDate,
-                            isReviewed: $0.isReviewed, isArchived: $0.isArchived, isCompleted: $0.completedAt != nil,
-                            snapshot: atomicSnapshot($0)) },
-                    hasHome: SavedPlaceStore.place(for: .home) != nil,
-                    hasWork: SavedPlaceStore.place(for: .work) != nil)
+                runtimeContextProvider: { [self, pendingSessionID = pending.session.id] in
+                    guard source != .tutorial, permitsOnDeviceIntelligence else { return .empty }
+                    return RuntimeCaptureContext(savedItems:
+                        ((try? modelContext.fetch(FetchDescriptor<CapturedItem>())) ?? [])
+                            .filter { $0.captureSession?.id != pendingSessionID }
+                            .map { RuntimeCaptureContext.SavedItem(id: $0.id.uuidString, title: $0.displayTitle,
+                                modifiedAt: $0.lastModifiedAt, originalText: $0.originalTextSegment,
+                                itemType: $0.itemType.rawValue, personName: $0.personName,
+                                dueDate: $0.dueDate, reminderDate: $0.reminderDate,
+                                isReviewed: $0.isReviewed, isArchived: $0.isArchived,
+                                isCompleted: $0.completedAt != nil, snapshot: atomicSnapshot($0)) },
+                        hasHome: SavedPlaceStore.place(for: .home) != nil,
+                        hasWork: SavedPlaceStore.place(for: .work) != nil)
+                }
             )
         }
         performance?.finishSemanticParsing()

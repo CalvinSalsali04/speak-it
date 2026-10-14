@@ -12,6 +12,8 @@ import Foundation
 var arguments = Array(CommandLine.arguments.dropFirst())
 SentenceContext.taggerDisabledForEvaluation = arguments.contains("--tagger-disabled")
 arguments.removeAll { $0 == "--tagger-disabled" }
+let beforeCertificate = arguments.contains("--before-certificate")
+arguments.removeAll { $0 == "--before-certificate" }
 let jsonOutput = arguments.contains("--json")
 arguments.removeAll { $0 == "--json" }
 let diagnostics = arguments.contains("--diagnostics")
@@ -291,11 +293,16 @@ if benchmarkRounds > 0 {
 }
 
 for utterance in utterances {
-    let result = ThoughtExtractionEngine.extractWithRules(
-        utterance,
-        referenceDate: referenceDate,
-        calendar: calendar
-    )
+    let result: ThoughtExtractionResult
+    if beforeCertificate {
+        let processed = RuleBasedThoughtExtractor.process(utterance,
+            referenceDate: referenceDate, calendar: calendar)
+        result = ThoughtExtractionResult(items: processed.items,
+            operations: processed.operations, method: .rules)
+    } else {
+        result = ThoughtExtractionEngine.extractWithRules(utterance,
+            referenceDate: referenceDate, calendar: calendar)
+    }
 
     if jsonOutput {
         let items: [[String: Any]] = result.items.map { item in

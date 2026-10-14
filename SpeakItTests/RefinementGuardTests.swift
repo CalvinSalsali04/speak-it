@@ -292,9 +292,21 @@ final class CompleteLiteralSourceCertificateTests: XCTestCase {
             "I must have left the keys."
         ] { XCTAssertNil(read(bad), bad) }
     }
-    func testCertificateDefersListAbbreviationAndTypedReconsiderationWithoutRetypingIdeas() throws {
+    func testCertificateAcceptsProvedListAndDefersAbbreviationAndTypedReconsideration() throws {
+        let list = try XCTUnwrap(read("Buy a folder, a notebook"))
+        XCTAssertEqual(list.items.count, 2)
+        XCTAssertTrue(list.items.allSatisfy { $0.organization.itemType == .shopping && !$0.needsReview })
+        XCTAssertTrue(list.items[0].analysisText.localizedCaseInsensitiveContains("folder"))
+        XCTAssertTrue(list.items[1].analysisText.localizedCaseInsensitiveContains("notebook"))
+        // Shopping siblings display their own product quote while retaining
+        // the immutable parent as rawQuote. Occurrence authority is still
+        // complete and disjoint; a copied display verb owns no second ID.
+        let sourceIDs = list.items.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) }
+        XCTAssertEqual(sourceIDs, Set(SourceUnitLedger("Buy a folder, a notebook").words.indices))
+        XCTAssertEqual(list.items.reduce(0) { $0 + $1.sourceUnitIDs.count }, sourceIDs.count)
+        XCTAssertEqual(list.items.map(\.rawQuote), Array(repeating: "Buy a folder, a notebook", count: 2))
+        XCTAssertEqual(list.items.map(\.sourceQuote), ["a folder", "a notebook"])
         for source in [
-            "Buy a folder, a notebook",
             "call dr. cook about dinner.",
             "Buy bread. Add replacing the kettle to my list. On second thought, just descale it first. Call Noor."
         ] { XCTAssertNil(read(source), source) }
@@ -11134,6 +11146,40 @@ final class EverydayShoppingReadinessTests: XCTestCase {
         XCTAssertEqual(items.first?.captureSession?.originalTranscription, source)
     }
 
+    func testCollectionAndSequentialVisitsKeepTheirActionFields() {
+        for source in ["Pick up rental van at Central Depot on Friday",
+                       "Collect the borrowed camera at the library tomorrow",
+                       "Get the reserved equipment from the depot"] {
+            let result = read(source)
+            XCTAssertEqual(result.items.count, 1, source)
+            XCTAssertEqual(result.items.first?.organization.itemType, .task, source)
+            XCTAssertFalse(result.items.first?.needsReview ?? true, source)
+            let title = result.items.first.map(CorpusEvaluator.displayTitle) ?? ""
+            XCTAssertTrue(title.localizedCaseInsensitiveContains(
+                source.contains("Central Depot") ? "Central Depot" : source.contains("library") ? "library" : "depot"), source)
+        }
+        for source in ["Go to Cedar Lane then get a jacket", "Go to Cedar Lane. Get a jacket"] {
+            let result = read(source)
+            XCTAssertEqual(result.items.count, 2, source)
+            XCTAssertEqual(result.items.map { $0.organization.itemType }, [.task, .shopping], source)
+            XCTAssertFalse(result.items.last?.shoppingGroup == "Cedar Lane", source)
+        }
+        let purchase = read("Buy a rental van.")
+        XCTAssertEqual(purchase.items.first?.organization.itemType, .shopping)
+        XCTAssertFalse(purchase.items.first?.needsReview ?? true)
+    }
+
+    func testShoppingHeadingCalendarAndElapsedStoreDelayStayMetadata() {
+        for source in ["Groceries tonight: eggs milk", "Groceries tonight eggs milk"] {
+            check(source, ["eggs", "milk"], group: "Groceries")
+            let result = read(source)
+            XCTAssertTrue(result.items.allSatisfy { $0.organization.temporalIntent.time?.hour == 20 }, source)
+        }
+        let source = "When I go to Sobeys in an hour, remind me to get eggs, bread, and cheese"
+        check(source, ["eggs", "bread", "cheese"], group: "Sobeys")
+        XCTAssertTrue(read(source).items.allSatisfy { $0.organization.temporalIntent.relativeSeconds == 3600 })
+    }
+
     func testIndefinitePhysicalAcquisitionsDoNotBecomeGenericTasks() {
         check("Grab a birthday card at the pharmacy.", ["a birthday card"], group: "Pharmacy")
         let source = "Grab a birthday card at the pharmacy."
@@ -11290,5 +11336,134 @@ final class SharedShoppingDetailTests: XCTestCase {
         XCTAssertTrue(notes[0].caption.contains("eggs"))
         XCTAssertFalse(notes[0].caption.contains("milk"))
         XCTAssertEqual(remaining.first?.captureSession?.originalTranscription, source)
+    }
+}
+
+
+#if DEBUG
+@MainActor
+final class LazySavedCaptureContextTests: XCTestCase {
+    private var configuration: RuntimeExampleConfiguration {
+        RuntimeExampleConfiguration(libraryURL: URL(fileURLWithPath: "/unused-lazy-context.sqlite"),
+            allowProposed: false, retrievalEnabled: false)
+    }
+
+    func testLiteralCapturesDoNotLoadSavedLibraryContext() async {
+        for source in ["Buy milk", "Buy ham, cheese and eggs at Costco tomorrow at 9 a.m.",
+                       "Call my mom", "The spare key is inside the blue kitchen drawer."] {
+            var loads = 0
+            let result = await RuntimeExampleConfiguration.$testConfiguration.withValue(configuration) {
+                await ThoughtExtractionEngine.extract(source, runtimeContextProvider: {
+                    loads += 1
+                    return .empty
+                })
+            }
+            XCTAssertEqual(loads, 0, "A source-only capture must not fetch a growing library: \(source)")
+            XCTAssertFalse(result.items.isEmpty, source)
+        }
+    }
+
+    func testLazyAndEagerInterpretationKeepIdenticalResultsAndLoadAtMostOnce() async {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Toronto")!
+        let reference = ISO8601DateFormatter().date(from: "2026-10-13T14:00:00Z")!
+        let context = RuntimeCaptureContext(savedItems: (0..<10_000).map {
+            RuntimeCaptureContext.SavedItem(id: "saved-\($0)", title: "Saved reference \($0)",
+                modifiedAt: reference, originalText: "Original reference \($0)", itemType: "note")
+        }, hasHome: true, hasWork: false)
+        var totalLoads = 0
+        for source in [
+            "For my saved dentist reminder, change the person from Maya to Noor.",
+            "Please reconsider the timings for the saved plan I mentioned earlier.",
+            "Buy milk and eggs at Costco. Also call Mom tomorrow.",
+            "If the estimate is approved, call the contractor; otherwise keep the quote as reference."
+        ] {
+            let parsed = RuleBasedThoughtExtractor.process(source, referenceDate: reference, calendar: calendar)
+            let rules = ThoughtExtractionResult(items: parsed.items, operations: parsed.operations, method: .rules)
+            let eager = await RuntimeExampleInterpreter.interpret(source, referenceDate: reference,
+                calendar: calendar, context: context, configuration: configuration, rules: rules)
+            var loads = 0
+            let lazy = await RuntimeExampleInterpreter.interpret(source, referenceDate: reference,
+                calendar: calendar, context: .empty, configuration: configuration, rules: rules,
+                contextProvider: { loads += 1; return context })
+            XCTAssertLessThanOrEqual(loads, 1, source)
+            totalLoads += loads
+            XCTAssertEqual(lazy, eager, "Deferring the complete snapshot must not change meaning: \(source)")
+        }
+        XCTAssertGreaterThan(totalLoads, 0, "The comparison must exercise a context-consuming path")
+    }
+
+    func testDisabledRuntimeDoesNotInvokeSavedContextProvider() async {
+        var loads = 0
+        _ = await ThoughtExtractionEngine.extract("Review the saved plan again",
+            permitsOnDeviceIntelligence: false, runtimeContextProvider: { loads += 1; return .empty })
+        XCTAssertEqual(loads, 0)
+    }
+}
+#endif
+
+
+final class CertificateReviewBoundaryTests: XCTestCase {
+    private var calendar: Calendar {
+        var value = Calendar(identifier: .gregorian)
+        value.timeZone = TimeZone(identifier: "America/Toronto")!
+        return value
+    }
+    private var reference: Date { ISO8601DateFormatter().date(from: "2026-08-03T14:00:00Z")! }
+    private func rules(_ source: String) -> ThoughtExtractionResult {
+        let value = RuleBasedThoughtExtractor.process(source, referenceDate: reference, calendar: calendar)
+        return .init(items: value.items, operations: value.operations, method: .rules)
+    }
+    func testLiteralShortcutCannotWaiveAnObjectOrSingleUntypedReview() {
+        for source in ["Return that tomorrow.", "Remind me to return that tomorrow at 8 PM. Buy eggs.",
+                       "Bring the same folder Friday.", "I am just narrating this.", "I am pausing to think."] {
+            let previous = rules(source)
+            XCTAssertTrue(previous.items.contains { $0.needsReview }, source)
+            XCTAssertNil(RuntimeCompleteLiteralCertificate.interpret(source, referenceDate: reference,
+                calendar: calendar, rules: previous), source)
+            let result = ThoughtExtractionEngine.extractWithRules(source, referenceDate: reference, calendar: calendar)
+            XCTAssertTrue(result.items.contains { $0.needsReview }, source)
+        }
+    }
+    @MainActor
+    func testMissingObjectRemainsHeldThroughTheLocalRuntimeEntryPoint() async {
+        // Enable the normal async entry point and its early certificates with
+        // no worked examples or saved facts. This checks the local fallback,
+        // not successful Foundation Models generation on a physical phone.
+        let configuration = RuntimeExampleConfiguration(
+            libraryURL: URL(fileURLWithPath: "/unused-object-boundary.sqlite"),
+            allowProposed: false, retrievalEnabled: false)
+        for source in ["Return that tomorrow.",
+                       "Remind me to return that tomorrow at 8 PM. Buy eggs.",
+                       "Bring the same folder Friday."] {
+            let result = await RuntimeExampleConfiguration.$testConfiguration.withValue(configuration) {
+                await ThoughtExtractionEngine.extract(source, referenceDate: reference,
+                    calendar: calendar, runtimeContext: .empty)
+            }
+            XCTAssertTrue(result.operations.isEmpty, source)
+            XCTAssertTrue(result.items.contains { $0.needsReview }, source)
+            XCTAssertFalse(result.items.contains { !$0.needsReview
+                && $0.organization.itemType.isActionable
+                && ($0.analysisText.localizedCaseInsensitiveContains("return that")
+                    || $0.analysisText.localizedCaseInsensitiveContains("same folder")) }, source)
+        }
+    }
+
+    func testCalendarRepairCannotSupplyTheUnstatedObject() {
+        let source = "Remind me to return that tomorrow at 8 AM, actually 9 AM."
+        let previous = rules(source)
+        XCTAssertTrue(previous.items.contains { $0.needsReview }, String(describing: previous))
+        XCTAssertNil(RuntimeCompleteLiteralCertificate.interpret(source, referenceDate: reference,
+            calendar: calendar, rules: previous))
+        let result = ThoughtExtractionEngine.extractWithRules(source, referenceDate: reference, calendar: calendar)
+        XCTAssertTrue(result.items.contains { $0.needsReview })
+    }
+    func testResolvedCanonicalActionAnalysisSurvivesShortcut() {
+        let source = "Add making the display page to my list."
+        let previous = rules(source)
+        let result = ThoughtExtractionEngine.extractWithRules(source, referenceDate: reference, calendar: calendar)
+        XCTAssertEqual(previous.items.first?.analysisText, "make the display page")
+        XCTAssertEqual(result.items.first?.analysisText, previous.items.first?.analysisText)
+        XCTAssertEqual(result.items.first?.organization, previous.items.first?.organization)
     }
 }

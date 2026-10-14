@@ -677,9 +677,9 @@ Sources holding exactly the same utterances are one body, grouped first. Then
 a body wholly inside another is not a second population. 25 sources reduce to
 22 distinct bodies and **12 that sit inside no other**:
 
-| utterances | share of 12,124 | population |
+| utterances | share of 12,159 | population |
 |---:|---:|---|
-| 10,287 | 84.8% | the gating corpus in `SpeakItTests` |
+| 10,322 | 84.9% | the gating corpus in `SpeakItTests` |
 | 818 | 6.7% | `Tools/SpeechLab/phase2`, in four byte-identical files |
 | 695 | 5.7% | `Tools/SpeechLab/phase2/repair/trust-closure/cases.jsonl` |
 | 472 | 3.9% | `Tools/SpeechLab/audit/combined-renderings.jsonl` |
@@ -697,10 +697,10 @@ times: `adjudication/cases-adjudicated.jsonl`, `data/cases.jsonl`,
 `data/renderings.jsonl`, `review/independent-review-pack.jsonl`. A form
 appearing only there reads as four sources and is one.
 
-**That column sums to 13,024 and its shares to 107.4%, because the twelve
+**That column sums to 13,059 and its shares to 107.4%, because the twelve
 populations are maximal rather than disjoint.** A body inside no other body
 may still overlap one. The excess of 900 counts an utterance once for every
-additional maximal population that contains it. Only the union, 12,124, is a
+additional maximal population that contains it. Only the union, 12,159, is a
 total.
 
 ### By kind, and the one place two kinds overlap
@@ -708,18 +708,18 @@ total.
 Two of the three pairs share nothing: not one utterance is in both
 `SpeakItTests` and the SpeechLab tree, and not one is in both the SpeechLab
 tree and a development set. The development sets and the fixtures overlap by
-114, so the three kinds are 10,287 + 1,333 + 618 = 12,238 against a union of
-12,124 and do not add up. Written out so that they do:
+114, so the three kinds are 10,322 + 1,333 + 618 = 12,273 against a union of
+12,159 and do not add up. Written out so that they do:
 
-| kind | utterances | share of 12,124 |
+| kind | utterances | share of 12,159 |
 |---|---:|---:|
-| test fixtures only | 10,173 | 83.9% |
+| test fixtures only | 10,208 | 84.0% |
 | generated renderings (the SpeechLab tree) | 1,333 | 11.0% |
-| development sets only | 504 | 4.2% |
+| development sets only | 504 | 4.1% |
 | in both a development set and a fixture | 114 | 0.9% |
-| **total** | **12,124** | |
+| **total** | **12,159** | |
 
-**95.8% of everything this project may read — 11,620 of 12,124 — is either a
+**95.9% of everything this project may read — 11,655 of 12,159 — is either a
 fixture written to exercise the parser or a rendering generated from a
 blueprint.** The material written to look like somebody talking is 618
 utterances, of which 504 exist nowhere else.

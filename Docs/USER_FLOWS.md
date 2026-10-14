@@ -41,8 +41,8 @@
 2. Enter one or several natural thoughts in the focused editor.
 3. Tap **Save thought**.
 4. The repository trims outer whitespace, creates the capture session and item, and saves them together.
-5. Show **Remembered**, then return to Today.
-6. If persistence fails, keep the typed text and show an error.
+5. If organization takes longer, show **Saved on this iPhone**, the committed recognized words, and **Organizing your thought…**. Keep this receipt read-only until the final result. Show **Remembered** when organization completes, then return to Today.
+6. If persistence fails, keep the typed text and show an error. If words were committed but organization fails later, say the original words were saved; closing retains the same session and recovery checkpoint without an unsaved-draft claim.
 7. If the person taps X after entering words, offer **Save & Close**, **Discard**, and **Keep Editing**. An empty capture closes immediately; a saved capture is already safe.
 
 ## In-app voice capture

@@ -361,9 +361,30 @@ I am sorting the memorial display for the village hall and it is emotionally eas
             ] {
                 let result = ThoughtExtractionEngine.extractWithRules(source, referenceDate: anchor, calendar: calendar)
                 XCTAssertFalse(result.items.isEmpty, source)
-                XCTAssertEqual(result.items.flatMap { item in
-                    SourceUnitLedger(item.rawQuote).words.map { String(item.rawQuote[$0.range]) }
-                }, SourceUnitLedger(source).words.map { String(source[$0.range]) }, source)
+                if source.hasPrefix("The cleaner") {
+                    // Complete short perfect facts remain independently in
+                    // Memory and also explain the reminder. Shared context
+                    // quotes are intentional; this is not a disjoint literal
+                    // certificate. The dedicated perfect-fact regression
+                    // audits the exact shared occurrence IDs and connector.
+                    XCTAssertEqual(result.items.count, 2)
+                    XCTAssertEqual(result.items.filter { $0.organization.itemType.isActionable }.count, 1)
+                    let ledger = SourceUnitLedger(source)
+                    let retainedIDs = result.items.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) }
+                    let connectorIDs = Set(ledger.words.indices.filter { ledger.words[$0].text == "but" })
+                    XCTAssertEqual(retainedIDs, Set(ledger.words.indices).subtracting(connectorIDs))
+                    XCTAssertTrue(result.items.allSatisfy { !$0.needsReview })
+                    // Shared contextual quotes are not literal disjoint
+                    // proposals. Persistence must still retain EVERY original
+                    // character, including the coordination seam.
+                    let saved = try? repository.createCapture(text: source, source: .inAppText,
+                        createdAt: anchor, schedulesReminder: false)
+                    XCTAssertEqual(saved?.captureSession?.originalTranscription, source)
+                } else {
+                    XCTAssertEqual(result.items.flatMap { item in
+                        SourceUnitLedger(item.rawQuote).words.map { String(item.rawQuote[$0.range]) }
+                    }, SourceUnitLedger(source).words.map { String(source[$0.range]) }, source)
+                }
             }
         }
     }
@@ -2562,6 +2583,52 @@ And email Jonah the final volunteer rota once Priya has approved it. She has loo
         }
     }
 
+    func testSeparatedTimingRestrictionsNeverLeaveAnUnrestrictedReminder() {
+        withFixtureClock { calendar in
+            let anchor = makeDate(year: 2026, month: 8, day: 3, hour: 10, calendar: calendar)
+            for source in [
+                "Remind me every day at 9 AM to check the oven. Starting next Monday.",
+                "Remind me every day at 9 AM to check the oven. Except this Friday.",
+                "Remind me every weekday at 9 AM to check the invoice. Until December.",
+                "Remind me at seven to call Mom. Not sure if AM or PM. Only on weekdays."
+            ].flatMap({ source -> [String] in
+                let sentences = source.components(separatedBy: ". ")
+                guard sentences.count == 2 else { return [source] }
+                let reversed = sentences.reversed().map {
+                    $0.trimmingCharacters(in: CharacterSet(charactersIn: "."))
+                }.joined(separator: ". ") + "."
+                return [source, reversed]
+            }) {
+                let result = ThoughtExtractionEngine.extractWithRules(source,
+                    referenceDate: anchor, calendar: calendar)
+                XCTAssertTrue(result.operations.isEmpty, source)
+                XCTAssertEqual(result.items.count, 1, source)
+                let item = result.items.first
+                XCTAssertEqual(item?.rawQuote, source)
+                XCTAssertEqual(item?.needsReview, true, source)
+                XCTAssertNil(item?.organization.reminderDate, source)
+                XCTAssertNil(item?.organization.recurrenceRule, source)
+            }
+        }
+    }
+
+    func testIndependentSentencesDoNotInventATimingRestriction() {
+        withFixtureClock { calendar in
+            let anchor = makeDate(year: 2026, month: 8, day: 3, hour: 10, calendar: calendar)
+            for source in [
+                "Remind me every day at 9 AM to check the oven. Buy milk.",
+                "Remind me every day at 9 AM to check the oven. Every Friday buy eggs."
+            ] {
+                let result = ThoughtExtractionEngine.extractWithRules(source,
+                    referenceDate: anchor, calendar: calendar)
+                XCTAssertEqual(result.items.count, 2, source)
+                XCTAssertTrue(result.items.allSatisfy { !$0.needsReview }, source)
+                XCTAssertEqual(result.items.filter { $0.organization.reminderDate != nil }.count, 1, source)
+                XCTAssertTrue(result.items.contains { $0.organization.itemType == .shopping }, source)
+            }
+        }
+    }
+
     func testUnresolvedTimeAndPlaceCommentaryStaysWithItsTask() {
         withFixtureClock { calendar in
             let anchor = makeDate(year: 2026, month: 10, day: 5, hour: 9,
@@ -3600,7 +3667,8 @@ And email Jonah the final volunteer rota once Priya has approved it. She has loo
             )
             XCTAssertEqual(simple.items.count, 1)
             XCTAssertEqual(simple.items[0].organization.temporalIntent.kind, .dateOnly)
-            XCTAssertEqual(simple.items[0].suggestedTitle, nil)
+            XCTAssertEqual(ThoughtTitleFormatter.polished(simple.items[0].suggestedTitle ?? simple.items[0].analysisText,
+                itemType: simple.items[0].organization.itemType), "Call Mom tomorrow")
 
             let idea = ThoughtExtractionEngine.extractWithRules(
                 "Remember that Amira's idea for next Tuesday is a garden mural.",

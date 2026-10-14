@@ -161,7 +161,7 @@ enum ShoppingGroupParser {
     ]
     private static let nonStorePlaces: Set<String> = [
         "room temperature", "ambient temperature", "scratch", "home", "work",
-        "school", "the office", "office", "the counter", "counter", "memory",
+        "school", "library", "the office", "office", "the counter", "counter", "memory",
         "hand", "random", "first", "last", "least", "most", "all", "once"
     ]
 
@@ -183,7 +183,18 @@ enum ShoppingGroupParser {
         if let regex = NSRegularExpression.speakItCached(knownStorePrefixPattern),
            let match = regex.firstMatch(in: tail, range: NSRange(tail.startIndex..., in: tail)),
            let prefix = Range(match.range, in: tail) {
-            let rest = String(tail[prefix.upperBound...])
+            var rest = String(tail[prefix.upperBound...])
+            // An elapsed delay belongs to the visit, not to the business
+            // name. Reuse the complete timing reader before validating the
+            // remaining purchase continuation (“in an hour, remind me…”).
+            let unpadded = rest.trimmingCharacters(in: .whitespaces)
+            if let span = unpadded.range(of: #"(?i)^in\s+\#(SelfCorrectionResolver.durationPattern)(?=$|[\s,;.!?])"#,
+                                         options: .regularExpression) {
+                rest = String(unpadded[span.upperBound...])
+            } else if let timing = RuleBasedThoughtExtractor.leadingTemporalContext(in: unpadded),
+                      let span = unpadded.range(of: timing, options: [.anchored, .caseInsensitive]) {
+                rest = String(unpadded[span.upperBound...])
+            }
             if rest.isEmpty || rest.range(of: #"(?i)^[,;.!?]|^\s+(?:(?:and|then|also)\b|\#(acquisitionHead)\b|remind\b|(?:i|we)\s+(?:need|want)\b|today\b|tomorrow\b|tonight\b|at\b)"#,
                                          options: .regularExpression) != nil {
                 return storeCandidate(from: String(tail[prefix]), allowsUncased: false, preposition: "to")

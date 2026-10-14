@@ -38,7 +38,7 @@ struct ReminderScheduleRequest: Hashable, Sendable {
         // requests on every render pass to keep its scheduling signature live,
         // which made two fresh `ThoughtOrganizer` parses per reminder item here
         // the single largest cost of scrolling that screen.
-        let wordedDelivery = ItemPresentation.effectiveReminderDelivery(for: item)
+        let configuredDelivery = ItemPresentation.configuredReminderDelivery(for: item)
 
         itemID = item.id
         captureSessionID = item.captureSession?.id
@@ -46,7 +46,7 @@ struct ReminderScheduleRequest: Hashable, Sendable {
             from: item.displayTitle == originalText ? originalText : item.displayTitle
         )
         self.fireDate = fireDate
-        delivery = wordedDelivery == .alarm ? .alarm : .notification
+        delivery = configuredDelivery
         repeatingComponents = Self.repeatingComponents(
             rule: item.temporalIntent?.recurrence,
             fireDate: fireDate

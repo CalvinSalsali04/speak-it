@@ -210,8 +210,16 @@ struct ItemPresentation: Equatable, Sendable {
         [UUID: (segment: String, delivery: ReminderDelivery)] = [:]
 
     private static func reminderDelivery(for item: CapturedItem) -> ReminderDelivery {
+        configuredReminderDelivery(for: item)
+    }
+
+    /// A stored alert date can be an explicit editor choice even when the
+    /// original wording requested no alert. This describes the configured kind,
+    /// not permission, eligibility or observed system registration.
+    static func configuredReminderDelivery(for item: CapturedItem) -> ReminderDelivery {
         guard item.reminderDate != nil else { return .none }
-        return effectiveReminderDelivery(for: item)
+        let wording = effectiveReminderDelivery(for: item)
+        return wording == .none ? .notification : wording
     }
 
     /// The alert kind the original wording asked for: the segment's own

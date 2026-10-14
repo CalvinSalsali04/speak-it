@@ -225,6 +225,14 @@ enum ItemEditSemanticReconciler {
     }
 }
 
+/// Acknowledges only the first committed transaction, never an inferred result.
+/// No mutable SwiftData object escapes while organization can still replace it.
+struct DurableCaptureReceipt: Equatable, Sendable {
+    let sessionID: UUID
+    let originalTranscription: String
+    let isPractice: Bool
+}
+
 @MainActor
 struct CaptureCreationResult {
     let session: CaptureSession
@@ -433,7 +441,8 @@ protocol ThoughtRepository: AnyObject, Sendable {
         source: CaptureSource,
         createdAt: Date,
         schedulesReminders: Bool,
-        performance: CapturePerformanceTrace?
+        performance: CapturePerformanceTrace?,
+        onDurablySaved: (@MainActor (DurableCaptureReceipt) -> Void)?
     ) async throws -> CaptureCreationResult
 
     /// Adds typed (or keyboard-dictated) entries straight onto a named
@@ -483,6 +492,20 @@ extension ThoughtRepository {
         group: String
     ) throws -> [CapturedItem] {
         try addShoppingItems(entries, group: group, createdAt: .now)
+    }
+
+    func createCaptureResult(
+        text: String,
+        source: CaptureSource,
+        createdAt: Date,
+        schedulesReminders: Bool,
+        performance: CapturePerformanceTrace?
+    ) async throws -> CaptureCreationResult {
+        try await createCaptureResult(
+            text: text, source: source, createdAt: createdAt,
+            schedulesReminders: schedulesReminders, performance: performance,
+            onDurablySaved: nil
+        )
     }
 
     func createCaptureResult(
