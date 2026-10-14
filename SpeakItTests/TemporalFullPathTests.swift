@@ -2583,6 +2583,52 @@ And email Jonah the final volunteer rota once Priya has approved it. She has loo
         }
     }
 
+    func testSeparatedTimingRestrictionsNeverLeaveAnUnrestrictedReminder() {
+        withFixtureClock { calendar in
+            let anchor = makeDate(year: 2026, month: 8, day: 3, hour: 10, calendar: calendar)
+            for source in [
+                "Remind me every day at 9 AM to check the oven. Starting next Monday.",
+                "Remind me every day at 9 AM to check the oven. Except this Friday.",
+                "Remind me every weekday at 9 AM to check the invoice. Until December.",
+                "Remind me at seven to call Mom. Not sure if AM or PM. Only on weekdays."
+            ].flatMap({ source -> [String] in
+                let sentences = source.components(separatedBy: ". ")
+                guard sentences.count == 2 else { return [source] }
+                let reversed = sentences.reversed().map {
+                    $0.trimmingCharacters(in: CharacterSet(charactersIn: "."))
+                }.joined(separator: ". ") + "."
+                return [source, reversed]
+            }) {
+                let result = ThoughtExtractionEngine.extractWithRules(source,
+                    referenceDate: anchor, calendar: calendar)
+                XCTAssertTrue(result.operations.isEmpty, source)
+                XCTAssertEqual(result.items.count, 1, source)
+                let item = result.items.first
+                XCTAssertEqual(item?.rawQuote, source)
+                XCTAssertEqual(item?.needsReview, true, source)
+                XCTAssertNil(item?.organization.reminderDate, source)
+                XCTAssertNil(item?.organization.recurrenceRule, source)
+            }
+        }
+    }
+
+    func testIndependentSentencesDoNotInventATimingRestriction() {
+        withFixtureClock { calendar in
+            let anchor = makeDate(year: 2026, month: 8, day: 3, hour: 10, calendar: calendar)
+            for source in [
+                "Remind me every day at 9 AM to check the oven. Buy milk.",
+                "Remind me every day at 9 AM to check the oven. Every Friday buy eggs."
+            ] {
+                let result = ThoughtExtractionEngine.extractWithRules(source,
+                    referenceDate: anchor, calendar: calendar)
+                XCTAssertEqual(result.items.count, 2, source)
+                XCTAssertTrue(result.items.allSatisfy { !$0.needsReview }, source)
+                XCTAssertEqual(result.items.filter { $0.organization.reminderDate != nil }.count, 1, source)
+                XCTAssertTrue(result.items.contains { $0.organization.itemType == .shopping }, source)
+            }
+        }
+    }
+
     func testUnresolvedTimeAndPlaceCommentaryStaysWithItsTask() {
         withFixtureClock { calendar in
             let anchor = makeDate(year: 2026, month: 10, day: 5, hour: 9,

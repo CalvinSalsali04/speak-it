@@ -2,6 +2,14 @@
 
 ## Durable confirmation and context-loading follow-up (unreleased)
 
+A bare timing restriction recognized as a separate sentence (for example,
+“every day at 9 AM … Starting next Monday” or “Except Friday …”) conservatively
+holds the capture for review rather than scheduling a series without its
+restriction. Bounds/exceptions are not generally representable by the current
+stored recurrence model. Independent fronted dated actions still split; the
+immutable original remains available. This does not establish arbitrary
+pause/punctuation robustness on a phone.
+
 Longer in-app organization now shows the committed recognized words and an
 explicit organizing state after 250 ms. The intermediate receipt remains
 read-only and cannot dismiss, start another capture or edit a placeholder.

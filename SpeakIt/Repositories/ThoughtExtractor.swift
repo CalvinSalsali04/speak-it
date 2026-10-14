@@ -2881,6 +2881,31 @@ enum RuleBasedThoughtExtractor {
             && timingSentences.dropFirst().allSatisfy {
                 $0.range(of: localTemporalRevisionPattern, options: .regularExpression) != nil
             }
+        // ASR punctuation does not make a verbless timing restriction an
+        // independent thought. A later bound must not disappear while its
+        // earlier reminder becomes executable. Unsupported separated scopes
+        // stay together for review; ordinary independent actions do not match.
+        let hasSeparatedTimingScope = spokenSentences.count > 1
+            && spokenSentences.contains { sentence in
+            let phrase = sentence.trimmingCharacters(in:
+                CharacterSet.whitespacesAndNewlines.union(.punctuationCharacters))
+            let action = ActionabilityReader.actionBody(phrase)
+            // A fronted date with its own action is independent: "Every
+            // Friday buy eggs" is not a bound on the previous reminder.
+            guard action.caseInsensitiveCompare(phrase) == .orderedSame
+                    || !ActionabilityReader.read(action).belongsOnToday else { return false }
+            return phrase.range(of: #"(?i)^(?:(?:starting|beginning|until|through|ending|except|unless|besides|every)\b|(?:apart\s+from|other\s+than|but\s+not|ends\s+on)\b|(?:only|not)\s+(?:on|after|before|during)\b|from\s+.+\s+on\b)"#,
+                                options: .regularExpression) != nil
+        } && spokenSentences.contains {
+            ReminderPhrasing.requestsReminder($0)
+                || RecurrenceIntentParser.parse($0.lowercased()) != nil
+        }
+        let hasOwnedClockReview = RecurrenceIntentParser.parse(creating.lowercased()) == nil
+            && !hasSeparatedTimingScope
+            && spokenSentences.contains {
+                if case .unresolvedTimeScope = captureDiscourseReference(in: $0) { return true }
+                return false
+            }
         let segments: [Segment]
         if unresolvedSharedScope && selfCorrected != splitCompounds && !datedShoppingPlan {
             segments = [Segment(quote: creating, analysisText: creating,
@@ -2900,11 +2925,17 @@ enum RuleBasedThoughtExtractor {
             // revision validator consumes them, rather than treating their
             // successive "until" phrases as one unsupported condition.
             segments = timingSentences.flatMap { segmentedThoughts(in: $0) }
-        } else if numberedIntents == nil, spokenSentences.count == 1,
+        } else if hasSeparatedTimingScope {
+            // The current stored timing model cannot prove a detached bound
+            // belongs to a particular schedule. Preserve every word and grant
+            // no alert authority rather than silently running without it.
+            segments = [Segment(quote: creating, analysisText: creating,
+                                suggestedTitle: nil, forcesReview: true)]
+        } else if numberedIntents == nil, !hasOwnedClockReview,
                   ThoughtOrganizer.hasUnresolvedTimingConstraint(creating) {
-            // Preserve an unsupported constraint within its own sentence.
-            // A later independent sentence still needs its own reading; its
-            // action must not disappear inside an earlier held reminder.
+            // Only positively owned non-repeating clock commentary may leave
+            // this hold, so its independent folder purchase can survive. A
+            // sentence boundary alone never waives an unsupported constraint.
             segments = [Segment(quote: creating, analysisText: creating, suggestedTitle: nil)]
         } else if let explicitAdoption {
             segments = [Segment(quote: explicitAdoption.sourceQuote,

@@ -918,6 +918,8 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         reviewed fallback, reminder presentation and source-boundary controls.
         Both independent multi-word rules still produce the exact same set;
         this is a source-literal census, not capture accuracy.
+        10316 -> 10322 after separated timing-scope and independent-action controls.
+        The equality check and both counting rules remain unchanged.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
         found = set()
@@ -927,7 +929,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 10316)
+        self.assertEqual(len(space), 10322)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one

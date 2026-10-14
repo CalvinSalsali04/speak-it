@@ -1,5 +1,23 @@
 # Decisions
 
+## 2026-10-13 — Sentence punctuation cannot waive a timing constraint
+
+A final adverse replay found that allowing every multi-sentence capture past the
+unsupported-timing hold detached “Until December” from its repeating reminder.
+The bypass now requires positively owned, non-repeating unresolved-clock
+commentary. A separate bare scope before or after its reminder beginning with “except”, “starting”, “until”,
+“only on” or related timing markers keeps the source together for review when a
+prior reminder or recurrence exists. It grants no notification or recurrence
+authority. A fronted temporal phrase with its own recognized action remains
+independent. This also closes a pre-existing detached-exception case.
+
+This is a conservative safety boundary, not support for arbitrary recurrence
+bounds: a supported start spoken after an ASR sentence boundary may require
+review. The original remains available without re-speaking. Focused controls
+cover separated recurrence bounds, the clock-commentary/weekday contrast,
+ordinary independent purchases and independently dated purchases. Claude Opus
+5.5 identified the verbless-scope contrast from synthetic descriptions only.
+
 ## 2026-10-13 — Load saved interpretation context only when consumed
 
 The repository previously fetched and snapshotted every saved row before calling
