@@ -1473,6 +1473,12 @@ enum ThoughtOrganizer {
             return .event
         }
 
+        // Collecting an already booked, hired or borrowed object does not
+        // buy it. Preserve its collection place in the action, rather than
+        // removing that field as shopping-group presentation metadata.
+        if text.range(of: #"(?i)^(?:get|grab|pick\s+up)\s+(?:(?:the|my|our|a|an)\s+)?(?:rental|rented|hired|borrowed|reserved|pre[- ]?ordered)\s+"#,
+                      options: .regularExpression) != nil { return .task }
+
         // A nominal wish or shortage has no purchase verb. Do not let the
         // generic noun-coordination reader invent shopping for abstractions.
         if ShoppingGroupParser.implicitNeedBody(in: text) != nil,

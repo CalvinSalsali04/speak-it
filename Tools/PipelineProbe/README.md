@@ -44,8 +44,11 @@ This diagnostic switch is never set by the app.
 
 ## What it cannot tell you
 
-It runs the **rules path only** — `RuleBasedThoughtExtractor.process`. It does
-not run the Foundation Models refinement, and it has no store, so nothing that
+It runs the **rules path only** through `ThoughtExtractionEngine.extractWithRules`,
+including its complete-literal certificate and shopping shaping. Use
+`--before-certificate` to inspect `RuleBasedThoughtExtractor.process` directly
+and locate a disagreement at that boundary. Neither mode runs asynchronous
+runtime retrieval or Foundation Models refinement. It has no store, so nothing that
 depends on existing items is visible here: capture operations resolve their
 targets against SwiftData, and the probe has none. Persistence, reminders,
 scheduling and routing-into-the-UI all live above it.

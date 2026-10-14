@@ -60,6 +60,16 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
 
         if let sessions = try? modelContext.fetch(descriptor) {
             for session in sessions {
+                // An explicit edit of the complete pending fallback is the
+                // newest user decision. Never replay its older original over
+                // that edit (or execute an older operation) on the next launch.
+                if let item = session.items.first, session.items.count == 1,
+                   item.isReviewed, item.originalTextSegment == session.originalTranscription {
+                    session.processingStatus = .complete
+                    session.processingError = nil
+                    try? persistChanges()
+                    continue
+                }
                 // Recovery re-reads the words at every launch. If those words
                 // trap the rules pipeline, one capture becomes a crash on
                 // every launch until the app is deleted. The launch is counted
@@ -1140,6 +1150,10 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
 #if DEBUG
         // Hold the real persisted-to-organized boundary for deterministic UI QA.
         // A release build has neither this argument nor a delayed save path.
+        if ProcessInfo.processInfo.arguments.contains("--ui-testing"),
+           ProcessInfo.processInfo.arguments.contains("--ui-testing-fail-organization") {
+            throw RepositoryError.saveFailed("Synthetic organization failure after durable save")
+        }
         if ProcessInfo.processInfo.arguments.contains("--ui-testing"),
            ProcessInfo.processInfo.arguments.contains("--ui-testing-delay-organization") {
             try await Task.sleep(for: .seconds(4))

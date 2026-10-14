@@ -14,6 +14,37 @@ sandbox purchase/restore are not qualified by these source/simulator checks.
 The available iPhone 13 pairing entry failed actual device-service connectivity
 on October 13; no connected iPhone 16 was listed during this follow-up.
 
+## Launch verification limits after the October 13 review (unreleased)
+
+The single broad native run recorded 2,165 passes, 34 failures, 33 skips and
+one expected failure (2,233 checks). This is a regression inventory, not an
+accuracy rate. Failed/affected methods are rerun after root-cause fixes rather
+than repeating that whole suite. The original failing result is retained. Twenty-four affected application
+methods subsequently pass; the blocking frozen source in each of the two
+rendering failures passes its targeted replay. The final 1,434-case rules scan
+has zero blockers and six unchanged cosmetic differences. These closures do
+not turn the original full-suite receipt into a green run.
+Five StoreKit failures stopped during local environment setup, before the app's
+purchase bodies. A stock iOS 27.0 attempt created the configured Xcode canary
+transaction but did not expose a matching verified current entitlement; its
+strict guard was retained. This does not prove live purchase or restore works.
+
+The older iOS 26.5 simulator returned OtherWord throughout three language-tag
+probes. The stock iOS 27.0 runtime did return real lexical tags: four language
+environment checks passed and two still disagreed about “call” being a verb.
+That run also timed out collecting simulator diagnostics. Framework tag
+expectations and app behavior are separate evidence; neither runtime establishes
+language assets or microphone accuracy on the two actual phones.
+
+Post-commit organization errors keep the words saved and can close without an
+unsaved-draft claim. Recovery also preserves a manually reviewed whole fallback
+instead of overwriting it with older words. Free-capture accounting remains at
+its existing final-result boundary. A process death between raw persistence and
+final allowance accounting is not transactionally charged by this work; fixing
+that requires a persisted, idempotent chargeability design that preserves free
+practice/operations, Pro-at-capture semantics and the lifetime count after item
+deletion. It must not be replaced with a count of currently surviving sessions.
+
 ## Synthetic spoken-capture follow-up (unreleased)
 
 A reproduced unfinished “Don’t …” cutoff is repaired with focused real-timer

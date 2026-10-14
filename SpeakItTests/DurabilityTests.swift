@@ -1764,6 +1764,45 @@ final class DurableCaptureProgressTests: XCTestCase {
         XCTAssertEqual(try container.mainContext.fetchCount(FetchDescriptor<CaptureSession>()), 1)
     }
 
+    func testManualEditOfPendingWholeOriginalSurvivesRecovery() throws {
+        let session = CaptureSession(originalTranscription: "Buy milk", captureSource: .inAppText,
+                                     processingStatus: .pending)
+        let item = CapturedItem(originalTextSegment: "Buy milk", displayTitle: "Buy milk", itemType: .unclear,
+                                needsClarification: true, captureSession: session)
+        container.mainContext.insert(session); container.mainContext.insert(item)
+        try container.mainContext.save()
+        try repository.update(item, with: ItemEdits(title: "Collect the parcel", itemType: .task,
+            category: .general, dueDate: nil, reminderDate: nil, priority: .normal,
+            personName: nil, needsClarification: false))
+        let id = item.id
+        let reopened = try openContainer()
+        let recovered = SwiftDataThoughtRepository(modelContext: reopened.mainContext,
+            requestsReminderAuthorization: false, permitsOnDeviceIntelligence: false)
+        recovered.recoverUnorganizedCaptures()
+        let rows = try reopened.mainContext.fetch(FetchDescriptor<CapturedItem>())
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows.first?.id, id)
+        XCTAssertEqual(rows.first?.displayTitle, "Collect the parcel")
+        XCTAssertEqual(rows.first?.itemType, .task)
+        XCTAssertEqual(rows.first?.captureSession?.originalTranscription, "Buy milk")
+        XCTAssertEqual(rows.first?.captureSession?.processingStatus, .complete)
+    }
+
+    func testUnreviewedPendingOriginalStillOrganizesNormally() throws {
+        let session = CaptureSession(originalTranscription: "Buy milk", captureSource: .inAppText,
+                                     processingStatus: .pending)
+        let item = CapturedItem(originalTextSegment: "Buy milk", displayTitle: "Buy milk", itemType: .unclear,
+                                needsClarification: true, captureSession: session)
+        container.mainContext.insert(session); container.mainContext.insert(item)
+        try container.mainContext.save()
+        repository.recoverUnorganizedCaptures()
+        XCTAssertEqual(session.items.count, 1)
+        XCTAssertEqual(session.items.first?.id, item.id)
+        XCTAssertEqual(session.items.first?.itemType, .shopping)
+        XCTAssertEqual(session.processingStatus, .complete)
+        XCTAssertEqual(session.originalTranscription, "Buy milk")
+    }
+
     func testPracticeAcknowledgementDoesNotChangeComplimentaryResult() async throws {
         var receipt: DurableCaptureReceipt?
         let result = try await repository.createCaptureResult(text: "Buy milk", source: .tutorial,

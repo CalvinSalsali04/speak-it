@@ -176,6 +176,9 @@ final class SemanticCorpusTests: XCTestCase {
         // eggs bread" both become rows headed by the acquisition verb, because
         // a shopping row with no verb reads as a fragment.
         "buy",
+        // Own nominal product needs use “Get” on already-proved shopping
+        // siblings. This is display scaffolding, with no source authority.
+        "get",
         // Temporal canonicalisation: the app stores one spelling of an hour or
         // a repeat, so "midday" surfaces as noon, "5ish" as around 5, and
         // "annually" as every year.

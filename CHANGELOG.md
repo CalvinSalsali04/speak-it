@@ -11,6 +11,10 @@ Entries before September 2026 were reconstructed from the commit history and
 - Avoid a second receipt for quick local captures and keep processing read-only.
 - Skip whole-library context loading for captures proved from their own words.
 - Preserve existing tutorial, allowance, retry and reminder handling.
+- Keep committed words recoverable after organization errors, and preserve manual fallback edits on recovery.
+- Show manually added alert dates consistently in Today and scheduling.
+- Preserve missing-object review through literal shortcuts, independent actions after held timing, delayed store names, and collection places.
+- Keep typed task-list actions clean, grocery-header calendars separate from products, and unfamiliar visit sequences distinct.
 - Source changes only; physical microphone and device latency remain unqualified.
 
 ## Unreleased — capture confidence follow-up

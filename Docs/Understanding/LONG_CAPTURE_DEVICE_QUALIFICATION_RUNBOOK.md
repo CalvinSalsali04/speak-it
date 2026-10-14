@@ -47,20 +47,34 @@ denominator.
 
 ## Exact endpoint and correction demonstration
 
-On the isolated test installation, set the test clock to October 5, 2026 at
-09:00 in America/Toronto. Record the actual device time, zone and backend.
-Use Continuous, start one capture, say “Remind me at six tonight to send Maya
-the kitchen photos.” Pause for a measured five seconds without touching the
-phone. Say “Actually, make that seven tonight, not six. Also buy eggs.” Tap
-Finish. The microphone must remain active through the pause and stop on the
-tap. One capture must contain the complete available source, one photo
-reminder at 19:00 and one eggs purchase intention, with no 18:00 reminder or
-duplicate photo item. Inspect the persisted row and pending notification
-request separately. Repeat with measured 1.8, 1.9, 2.0, 2.1, 3, 8, 15 and
-30 second pauses, and repeat a representative subset in deliberate Auto
-finish. Record each attempt's actual stop reason and whether later words
-reached the same capture. An Auto finish stop is judged against its selected
-policy; it is not evidence that Continuous survived the pause.
+For the current automatic-only UI, record the real current clock and zone on
+both iPhone 13 and iPhone 16; do not change the phone's date to an old fixture.
+There is no Continuous selector for a new capture. Start Capture and confirm
+listening begins without another tap and Type instead is the sole footer action.
+Use future relative dates for live reminders and record their actual resolved
+instants separately from displayed wording.
+
+Allocate complete and clearly unfinished phrases across measured 1, 1.8, 1.9,
+2.0, 2.1, 3, 5 and 8 second pauses. A complete-sounding sentence currently uses
+1.9 seconds; ambiguous endings can use four seconds, and clear continuation
+cues (including an unfinished negation) can use eight. Record the actual stop
+reason and every later word that fails to reach that capture. A stop consistent
+with the timer policy is not a whole-capture success if the speaker intended to
+continue; score that loss at the endpoint stage. Do not silently replace this
+qualification with a manually finished or injected-voice journey.
+
+Verify that speaking a complete thought and stopping saves without pressing a
+stop button, shows committed words during slower organization, and yields one
+final result. Check a time correction made before automatic finishing, an
+unfinished negative followed by its object, a mixed list/task/fact capture,
+permission interruption, route interruption, and force-close/relaunch recovery.
+A correction after a capture already ends is a new capture and must be inspected
+as such, rather than counted as a continuation of the first. Preserve the fixed
+36-capture allocation above; rerun only failed/affected slots after fixes.
+
+The old manually finished long-recording pathway remains a separate legacy
+recovery check for protected drafts from earlier builds. Its five-second-pause
+and Finish-tap evidence does not qualify today's automatic-only capture UI.
 
 Before starting, agree on a dedicated test installation and a local export
 destination. Xcode's Devices and Simulators window can download that app's
@@ -95,7 +109,7 @@ readiness from static text tests or from a single speaker's scripted read.
 ## Capture response budgets to apply before scoring
 
 Keep the short-path gates already in `Docs/CAPTURE_STRESS_TEST_PLAN.md`.
-These additional budgets apply to supported continuous captures up to 300
+These additional budgets apply to retained legacy long-recording recovery up to 300
 seconds, using monotonic timestamps on the device; the 360-second case is
 stress coverage and must still end in a truthful, recoverable state.
 

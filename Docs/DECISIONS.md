@@ -5764,3 +5764,60 @@ Named words, isolated TTS prosody, incomplete/ambiguous sentence endings and
 actual phone routes remain limitations. Claude Opus 5.5 reviewed descriptions
 and challenged the separation between real ASR cadence and hand-written timer
 fixtures; that gap is now explicitly covered without claiming phone equivalence.
+
+
+## 2026-10-13 — Saved recovery and scoped capture regression closure
+
+A manually configured reminder date now has one shared configured delivery-kind
+reader for row presentation and scheduling. Original wording remains cached
+separately. The configured kind does not assert system authorization, eligibility
+or actual registration. A pending organization failure cannot turn an already
+committed capture back into an unsaved draft. Explicitly reviewed whole fallback
+rows are the latest human decision and survive launch recovery unchanged.
+
+The full unit run exposed a complete-literal shortcut that replaced a held
+missing-object reading with an executable predicate. The shortcut now declines
+ambiguous objects and a single untyped review; calendar repair cannot supply
+that unstated object either. When source ownership and all semantics agree,
+canonical task analysis and shopping grouping are preserved rather than rebuilt
+from the raw request. A named task-list frame permits a proved gerund action
+without granting purchase authority to reading, packing or arbitrary list names.
+
+Unsupported timing holds its own sentence instead of absorbing later independent
+sentences. A known store can retain its name across a bounded elapsed delay;
+ordinary parsing still decides the actual reminder. A grocery header's proved
+fronted calendar can move in analysis while original occurrence ownership stays
+unchanged. Late bare-trip folding requires retail evidence or an immediately coordinated
+purchase frame with matching calendars. Unfamiliar names cannot bridge sentence
+stops, sequence markers or independent dates; the existing visit-purpose reader
+continues to handle its supported frames. Collecting
+rental, hired, borrowed, reserved or preordered objects retains its action and
+place fields; an explicit purchase verb still establishes shopping intent.
+
+Several old assertions conflicted with already approved behavior: current
+products are independently checkable even with a definite article, complete short
+perfect facts remain findable in Memory as well as literal reminder context,
+shopping siblings preserve a parent raw quote rather than identical product/raw
+quotes, and a populated suggestion identical to the displayed fallback title is
+not a wording regression. Those contracts are explicitly audited with their
+opposite controls retained. “Get” is declared presentation scaffolding for proved
+product needs and supplies no original-source authority. Failed receipts remain
+available; synthetic passes do not establish universal or population accuracy.
+
+Verification on the final application source: the canonical scorer self-checks
+passed, then the final compiled corpus replay retained 1,428 clean of 1,434,
+zero blocking/critical/behavioral/metadata disagreements and six unchanged
+cosmetic differences. The two failed grocery renderings were rerun only for
+their blocking frozen source, both clean. Twenty-four affected application
+methods from the broad native inventory now pass in focused batches; the full
+rendering methods were not repeated. All four review-boundary checks, including
+the asynchronous local-runtime entry point, pass. A method-only run selected
+zero tests and is excluded from that evidence. Manual reminder presentation,
+raw-save failure and reviewed/unreviewed recovery controls pass. Three changed
+receipt UI journeys pass, including dark/largest text and saved-error closure
+plus one-item relaunch recovery. The latter spent roughly eight minutes in
+XCTest quiescence waits; that duration is not a measured app or phone save time.
+Final unsigned Release compilation passed. No physical iPhone, Apple sandbox,
+real notification delivery or installed-update result is implied. The original
+2,233-check run remains a failing historical receipt; five StoreKit setup and
+language-environment failures are not relabelled as passes.

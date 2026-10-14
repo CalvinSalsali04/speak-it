@@ -1876,7 +1876,9 @@ struct CaptureView: View {
     }
 
     private func requestClose() {
-        if showsSavedConfirmation {
+        if showsSavedConfirmation || (durableReceipt != nil && !isSaving) {
+            // A later organization failure cannot turn committed words back
+            // into an unsaved draft. Keep the recovery checkpoint and session.
             finishSavedCapture()
         } else if hasUnsavedCaptureContent {
             isTextFocused = false

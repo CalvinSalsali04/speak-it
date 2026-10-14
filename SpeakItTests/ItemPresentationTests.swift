@@ -605,3 +605,37 @@ final class CompletedTodayBannerHistoryTests: XCTestCase {
         XCTAssertTrue(CompletedTodayBannerHistory.hasNewCompletion(current: [first, second], presented: CompletedTodayBannerHistory.encode([first])))
     }
 }
+
+
+@MainActor
+final class ManualReminderPresentationRegressionTests: XCTestCase {
+    func testManualAlertMatchesSchedulingAfterCachedNoAlertAndRemoval() throws {
+        let item = CapturedItem(originalTextSegment: "Read the project report", displayTitle: "Read the project report",
+            itemType: .task, createdAt: .now, needsClarification: false)
+        // Prime the same wording cache before an editor adds a real alert.
+        XCTAssertEqual(ItemPresentation.effectiveReminderDelivery(for: item), .none)
+        item.reminderDate = Date.now.addingTimeInterval(3600)
+        let request = try XCTUnwrap(ReminderScheduleRequest(item: item))
+        XCTAssertEqual(request.delivery, .notification)
+        XCTAssertEqual(ItemPresentation.configuredReminderDelivery(for: item), request.delivery,
+                       "An actual manual notification must not be presented as no alert")
+        let authorization = LocationAuthorization(status: .always, isPrecise: true,
+                                                   isRegionMonitoringAvailable: true)
+        XCTAssertEqual(ItemPresentation.make(for: item, authorization: authorization).reminderState.alertGlyph,
+                       .notification, "The actual row presentation must describe the configured notification")
+        item.reminderDate = nil
+        XCTAssertNil(ReminderScheduleRequest(item: item))
+        XCTAssertEqual(ItemPresentation.configuredReminderDelivery(for: item), .none,
+                       "Clearing the manual alert must not leave a cached notification")
+    }
+
+    func testExplicitAlarmRemainsAnAlarmAndUnresolvedRowsRemainUnschedulable() throws {
+        let item = CapturedItem(originalTextSegment: "Set an alarm to call Mom tomorrow at 9 a.m.",
+            displayTitle: "Call Mom", itemType: .task, createdAt: .now, needsClarification: false)
+        item.reminderDate = Date.now.addingTimeInterval(3600)
+        XCTAssertEqual(ItemPresentation.effectiveReminderDelivery(for: item), .alarm)
+        XCTAssertEqual(ReminderScheduleRequest(item: item)?.delivery, .alarm)
+        item.needsClarification = true
+        XCTAssertNil(ReminderScheduleRequest(item: item))
+    }
+}

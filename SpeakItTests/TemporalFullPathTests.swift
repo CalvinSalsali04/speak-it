@@ -361,9 +361,30 @@ I am sorting the memorial display for the village hall and it is emotionally eas
             ] {
                 let result = ThoughtExtractionEngine.extractWithRules(source, referenceDate: anchor, calendar: calendar)
                 XCTAssertFalse(result.items.isEmpty, source)
-                XCTAssertEqual(result.items.flatMap { item in
-                    SourceUnitLedger(item.rawQuote).words.map { String(item.rawQuote[$0.range]) }
-                }, SourceUnitLedger(source).words.map { String(source[$0.range]) }, source)
+                if source.hasPrefix("The cleaner") {
+                    // Complete short perfect facts remain independently in
+                    // Memory and also explain the reminder. Shared context
+                    // quotes are intentional; this is not a disjoint literal
+                    // certificate. The dedicated perfect-fact regression
+                    // audits the exact shared occurrence IDs and connector.
+                    XCTAssertEqual(result.items.count, 2)
+                    XCTAssertEqual(result.items.filter { $0.organization.itemType.isActionable }.count, 1)
+                    let ledger = SourceUnitLedger(source)
+                    let retainedIDs = result.items.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) }
+                    let connectorIDs = Set(ledger.words.indices.filter { ledger.words[$0].text == "but" })
+                    XCTAssertEqual(retainedIDs, Set(ledger.words.indices).subtracting(connectorIDs))
+                    XCTAssertTrue(result.items.allSatisfy { !$0.needsReview })
+                    // Shared contextual quotes are not literal disjoint
+                    // proposals. Persistence must still retain EVERY original
+                    // character, including the coordination seam.
+                    let saved = try? repository.createCapture(text: source, source: .inAppText,
+                        createdAt: anchor, schedulesReminder: false)
+                    XCTAssertEqual(saved?.captureSession?.originalTranscription, source)
+                } else {
+                    XCTAssertEqual(result.items.flatMap { item in
+                        SourceUnitLedger(item.rawQuote).words.map { String(item.rawQuote[$0.range]) }
+                    }, SourceUnitLedger(source).words.map { String(source[$0.range]) }, source)
+                }
             }
         }
     }
@@ -3600,7 +3621,8 @@ And email Jonah the final volunteer rota once Priya has approved it. She has loo
             )
             XCTAssertEqual(simple.items.count, 1)
             XCTAssertEqual(simple.items[0].organization.temporalIntent.kind, .dateOnly)
-            XCTAssertEqual(simple.items[0].suggestedTitle, nil)
+            XCTAssertEqual(ThoughtTitleFormatter.polished(simple.items[0].suggestedTitle ?? simple.items[0].analysisText,
+                itemType: simple.items[0].organization.itemType), "Call Mom tomorrow")
 
             let idea = ThoughtExtractionEngine.extractWithRules(
                 "Remember that Amira's idea for next Tuesday is a garden mural.",
