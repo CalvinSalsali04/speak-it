@@ -243,6 +243,29 @@ enum CompletedTodayBannerHistory {
     }
 }
 
+/// A run of consecutive Today tasks that fall on the same day.
+struct TodayDayGroup: Identifiable {
+    let day: Date?
+    var items: [CapturedItem]
+
+    var id: Date { day ?? .distantFuture }
+
+    /// Groups in list order. Sections are already sorted by time, so each day
+    /// is one consecutive run; an undated section is a single group.
+    static func consecutive(_ items: [CapturedItem], day: (CapturedItem) -> Date?) -> [TodayDayGroup] {
+        var groups: [TodayDayGroup] = []
+        for item in items {
+            let key = day(item)
+            if let last = groups.indices.last, groups[last].day == key {
+                groups[last].items.append(item)
+            } else {
+                groups.append(TodayDayGroup(day: key, items: [item]))
+            }
+        }
+        return groups
+    }
+}
+
 struct TodayView: View {
     @Environment(\.dockScrollClearance) private var dockScrollClearance
     /// Built once with the view, not once per `body`: a publisher created
@@ -1301,84 +1324,6 @@ struct TodayView: View {
         return (item.clarificationRequirement ?? .confirmation).listLabel
     }
 
-    private func focusCard(_ item: CapturedItem) -> some View {
-        HStack(spacing: 14) {
-            // Withheld while the tutorial is pointing at this card. Completing
-            // the row takes it out of Today and the teaching card goes with it,
-            // which leaves the walkthrough with nothing to continue from — and
-            // this circle sits directly beside the card that is asking to be
-            // tapped.
-            if spotlight(for: item) == nil {
-                Button {
-                    toggleCompleted(item)
-                } label: {
-                    Image(systemName: "circle")
-                        .font(.system(size: 27, weight: .regular))
-                        .foregroundStyle(Color.speakInverseInk.opacity(0.62))
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.speakIt)
-                .accessibilityLabel("Complete \(item.displayTitle)")
-                .accessibilityIdentifier("item.complete.\(item.displayTitle)")
-            }
-
-            Button {
-                openItem(item)
-            } label: {
-                HStack(spacing: 10) {
-                    VStack(alignment: .leading, spacing: 7) {
-                        Text(item.displayTitle)
-                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
-                            .font(.body.weight(.medium))
-                            .foregroundStyle(Color.speakInverseInk)
-                            .multilineTextAlignment(.leading)
-
-                        Text(itemContext(item))
-                            .font(.caption)
-                            .foregroundStyle(Color.speakInverseInk.opacity(0.58))
-
-                        if let deadlineLabel = ItemPresentation.clockBoundaryLabel(for: item)
-                            ?? ItemPresentation.endOfDayDeadlineLabel(for: item) {
-                            Text(deadlineLabel)
-                                .font(.caption)
-                                .foregroundStyle(Color.speakInverseInk.opacity(0.68))
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                    // A day with no time of day shows no time, the same rule
-                    // `ItemPresentation` states: rendering the start of that
-                    // day reads as "12:00 AM", a precision the person never
-                    // gave. This card is always today's next item, so the day
-                    // itself needs no restating either.
-                    if let dueDate = item.dueDate, !item.isDateOnly,
-                              item.temporalIntent?.deadlineBoundary == nil,
-                              item.temporalIntent?.clockBoundary == nil {
-                        Text(dueDate.formatted(date: .omitted, time: .shortened))
-                            .font(.caption)
-                            .foregroundStyle(Color.speakInverseInk.opacity(0.68))
-                    }
-                }
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.speakIt)
-            .accessibilityLabel("Edit \(item.displayTitle)")
-            .accessibilityValue(ItemPresentation.clockBoundaryLabel(for: item)
-                ?? ItemPresentation.endOfDayDeadlineLabel(for: item) ?? "")
-            .accessibilityIdentifier("item.edit.\(item.displayTitle)")
-        }
-        .padding(18)
-        .frame(maxWidth: .infinity, minHeight: 104)
-        .background(
-            Color.speakInverseSurface,
-            in: RoundedRectangle(cornerRadius: 23, style: .continuous)
-        )
-        .shadow(color: .black.opacity(0.12), radius: 18, y: 10)
-    }
-
     private func nowSection(
         overdue: [CapturedItem], upNext: CapturedItem?, dueNowShoppingGroups: [ShoppingGroupSummary]
     ) -> some View {
@@ -1389,47 +1334,12 @@ struct TodayView: View {
                 detail: "Overdue and next scheduled"
             )
 
-            if !overdue.isEmpty {
-                VStack(spacing: 0) {
-                    Divider().overlay(Color.speakDivider)
-                    ForEach(overdue) { item in
-                        completableRow(item) {
-                            CapturedItemRow(
-                                item: item,
-                                showsCompletionControl: spotlight(for: item) == nil,
-                                showsCreatedDate: false,
-                                timingPlacement: .leadingColumn,
-                                onToggleCompleted: { toggleCompleted(item) },
-                                onEdit: { openItem(item) }
-                            )
-                            .padding(.vertical, 12)
-                        }
-                        .id(item.id)
-                        // Every section that can hold the practice row has to
-                        // be able to draw the teaching card on it. "Now" could
-                        // not, so a practice capture that landed here — one
-                        // due today rather than tomorrow — left the tutorial
-                        // with nothing to continue from.
-                        .tutorialSpotlight(
-                            spotlight(for: item),
-                            onPrimary: { openItem(item) },
-                            onEndPractice: onEndTutorial
-                        )
-                        Divider().overlay(Color.speakDivider)
-                    }
-                }
-            }
-
-            if let upNext {
-                completableRow(upNext) {
-                    focusCard(upNext)
-                }
-                .id(upNext.id)
-                .tutorialSpotlight(
-                    spotlight(for: upNext),
-                    onPrimary: { openItem(upNext) },
-                    onEndPractice: onEndTutorial
-                )
+            // The next item is a row like any other. It used to be a large
+            // inverted card, which made one task look more important than the
+            // rest of the list and drew every row in two different styles.
+            let nowItems = overdue + (upNext.map { [$0] } ?? [])
+            if !nowItems.isEmpty {
+                taskRows(nowItems)
             }
 
             ForEach(dueNowShoppingGroups) { group in
@@ -1446,31 +1356,7 @@ struct TodayView: View {
         VStack(alignment: .leading, spacing: 10) {
             sectionHeader(title, count: items.count, detail: detail)
 
-            VStack(spacing: 0) {
-                Divider().overlay(Color.speakDivider)
-
-                ForEach(items) { item in
-                    completableRow(item) {
-                        CapturedItemRow(
-                            item: item,
-                            showsCompletionControl: spotlight(for: item) == nil,
-                            showsCreatedDate: false,
-                            timingPlacement: .leadingColumn,
-                            onToggleCompleted: { toggleCompleted(item) },
-                            onEdit: { openItem(item) }
-                        )
-                        .padding(.vertical, 12)
-                    }
-                    .id(item.id)
-                    .tutorialSpotlight(
-                        spotlight(for: item),
-                        onPrimary: { openItem(item) },
-                        onEndPractice: onEndTutorial
-                    )
-
-                    Divider().overlay(Color.speakDivider)
-                }
-            }
+            taskRows(items)
         }
     }
 
@@ -1536,27 +1422,7 @@ struct TodayView: View {
                     }
 
                     if !items.isEmpty {
-                        Divider().overlay(Color.speakDivider)
-                        ForEach(items) { item in
-                            completableRow(item, isEnabled: isExpanded.wrappedValue) {
-                                CapturedItemRow(
-                                    item: item,
-                                    showsCompletionControl: spotlight(for: item) == nil,
-                                    showsCreatedDate: false,
-                                    timingPlacement: .leadingColumn,
-                                    onToggleCompleted: { toggleCompleted(item) },
-                                    onEdit: { openItem(item) }
-                                )
-                                .padding(.vertical, 12)
-                            }
-                            .id(item.id)
-                            .tutorialSpotlight(
-                                spotlight(for: item),
-                                onPrimary: { openItem(item) },
-                                onEndPractice: onEndTutorial
-                            )
-                            Divider().overlay(Color.speakDivider)
-                        }
+                        taskRows(items, isEnabled: isExpanded.wrappedValue)
                     }
                 }
                 .padding(.top, 10)
@@ -1566,6 +1432,90 @@ struct TodayView: View {
         // has to name the header rather than any one row: a section opened low
         // on the screen has no row worth aligning to yet.
         .id(anchor)
+    }
+
+    /// Every Today task list, drawn one way: rows under the header of the day
+    /// they fall on, each row showing only its time. A list that is all today
+    /// needs no header, because its section already says so.
+    private func taskRows(_ items: [CapturedItem], isEnabled: Bool = true) -> some View {
+        let groups = TodayDayGroup.consecutive(items, day: dayKey(for:))
+        let calendar = Calendar.autoupdatingCurrent
+        let showsDayHeaders = groups.count > 1
+            || groups.first?.day.map { !calendar.isDate($0, inSameDayAs: referenceNow) } == true
+
+        return VStack(alignment: .leading, spacing: 0) {
+            Divider().overlay(Color.speakDivider)
+
+            ForEach(groups) { group in
+                if showsDayHeaders, let day = group.day {
+                    dayHeader(day)
+                }
+
+                ForEach(group.items) { item in
+                    completableRow(item, isEnabled: isEnabled) {
+                        CapturedItemRow(
+                            item: item,
+                            showsCompletionControl: spotlight(for: item) == nil,
+                            showsCreatedDate: false,
+                            timingPlacement: .underDayHeader,
+                            onToggleCompleted: { toggleCompleted(item) },
+                            onEdit: { openItem(item) }
+                        )
+                        .padding(.vertical, 12)
+                    }
+                    .id(item.id)
+                    // Every section that can hold the practice row has to be
+                    // able to draw the teaching card on it, or the tutorial is
+                    // left with nothing to continue from.
+                    .tutorialSpotlight(
+                        spotlight(for: item),
+                        onPrimary: { openItem(item) },
+                        onEndPractice: onEndTutorial
+                    )
+
+                    Divider().overlay(Color.speakDivider)
+                }
+            }
+        }
+    }
+
+    /// The day a task is listed under, or `nil` for one with no day (a place
+    /// reminder, or a task with no date), which is listed without a header.
+    private func dayKey(for item: CapturedItem) -> Date? {
+        let date = orderingDate(for: item)
+        guard date != .distantFuture else { return nil }
+        return Calendar.autoupdatingCurrent.startOfDay(for: date)
+    }
+
+    private func dayHeader(_ day: Date) -> some View {
+        Text(dayHeaderTitle(day))
+            .font(.caption.weight(.semibold))
+            .tracking(0.6)
+            .textCase(.uppercase)
+            .foregroundStyle(Color.speakMuted)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.top, 16)
+            .padding(.bottom, 2)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    /// "Saturday, October 17", led by "Today", "Tomorrow" or "Yesterday" when
+    /// one of those applies, with the year once it stops being obvious.
+    private func dayHeaderTitle(_ day: Date) -> String {
+        let calendar = Calendar.autoupdatingCurrent
+        let sameYear = calendar.component(.year, from: day) == calendar.component(.year, from: referenceNow)
+        let date = sameYear
+            ? day.formatted(.dateTime.weekday(.wide).month(.wide).day())
+            : day.formatted(.dateTime.weekday(.wide).month(.wide).day().year())
+        let offset = calendar.dateComponents(
+            [.day], from: calendar.startOfDay(for: referenceNow), to: day
+        ).day
+        switch offset {
+        case 0: return "Today · \(date)"
+        case 1: return "Tomorrow · \(date)"
+        case -1: return "Yesterday · \(date)"
+        default: return date
+        }
     }
 
     private func sectionHeader(

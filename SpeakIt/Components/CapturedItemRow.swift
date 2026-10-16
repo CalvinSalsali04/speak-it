@@ -2,20 +2,15 @@ import SwiftUI
 import UIKit
 
 struct CapturedItemRow: View {
-    /// Where the row shows its timing. Today reads like an agenda, so its rows
-    /// lead with the time in a column beside the title, and the title gets the
-    /// rest of the width instead of being cut to two lines. Memory and the
-    /// capture receipt keep the timing trailing.
+    /// How the row states its timing. Today groups its tasks under day
+    /// headers, so a row there shows only the time and its title is never cut
+    /// to two lines. Memory and the capture receipt keep the full timing.
     enum TimingPlacement {
         case trailing
-        case leadingColumn
+        case underDayHeader
     }
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    /// Wide enough for "12:30 PM" and its alert glyph at the default size, and
-    /// it grows with Dynamic Type. Accessibility sizes stack the timing above
-    /// the title instead, because no fixed column fits a 53 pt clock time.
-    @ScaledMetric(relativeTo: .subheadline) private var timingColumnWidth: CGFloat = 84
     /// Badge lettering follows Dynamic Type instead of staying 9 pt while the
     /// rest of the row grows.
     @ScaledMetric(relativeTo: .caption2) private var badgeFontSize: CGFloat = 9
@@ -65,10 +60,7 @@ struct CapturedItemRow: View {
             for: item,
             authorization: LocationReminderMonitor.shared.authorization
         )
-        let leadsWithTiming = timingPlacement == .leadingColumn
-            && trailingDetail == nil
-            && !presentation.timingColumnLines.isEmpty
-        let stacksTiming = leadsWithTiming && dynamicTypeSize.isAccessibilitySize
+        let isUnderDayHeader = timingPlacement == .underDayHeader
 
         HStack(alignment: .top, spacing: 13) {
             if showsCompletionControl {
@@ -98,22 +90,14 @@ struct CapturedItemRow: View {
                             .accessibilityHidden(true)
                     }
 
-                    if leadsWithTiming && !stacksTiming {
-                        timingColumn(presentation)
-                    }
-
                     VStack(alignment: .leading, spacing: 4) {
-                        if stacksTiming {
-                            stackedTiming(presentation)
-                        }
-
                         Text(item.displayTitle)
                             .font(SpeakItTypography.itemTitle)
                             .foregroundStyle(Color.speakInk)
                             .strikethrough(item.isCompleted)
                             .multilineTextAlignment(.leading)
                             .lineLimit(
-                                showsFullTitle || leadsWithTiming || dynamicTypeSize.isAccessibilitySize ? nil : 2
+                                showsFullTitle || isUnderDayHeader || dynamicTypeSize.isAccessibilitySize ? nil : 2
                             )
                             .lineSpacing(1)
                         if item.captureSession?.captureSource == .tutorial {
@@ -128,9 +112,7 @@ struct CapturedItemRow: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                    if leadsWithTiming {
-                        memoryIndicators
-                    } else if onTrailingDetailTap == nil {
+                    if onTrailingDetailTap == nil {
                         passiveTrailingContent(presentation)
                     } else {
                         memoryIndicators
@@ -212,60 +194,6 @@ struct CapturedItemRow: View {
         .foregroundStyle(presentation.isOverdue ? Color.speakWarning : Color.speakMuted)
         .multilineTextAlignment(.trailing)
         .padding(.top, 2)
-    }
-
-    /// The leading column: the clock time on its own line, then the day, then
-    /// "Overdue" when it applies. Every line wraps rather than truncates, so a
-    /// long place name or deadline label is never cut off.
-    private func timingColumn(_ presentation: ItemPresentation) -> some View {
-        let lines = presentation.timingColumnLines
-        let detailTint = presentation.isOverdue ? Color.speakWarning : Color.speakMuted
-
-        return VStack(alignment: .leading, spacing: 2) {
-            HStack(alignment: .firstTextBaseline, spacing: 3) {
-                timingGlyphs(presentation)
-                    .font(.caption2)
-                    .foregroundStyle(detailTint)
-                Text(lines[0])
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(presentation.isOverdue ? Color.speakWarning : Color.speakInk)
-            }
-            ForEach(Array(lines.dropFirst().enumerated()), id: \.offset) { _, line in
-                Text(line)
-                    .font(SpeakItTypography.metadata)
-                    .foregroundStyle(detailTint)
-            }
-        }
-        .multilineTextAlignment(.leading)
-        .fixedSize(horizontal: false, vertical: true)
-        .frame(width: timingColumnWidth, alignment: .leading)
-        .padding(.top, 2)
-    }
-
-    /// The same lines on one wrapping line above the title, for accessibility
-    /// text sizes.
-    private func stackedTiming(_ presentation: ItemPresentation) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 4) {
-            timingGlyphs(presentation)
-            Text(presentation.timingColumnLines.joined(separator: " · "))
-                .multilineTextAlignment(.leading)
-        }
-        .font(SpeakItTypography.metadata.weight(.semibold))
-        .foregroundStyle(presentation.isOverdue ? Color.speakWarning : Color.speakMuted)
-    }
-
-    /// The place pin and the alert glyph, shared by every timing layout so a
-    /// dated task and an armed reminder stay distinguishable in each of them.
-    @ViewBuilder
-    private func timingGlyphs(_ presentation: ItemPresentation) -> some View {
-        if isPlaceTriggered(presentation) {
-            Image(systemName: "mappin.and.ellipse")
-                .accessibilityHidden(true)
-        }
-        if let alertGlyph = alertGlyph(for: presentation) {
-            Image(systemName: alertGlyph)
-                .accessibilityHidden(true)
-        }
     }
 
     private func isPlaceTriggered(_ presentation: ItemPresentation) -> Bool {
@@ -353,6 +281,7 @@ struct CapturedItemRow: View {
         // was not today, so "call mom tomorrow at 5pm" and a date-only item
         // rendered the same string — and what puts the place on a place
         // reminder instead of leaving the slot empty.
+        if timingPlacement == .underDayHeader { return presentation.dayGroupedTimingText }
         if let timing = presentation.formattedTimingText { return timing }
 
         guard showsCreatedDate else { return nil }

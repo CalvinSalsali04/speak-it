@@ -594,11 +594,10 @@ final class ItemPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.formattedTimingText, presentation.primaryTimingText)
     }
 
-    // MARK: Today's leading time column
+    // MARK: Today's rows under day headers
 
-    /// The column puts the clock time on its own first line so it lines up
-    /// down the list, and the day under it.
-    func testTimingColumnLeadsWithTheTimeThenTheDay() throws {
+    /// The day header names the day, so the row shows the clock time alone.
+    func testDayGroupedTimingIsTheTimeAlone() throws {
         let calendar = Calendar.autoupdatingCurrent
         let fixedNow = Date(timeIntervalSince1970: 1_700_000_000)
         let tomorrow = try XCTUnwrap(calendar.date(byAdding: .day, value: 1, to: fixedNow))
@@ -610,38 +609,14 @@ final class ItemPresentationTests: XCTestCase {
             dueDate: tomorrow
         )
 
-        let lines = presentation(for: item, now: fixedNow).timingColumnLines
-        XCTAssertEqual(lines.count, 2, "time, then day, got \(lines)")
-        XCTAssertEqual(lines.first, tomorrow.formatted(date: .omitted, time: .shortened))
-        XCTAssertTrue(
-            lines.last?.contains(tomorrow.formatted(.dateTime.month(.abbreviated).day())) == true,
-            "the second line must name the day, got \(lines)"
-        )
-    }
-
-    /// A time on the reference day needs no day line.
-    func testTimingColumnForTheSameDayIsTheTimeAlone() {
-        let fixedNow = Date(timeIntervalSince1970: 1_700_000_000)
-        let later = fixedNow.addingTimeInterval(1800)
-        let item = CapturedItem(
-            originalTextSegment: "Doctor appointment",
-            displayTitle: "Doctor appointment",
-            itemType: .task,
-            category: .general,
-            dueDate: later
-        )
-        // Skip the rare case where half an hour later crosses midnight.
-        guard Calendar.autoupdatingCurrent.isDate(later, inSameDayAs: fixedNow) else { return }
-
         XCTAssertEqual(
-            presentation(for: item, now: fixedNow).timingColumnLines,
-            [later.formatted(date: .omitted, time: .shortened)]
+            presentation(for: item, now: fixedNow).dayGroupedTimingText,
+            tomorrow.formatted(date: .omitted, time: .shortened)
         )
     }
 
-    /// The column follows the same precision rule as the trailing text: a
-    /// date-only item must never grow a clock time.
-    func testTimingColumnForADateOnlyItemShowsNoTime() throws {
+    /// A date-only item never grows a clock time; its header says the day.
+    func testDayGroupedTimingForADateOnlyItemIsEmpty() throws {
         let calendar = Calendar.autoupdatingCurrent
         let fixedNow = Date(timeIntervalSince1970: 1_700_000_000)
         let later = try XCTUnwrap(calendar.date(byAdding: .day, value: 3, to: fixedNow))
@@ -654,13 +629,11 @@ final class ItemPresentationTests: XCTestCase {
             temporalIntent: TemporalIntent(kind: .dateOnly)
         )
 
-        let lines = presentation(for: item, now: fixedNow).timingColumnLines
-        XCTAssertFalse(lines.isEmpty)
-        XCTAssertFalse(lines.contains { $0.contains(":") }, "no clock time, got \(lines)")
+        XCTAssertNil(presentation(for: item, now: fixedNow).dayGroupedTimingText)
     }
 
-    /// Overdue is its own last line, so the time keeps the first line.
-    func testTimingColumnForAnOverdueItemEndsWithOverdue() {
+    /// Overdue keeps its prefix so the row still says so beside the time.
+    func testDayGroupedTimingForAnOverdueItemSaysOverdue() {
         let fixedNow = Date(timeIntervalSince1970: 1_700_000_000)
         let pastDate = fixedNow.addingTimeInterval(-3600)
         let item = CapturedItem(
@@ -671,22 +644,30 @@ final class ItemPresentationTests: XCTestCase {
             dueDate: pastDate
         )
 
-        let lines = presentation(for: item, now: fixedNow).timingColumnLines
-        XCTAssertEqual(lines.first, pastDate.formatted(date: .omitted, time: .shortened))
-        XCTAssertEqual(lines.last, "Overdue")
+        XCTAssertEqual(
+            presentation(for: item, now: fixedNow).dayGroupedTimingText,
+            "Overdue · \(pastDate.formatted(date: .omitted, time: .shortened))"
+        )
     }
 
-    /// Nothing to show means no column, so the row falls back to its plain
-    /// title without an empty gap beside it.
-    func testTimingColumnIsEmptyWithoutTiming() {
-        let item = CapturedItem(
-            originalTextSegment: "Read that book",
-            displayTitle: "Read that book",
-            itemType: .task,
-            category: .general
-        )
+    /// Consecutive tasks on one day share one header; an undated list is one
+    /// group with no day.
+    func testTodayDayGroupsFollowListOrder() throws {
+        let calendar = Calendar.autoupdatingCurrent
+        let day = calendar.startOfDay(for: Date(timeIntervalSince1970: 1_700_000_000))
+        let next = try XCTUnwrap(calendar.date(byAdding: .day, value: 1, to: day))
+        let first = CapturedItem(originalTextSegment: "One", displayTitle: "One", itemType: .task)
+        let second = CapturedItem(originalTextSegment: "Two", displayTitle: "Two", itemType: .task)
+        let third = CapturedItem(originalTextSegment: "Three", displayTitle: "Three", itemType: .task)
+        let days = [first.id: day, second.id: day, third.id: next]
 
-        XCTAssertEqual(presentation(for: item).timingColumnLines, [])
+        let groups = TodayDayGroup.consecutive([first, second, third]) { days[$0.id] }
+        XCTAssertEqual(groups.map(\.day), [day, next])
+        XCTAssertEqual(groups.map { $0.items.map(\.id) }, [[first.id, second.id], [third.id]])
+
+        let undated = TodayDayGroup.consecutive([first, second]) { _ in nil }
+        XCTAssertEqual(undated.count, 1)
+        XCTAssertNil(undated.first?.day)
     }
 }
 
