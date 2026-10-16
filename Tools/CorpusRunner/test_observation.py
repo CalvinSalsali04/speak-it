@@ -625,7 +625,7 @@ class TheMotivatingFiguresAtTheTopAreRecomputed(unittest.TestCase):
     # Integrated Build 22 source, recomputed through the unchanged reader.
     # New Swift literals widen the population; no concentration threshold or
     # source/stem counting rule changes to preserve the old classification.
-    MOTIVATING = {"plus": (63, 8, 27, 49), "wait": (121, 18, 71, 16)}
+    MOTIVATING = {"plus": (66, 8, 30, 47), "wait": (122, 18, 72, 16)}
 
     def test_the_corpus_still_says_what_the_bullets_say(self):
         forms = {phrase: "anywhere" for phrase in self.MOTIVATING}
@@ -919,6 +919,8 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         Both independent multi-word rules still produce the exact same set;
         this is a source-literal census, not capture accuracy.
         10316 -> 10322 after separated timing-scope and independent-action controls.
+        10322 -> 12452 on 2026-10-16 after the completed capture-confidence
+        regression fixtures; same literal walk, not accuracy.
         The equality check and both counting rules remain unchanged.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
@@ -929,7 +931,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 10322)
+        self.assertEqual(len(space), 12452)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
