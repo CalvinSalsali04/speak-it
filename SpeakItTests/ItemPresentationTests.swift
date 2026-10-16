@@ -593,6 +593,82 @@ final class ItemPresentationTests: XCTestCase {
         XCTAssertFalse(presentation.formattedTimingText?.contains("Overdue") == true)
         XCTAssertEqual(presentation.formattedTimingText, presentation.primaryTimingText)
     }
+
+    // MARK: Today's rows under day headers
+
+    /// The day header names the day, so the row shows the clock time alone.
+    func testDayGroupedTimingIsTheTimeAlone() throws {
+        let calendar = Calendar.autoupdatingCurrent
+        let fixedNow = Date(timeIntervalSince1970: 1_700_000_000)
+        let tomorrow = try XCTUnwrap(calendar.date(byAdding: .day, value: 1, to: fixedNow))
+        let item = CapturedItem(
+            originalTextSegment: "Complete my scientific computation assignment",
+            displayTitle: "Complete my scientific computation assignment",
+            itemType: .task,
+            category: .general,
+            dueDate: tomorrow
+        )
+
+        XCTAssertEqual(
+            presentation(for: item, now: fixedNow).dayGroupedTimingText,
+            tomorrow.formatted(date: .omitted, time: .shortened)
+        )
+    }
+
+    /// A date-only item never grows a clock time; its header says the day.
+    func testDayGroupedTimingForADateOnlyItemIsEmpty() throws {
+        let calendar = Calendar.autoupdatingCurrent
+        let fixedNow = Date(timeIntervalSince1970: 1_700_000_000)
+        let later = try XCTUnwrap(calendar.date(byAdding: .day, value: 3, to: fixedNow))
+        let item = CapturedItem(
+            originalTextSegment: "File taxes",
+            displayTitle: "File taxes",
+            itemType: .task,
+            category: .general,
+            dueDate: calendar.startOfDay(for: later),
+            temporalIntent: TemporalIntent(kind: .dateOnly)
+        )
+
+        XCTAssertNil(presentation(for: item, now: fixedNow).dayGroupedTimingText)
+    }
+
+    /// Overdue keeps its prefix so the row still says so beside the time.
+    func testDayGroupedTimingForAnOverdueItemSaysOverdue() {
+        let fixedNow = Date(timeIntervalSince1970: 1_700_000_000)
+        let pastDate = fixedNow.addingTimeInterval(-3600)
+        let item = CapturedItem(
+            originalTextSegment: "Call the pharmacy",
+            displayTitle: "Call the pharmacy",
+            itemType: .task,
+            category: .general,
+            dueDate: pastDate
+        )
+
+        XCTAssertEqual(
+            presentation(for: item, now: fixedNow).dayGroupedTimingText,
+            "Overdue · \(pastDate.formatted(date: .omitted, time: .shortened))"
+        )
+    }
+
+    /// Consecutive tasks on one day share one header; an undated list is one
+    /// group with no day.
+    func testTodayDayGroupsFollowListOrder() throws {
+        let calendar = Calendar.autoupdatingCurrent
+        let day = calendar.startOfDay(for: Date(timeIntervalSince1970: 1_700_000_000))
+        let next = try XCTUnwrap(calendar.date(byAdding: .day, value: 1, to: day))
+        let first = CapturedItem(originalTextSegment: "One", displayTitle: "One", itemType: .task)
+        let second = CapturedItem(originalTextSegment: "Two", displayTitle: "Two", itemType: .task)
+        let third = CapturedItem(originalTextSegment: "Three", displayTitle: "Three", itemType: .task)
+        let days = [first.id: day, second.id: day, third.id: next]
+
+        let groups = TodayDayGroup.consecutive([first, second, third]) { days[$0.id] }
+        XCTAssertEqual(groups.map(\.day), [day, next])
+        XCTAssertEqual(groups.map { $0.items.map(\.id) }, [[first.id, second.id], [third.id]])
+
+        let undated = TodayDayGroup.consecutive([first, second]) { _ in nil }
+        XCTAssertEqual(undated.count, 1)
+        XCTAssertNil(undated.first?.day)
+    }
 }
 
 

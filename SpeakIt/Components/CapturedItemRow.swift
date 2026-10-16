@@ -2,6 +2,14 @@ import SwiftUI
 import UIKit
 
 struct CapturedItemRow: View {
+    /// How the row states its timing. Today groups its tasks under day
+    /// headers, so a row there shows only the time and its title is never cut
+    /// to two lines. Memory and the capture receipt keep the full timing.
+    enum TimingPlacement {
+        case trailing
+        case underDayHeader
+    }
+
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     /// Badge lettering follows Dynamic Type instead of staying 9 pt while the
     /// rest of the row grows.
@@ -12,6 +20,7 @@ struct CapturedItemRow: View {
     let showsPriorityIndicator: Bool
     let showsCreatedDate: Bool
     let showsFullTitle: Bool
+    let timingPlacement: TimingPlacement
     let trailingDetail: String?
     let onTrailingDetailTap: (() -> Void)?
     let onToggleCompleted: () -> Void
@@ -24,6 +33,7 @@ struct CapturedItemRow: View {
         showsPriorityIndicator: Bool = false,
         showsCreatedDate: Bool = true,
         showsFullTitle: Bool = false,
+        timingPlacement: TimingPlacement = .trailing,
         trailingDetail: String? = nil,
         onTrailingDetailTap: (() -> Void)? = nil,
         onToggleCompleted: @escaping () -> Void,
@@ -35,6 +45,7 @@ struct CapturedItemRow: View {
         self.showsPriorityIndicator = showsPriorityIndicator
         self.showsCreatedDate = showsCreatedDate
         self.showsFullTitle = showsFullTitle
+        self.timingPlacement = timingPlacement
         self.trailingDetail = trailingDetail
         self.onTrailingDetailTap = onTrailingDetailTap
         self.onToggleCompleted = onToggleCompleted
@@ -49,6 +60,7 @@ struct CapturedItemRow: View {
             for: item,
             authorization: LocationReminderMonitor.shared.authorization
         )
+        let isUnderDayHeader = timingPlacement == .underDayHeader
 
         HStack(alignment: .top, spacing: 13) {
             if showsCompletionControl {
@@ -84,7 +96,9 @@ struct CapturedItemRow: View {
                             .foregroundStyle(Color.speakInk)
                             .strikethrough(item.isCompleted)
                             .multilineTextAlignment(.leading)
-                            .lineLimit(showsFullTitle || dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                            .lineLimit(
+                                showsFullTitle || isUnderDayHeader || dynamicTypeSize.isAccessibilitySize ? nil : 2
+                            )
                             .lineSpacing(1)
                         if item.captureSession?.captureSource == .tutorial {
                             Text("Practice · no alerts")
@@ -267,6 +281,7 @@ struct CapturedItemRow: View {
         // was not today, so "call mom tomorrow at 5pm" and a date-only item
         // rendered the same string — and what puts the place on a place
         // reminder instead of leaving the slot empty.
+        if timingPlacement == .underDayHeader { return presentation.dayGroupedTimingText }
         if let timing = presentation.formattedTimingText { return timing }
 
         guard showsCreatedDate else { return nil }

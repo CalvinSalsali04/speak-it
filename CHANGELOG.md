@@ -7,6 +7,7 @@ Entries before September 2026 were reconstructed from the commit history and
 
 ## Unreleased — capture accounting, lists and message ownership
 
+- Today lists its tasks under day headers, with each row showing only its time and a full, uncut title; the next task is an ordinary row instead of a large inverted card.
 - Preserve source-proved AFTER/BEFORE execution-clock relations; unsupported bounds stay in review without an invented alert.
 - Keep supported THAT-message clocks in the message while preserving a separately owned fronted execution time.
 - Keep a supported retail-list availability qualifier with its own shopping item and stated store.

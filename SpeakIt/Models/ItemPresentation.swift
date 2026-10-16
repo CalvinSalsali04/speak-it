@@ -106,6 +106,12 @@ struct ItemPresentation: Equatable, Sendable {
     /// no timing to show. A place reminder puts its place here rather than a
     /// date, because inventing one would misreport when it fires.
     var primaryTimingText: String?
+    /// The timing for a row that sits under its day's header on Today: the
+    /// clock time alone, because the header already names the day. A day with
+    /// no time of day shows nothing beyond its header; a place reminder shows
+    /// its place; clock-boundary, deadline and window labels pass through
+    /// whole. Prefixed "Overdue · " when overdue, like `formattedTimingText`.
+    var dayGroupedTimingText: String?
     /// A full sentence naming the trigger, for the editor and the capture
     /// receipt. `nil` when there is no trigger to describe.
     var triggerSummary: String?
@@ -156,13 +162,21 @@ struct ItemPresentation: Equatable, Sendable {
         let clockLabel = presentsClockBoundary
             ? Self.clockBoundaryLabel(for: item, calendar: calendar) ?? "Time needs review" : nil
 
+        // A clock boundary, a deadline or a calendar window is already one
+        // finished label; only a plain time or place is formatted per slot.
+        let fixedTimingLabel = presentsClockBoundary ? clockLabel : presentsDeadline ? deadlineLabel
+            : calendarWindowText(for: item, calendar: calendar)
+        let groupedText = fixedTimingLabel ?? dayGroupedTimingText(for: reminderState)
+
         return ItemPresentation(
             destination: dest,
             isOverdue: isOverdue,
-            primaryTimingText: presentsClockBoundary ? clockLabel : presentsDeadline ? deadlineLabel
-                : calendarWindowText(for: item, calendar: calendar) ?? primaryTimingText(
-                    for: reminderState, now: now, calendar: calendar
-                ),
+            primaryTimingText: fixedTimingLabel ?? primaryTimingText(
+                for: reminderState, now: now, calendar: calendar
+            ),
+            dayGroupedTimingText: isOverdue
+                ? groupedText.map { "Overdue · \($0)" } ?? "Overdue"
+                : groupedText,
             triggerSummary: presentsClockBoundary ? clockLabel : presentsDeadline ? deadlineLabel
                 : triggerSummary(for: reminderState, recurrence: recurrence),
             reviewRequirement: reviewRequirement(for: item, blocker: blocker, calendar: calendar),
@@ -407,6 +421,20 @@ struct ItemPresentation: Equatable, Sendable {
             let day = dayText(for: date, now: now, calendar: calendar)
             let time = date.formatted(date: .omitted, time: .shortened)
             return "\(day), \(time)"
+        }
+    }
+
+    /// The day-grouped slot, with the same precision rules as
+    /// `primaryTimingText`: a date-only item never grows a clock time, and a
+    /// place reminder shows its place rather than a guessed date.
+    private static func dayGroupedTimingText(for state: ReminderState) -> String? {
+        switch state {
+        case .none:
+            return nil
+        case let .place(intent), let .blockedPlace(intent, _):
+            return intent.place.displayName
+        case let .time(date, isDateOnly, _):
+            return isDateOnly ? nil : date.formatted(date: .omitted, time: .shortened)
         }
     }
 
