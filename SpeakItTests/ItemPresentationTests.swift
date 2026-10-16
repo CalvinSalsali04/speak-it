@@ -593,6 +593,101 @@ final class ItemPresentationTests: XCTestCase {
         XCTAssertFalse(presentation.formattedTimingText?.contains("Overdue") == true)
         XCTAssertEqual(presentation.formattedTimingText, presentation.primaryTimingText)
     }
+
+    // MARK: Today's leading time column
+
+    /// The column puts the clock time on its own first line so it lines up
+    /// down the list, and the day under it.
+    func testTimingColumnLeadsWithTheTimeThenTheDay() throws {
+        let calendar = Calendar.autoupdatingCurrent
+        let fixedNow = Date(timeIntervalSince1970: 1_700_000_000)
+        let tomorrow = try XCTUnwrap(calendar.date(byAdding: .day, value: 1, to: fixedNow))
+        let item = CapturedItem(
+            originalTextSegment: "Complete my scientific computation assignment",
+            displayTitle: "Complete my scientific computation assignment",
+            itemType: .task,
+            category: .general,
+            dueDate: tomorrow
+        )
+
+        let lines = presentation(for: item, now: fixedNow).timingColumnLines
+        XCTAssertEqual(lines.count, 2, "time, then day, got \(lines)")
+        XCTAssertEqual(lines.first, tomorrow.formatted(date: .omitted, time: .shortened))
+        XCTAssertTrue(
+            lines.last?.contains(tomorrow.formatted(.dateTime.month(.abbreviated).day())) == true,
+            "the second line must name the day, got \(lines)"
+        )
+    }
+
+    /// A time on the reference day needs no day line.
+    func testTimingColumnForTheSameDayIsTheTimeAlone() {
+        let fixedNow = Date(timeIntervalSince1970: 1_700_000_000)
+        let later = fixedNow.addingTimeInterval(1800)
+        let item = CapturedItem(
+            originalTextSegment: "Doctor appointment",
+            displayTitle: "Doctor appointment",
+            itemType: .task,
+            category: .general,
+            dueDate: later
+        )
+        // Skip the rare case where half an hour later crosses midnight.
+        guard Calendar.autoupdatingCurrent.isDate(later, inSameDayAs: fixedNow) else { return }
+
+        XCTAssertEqual(
+            presentation(for: item, now: fixedNow).timingColumnLines,
+            [later.formatted(date: .omitted, time: .shortened)]
+        )
+    }
+
+    /// The column follows the same precision rule as the trailing text: a
+    /// date-only item must never grow a clock time.
+    func testTimingColumnForADateOnlyItemShowsNoTime() throws {
+        let calendar = Calendar.autoupdatingCurrent
+        let fixedNow = Date(timeIntervalSince1970: 1_700_000_000)
+        let later = try XCTUnwrap(calendar.date(byAdding: .day, value: 3, to: fixedNow))
+        let item = CapturedItem(
+            originalTextSegment: "File taxes",
+            displayTitle: "File taxes",
+            itemType: .task,
+            category: .general,
+            dueDate: calendar.startOfDay(for: later),
+            temporalIntent: TemporalIntent(kind: .dateOnly)
+        )
+
+        let lines = presentation(for: item, now: fixedNow).timingColumnLines
+        XCTAssertFalse(lines.isEmpty)
+        XCTAssertFalse(lines.contains { $0.contains(":") }, "no clock time, got \(lines)")
+    }
+
+    /// Overdue is its own last line, so the time keeps the first line.
+    func testTimingColumnForAnOverdueItemEndsWithOverdue() {
+        let fixedNow = Date(timeIntervalSince1970: 1_700_000_000)
+        let pastDate = fixedNow.addingTimeInterval(-3600)
+        let item = CapturedItem(
+            originalTextSegment: "Call the pharmacy",
+            displayTitle: "Call the pharmacy",
+            itemType: .task,
+            category: .general,
+            dueDate: pastDate
+        )
+
+        let lines = presentation(for: item, now: fixedNow).timingColumnLines
+        XCTAssertEqual(lines.first, pastDate.formatted(date: .omitted, time: .shortened))
+        XCTAssertEqual(lines.last, "Overdue")
+    }
+
+    /// Nothing to show means no column, so the row falls back to its plain
+    /// title without an empty gap beside it.
+    func testTimingColumnIsEmptyWithoutTiming() {
+        let item = CapturedItem(
+            originalTextSegment: "Read that book",
+            displayTitle: "Read that book",
+            itemType: .task,
+            category: .general
+        )
+
+        XCTAssertEqual(presentation(for: item).timingColumnLines, [])
+    }
 }
 
 

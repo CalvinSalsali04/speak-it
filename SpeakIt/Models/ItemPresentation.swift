@@ -106,6 +106,12 @@ struct ItemPresentation: Equatable, Sendable {
     /// no timing to show. A place reminder puts its place here rather than a
     /// date, because inventing one would misreport when it fires.
     var primaryTimingText: String?
+    /// The same timing split into the lines of Today's leading time column:
+    /// the clock time first, then the day it falls on (`["1:00 PM", "Sat, Oct 17"]`).
+    /// Empty when there is no timing. Overdue is its own last line rather than
+    /// a prefix, because a narrow column cannot hold "Overdue · Oct 15, 9:00 AM"
+    /// on one line and wrapping it would push the time off the first line.
+    var timingColumnLines: [String]
     /// A full sentence naming the trigger, for the editor and the capture
     /// receipt. `nil` when there is no trigger to describe.
     var triggerSummary: String?
@@ -156,13 +162,21 @@ struct ItemPresentation: Equatable, Sendable {
         let clockLabel = presentsClockBoundary
             ? Self.clockBoundaryLabel(for: item, calendar: calendar) ?? "Time needs review" : nil
 
+        // A clock boundary, a deadline or a calendar window is already one
+        // finished label; only a plain time or place is formatted per slot.
+        let fixedTimingLabel = presentsClockBoundary ? clockLabel : presentsDeadline ? deadlineLabel
+            : calendarWindowText(for: item, calendar: calendar)
+        let columnLines: [String] = (fixedTimingLabel.map { [$0] }
+            ?? timingColumnLines(for: reminderState, now: now, calendar: calendar))
+            + (isOverdue ? ["Overdue"] : [])
+
         return ItemPresentation(
             destination: dest,
             isOverdue: isOverdue,
-            primaryTimingText: presentsClockBoundary ? clockLabel : presentsDeadline ? deadlineLabel
-                : calendarWindowText(for: item, calendar: calendar) ?? primaryTimingText(
-                    for: reminderState, now: now, calendar: calendar
-                ),
+            primaryTimingText: fixedTimingLabel ?? primaryTimingText(
+                for: reminderState, now: now, calendar: calendar
+            ),
+            timingColumnLines: columnLines,
             triggerSummary: presentsClockBoundary ? clockLabel : presentsDeadline ? deadlineLabel
                 : triggerSummary(for: reminderState, recurrence: recurrence),
             reviewRequirement: reviewRequirement(for: item, blocker: blocker, calendar: calendar),
@@ -407,6 +421,35 @@ struct ItemPresentation: Equatable, Sendable {
             let day = dayText(for: date, now: now, calendar: calendar)
             let time = date.formatted(date: .omitted, time: .shortened)
             return "\(day), \(time)"
+        }
+    }
+
+    /// Lines for the leading time column, with the same precision rules as
+    /// `primaryTimingText`: a date-only item never grows a clock time, and a
+    /// place reminder shows its place rather than a guessed date.
+    private static func timingColumnLines(
+        for state: ReminderState,
+        now: Date,
+        calendar: Calendar
+    ) -> [String] {
+        switch state {
+        case .none:
+            return []
+
+        case let .place(intent), let .blockedPlace(intent, _):
+            return [intent.place.displayName]
+
+        case let .time(date, isDateOnly, _):
+            let isToday = calendar.isDate(date, inSameDayAs: now)
+            let day = dayText(for: date, now: now, calendar: calendar)
+            let weekday = date.formatted(.dateTime.weekday(.abbreviated))
+
+            if isDateOnly {
+                return isToday ? ["Today"] : [day, weekday]
+            }
+
+            let time = date.formatted(date: .omitted, time: .shortened)
+            return isToday ? [time] : [time, "\(weekday), \(day)"]
         }
     }
 

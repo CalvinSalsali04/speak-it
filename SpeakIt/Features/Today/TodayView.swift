@@ -1398,6 +1398,7 @@ struct TodayView: View {
                                 item: item,
                                 showsCompletionControl: spotlight(for: item) == nil,
                                 showsCreatedDate: false,
+                                timingPlacement: .leadingColumn,
                                 onToggleCompleted: { toggleCompleted(item) },
                                 onEdit: { openItem(item) }
                             )
@@ -1454,6 +1455,7 @@ struct TodayView: View {
                             item: item,
                             showsCompletionControl: spotlight(for: item) == nil,
                             showsCreatedDate: false,
+                            timingPlacement: .leadingColumn,
                             onToggleCompleted: { toggleCompleted(item) },
                             onEdit: { openItem(item) }
                         )
@@ -1541,6 +1543,7 @@ struct TodayView: View {
                                     item: item,
                                     showsCompletionControl: spotlight(for: item) == nil,
                                     showsCreatedDate: false,
+                                    timingPlacement: .leadingColumn,
                                     onToggleCompleted: { toggleCompleted(item) },
                                     onEdit: { openItem(item) }
                                 )
