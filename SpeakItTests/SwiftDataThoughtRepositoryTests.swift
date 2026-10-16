@@ -3596,6 +3596,14 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
             ("When I go to the grocery store get milk, eggs and cheese", ["get milk", "get eggs", "get cheese"]),
             ("remind me to grab bread, butter and jam when I leave work", ["grab bread", "grab butter", "grab jam"]),
         ]
+        XCTAssertEqual(
+            ThoughtExtractionEngine.extractWithRules("pick up milk, eggs and cheese on the way home")
+                .items.map { $0.analysisText.lowercased() },
+            ["pick up milk", "pick up eggs", "pick up cheese"])
+        XCTAssertEqual(
+            ThoughtExtractionEngine.extractWithRules("go get milk, eggs, and cheese")
+                .items.map(\.organization.itemType),
+            [.shopping, .shopping, .shopping])
         for (capture, expected) in cases {
             let result = ThoughtExtractionEngine.extractWithRules(capture)
             XCTAssertEqual(result.items.map { $0.analysisText.lowercased() }, expected, capture)

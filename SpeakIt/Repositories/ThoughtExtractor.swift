@@ -12610,6 +12610,10 @@ enum RuleBasedThoughtExtractor {
             ThoughtTitleFormatter.polished(canonicalizedListCommand(listText), itemType: .shopping)
         ).replacingOccurrences(
             of: ActionabilityReader.serialMotionBeforePurchase, with: "", options: .regularExpression)
+            // "…and cheese on the way home" describes the trip, not the cheese.
+            .replacingOccurrences(
+                of: #"(?i),?\s+on\s+(?:the|my|our)\s+way\s+(?:home|back|to\s+[\w'&.-]+(?:\s+[\w'&.-]+){0,2})\s*[.!]?\s*$"#,
+                with: "", options: .regularExpression)
             .replacingOccurrences(
                 of: #"(?i)^(?:please\s+)?(?:go(?:ing)?\s+to|head(?:ing)?\s+(?:over\s+)?to|stop(?:ping)?\s+(?:by|at)|swing(?:ing)?\s+by|run(?:ning)?\s+to|drive\s+to|driving\s+to)\s+(?:the\s+)?[\w'&.-]+(?:\s+[\w'&.-]+){0,2}?\s+(?:and\s+)?(?=(?:buy|order|get|grab|pick)\b)"#,
                 with: "",
@@ -13364,6 +13368,26 @@ enum RuleBasedThoughtExtractor {
         // instead of splitting its products away from their missing trigger.
         if sentences.count == 1, isUnreadablePlaceReminder(transcript) {
             return [Segment(quote: transcript, analysisText: transcript, suggestedTitle: nil)]
+        }
+
+        // "Remind me to grab bread, butter and jam when I leave work": the
+        // trailing place belongs to the whole list, not to its last product.
+        // Clause splitting cut it into "bread", "butter" and "jam when I leave
+        // work", so only jam kept the trigger (as a Memory note) and the rest
+        // went to review. Keep the sentence whole here; the shopping shaper
+        // splits it into rows that all carry the place.
+        if let command = sharedCommand(in: transcript),
+           LocationIntentParser.parse(command.prefix) == nil,
+           LocationIntentParser.parse(command.body) != nil {
+            let list = withoutTrailingPlaceTrigger(command.body)
+            let products = list.replacingOccurrences(
+                of: #"(?i)^(?:buy|purchase|order|get|grab|pick\s+up)\s+"#,
+                with: "", options: .regularExpression)
+            if list != command.body, products != list,
+               LocationIntentParser.parse(list) == nil,
+               ShoppingGroupParser.certifiesImplicitProducts(products) {
+                return [Segment(quote: transcript, analysisText: transcript, suggestedTitle: nil)]
+            }
         }
 
         if let command = sharedCommand(in: transcript) {
