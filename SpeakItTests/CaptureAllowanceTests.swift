@@ -563,10 +563,11 @@ final class CaptureAllowanceTests: XCTestCase {
         let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
         let files = ["SpeakIt/App/SpeakItApp.swift", "SpeakIt/Intents/SaveThoughtIntent.swift",
                      "SpeakIt/App/RootView.swift", "SpeakIt/Features/Capture/CaptureView.swift",
-                     "SpeakIt/Features/Shopping/ShoppingListView.swift", "SpeakIt/Features/Today/TodayView.swift"]
+                     "SpeakIt/Features/Shopping/ShoppingListView.swift", "SpeakIt/Features/Today/TodayView.swift",
+                     "SpeakIt/Features/Library/LibraryView.swift"]
         for file in files {
             let source = try String(contentsOf: root.appendingPathComponent(file), encoding: .utf8)
-            for marker in ["SwiftDataThoughtRepository(", "repository.createCaptureResult(", "repository.addShoppingItems("] {
+            for marker in ["SwiftDataThoughtRepository(", "repository.createCaptureResult(", "repository.addShoppingItems(", "repository.addMemoryNote("] {
                 var remainder = source[...]
                 while let match = remainder.range(of: marker) {
                     let tail = remainder[match.upperBound...]

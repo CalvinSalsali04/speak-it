@@ -1201,6 +1201,80 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         return items
     }
 
+    @discardableResult
+    func addMemoryNote(
+        _ text: String,
+        destination: MemoryNoteDestination,
+        createdAt: Date = .now,
+        allowancePolicy: CaptureAllowancePolicy? = nil
+    ) throws -> CapturedItem {
+        let note = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !note.isEmpty else { throw RepositoryError.emptyCapture }
+
+        let itemType: ItemType
+        let category: ItemCategory
+        var personName: String?
+        switch destination {
+        case .idea:
+            itemType = .idea
+            category = .ideas
+        case .reference:
+            itemType = .note
+            category = .general
+        case .person(let name):
+            let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { throw RepositoryError.emptyCapture }
+            itemType = .note
+            category = .people
+            personName = trimmed
+        }
+
+        // A real capture session, like a typed list entry: the words as
+        // written, committed before anything else happens.
+        let pending = try createPendingCapture(
+            text: note,
+            source: .inAppText,
+            createdAt: createdAt,
+            allowancePolicy: allowancePolicy,
+            deduplicates: false
+        )
+        defer { reconcileCaptureAllowance() }
+
+        let organization = OrganizedThought(
+            itemType: itemType,
+            category: category,
+            priority: .normal,
+            personName: personName,
+            dueDate: nil,
+            reminderDate: nil,
+            reminderDelivery: .none,
+            recurrenceRule: nil,
+            needsClarification: false
+        )
+        let thought = ExtractedThought(
+            sourceQuote: note,
+            // Typed, so no repair chain ran: the quote is what they wrote.
+            rawQuote: note,
+            wasRepaired: false,
+            analysisText: note,
+            suggestedTitle: note,
+            organization: organization,
+            confidence: 1,
+            needsReview: false
+        )
+        let items = organizePersistedCapture(
+            session: pending.session,
+            extraction: ThoughtExtractionResult(items: [thought], method: .rules),
+            schedulesReminders: false
+        )
+        guard pending.session.processingStatus == .complete, let item = items.first else {
+            throw RepositoryError.saveFailed(
+                pending.session.processingError ?? "Could not save the note."
+            )
+        }
+        return item
+    }
+
     func createCaptureResult(
         text: String,
         source: CaptureSource,
