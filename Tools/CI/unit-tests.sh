@@ -13,7 +13,10 @@
 #   DEVELOPER_DIR            Xcode to use (default /Applications/Xcode.app)
 #   SPEAKIT_SIMULATOR_ID     simulator UDID (default: see simulator-id.sh)
 #   SPEAKIT_DERIVED_DATA     derived data path (default /tmp/SpeakItClaudeTests)
-#   SPEAKIT_RESULT_BUNDLE    write an .xcresult here (default: none; one per shard when sharded)
+#   SPEAKIT_RESULT_BUNDLE    write an .xcresult here (default: none; one per shard when sharded).
+#                            With one, a run that exits 0 having run no test
+#                            (0 passed, 0 failed) exits 3 instead, and on CI the
+#                            counts become the step's outputs passed/failed/skipped
 #   SPEAKIT_SHARDS           run a whole target across N pool simulators (default 1;
 #                            see simulator-pool.sh — the pool is slimmed with SimSlim
 #                            when it is installed, so N devices fit where one stock
@@ -36,10 +39,22 @@ SHARDS="${SPEAKIT_SHARDS:-1}"
 # artifact is downloaded from a blob host, and a session reviewing a CI failure
 # may not be able to reach one - which leaves a list of test names and no
 # message. The job log is the one place every reader can already see.
+#
+# Also leaves the bundle's counts in COUNT_PASSED, COUNT_FAILED and
+# COUNT_SKIPPED (empty when there is no readable bundle), and says so on stderr
+# when there is none, rather than returning quietly.
+COUNT_PASSED=""
+COUNT_FAILED=""
+COUNT_SKIPPED=""
 summarize() {
   local title="$1" bundle="$2"
-  [ -n "$bundle" ] && [ -d "$bundle" ] || return 0
-  local summary_file text_file
+  COUNT_PASSED=""; COUNT_FAILED=""; COUNT_SKIPPED=""
+  [ -n "$bundle" ] || return 0
+  if [ ! -d "$bundle" ]; then
+    echo "unit-tests.sh: no result bundle at $bundle, so no test counts" >&2
+    return 0
+  fi
+  local summary_file text_file counts
   summary_file="$(mktemp)"
   text_file="$(mktemp)"
   if xcrun xcresulttool get test-results summary --path "$bundle" --format json > "$summary_file" 2>/dev/null; then
@@ -48,6 +63,22 @@ summarize() {
     if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
       cat "$text_file" >> "$GITHUB_STEP_SUMMARY"
     fi
+    # Integers or nothing: a count this script cannot read is left empty, never
+    # guessed as zero.
+    counts="$(python3 -c '
+import json, sys
+d = json.load(open(sys.argv[1]))
+values = [d.get(k) for k in ("passedTests", "failedTests", "skippedTests")]
+if all(isinstance(v, int) for v in values):
+    print(*values)
+' "$summary_file" 2>/dev/null || true)"
+    if [ -n "$counts" ]; then
+      read -r COUNT_PASSED COUNT_FAILED COUNT_SKIPPED <<< "$counts"
+    else
+      echo "unit-tests.sh: $bundle has no readable passed/failed/skipped counts" >&2
+    fi
+  else
+    echo "unit-tests.sh: xcresulttool could not read $bundle, so no test counts" >&2
   fi
   rm -f "$summary_file" "$text_file"
 }
@@ -82,6 +113,34 @@ if [ "$SHARDS" = "1" ] || [[ "$ONLY" == */* ]]; then
   status=0
   xcodebuild "${args[@]}" || status=$?
   summarize "$ONLY" "$RESULT_BUNDLE"
+  # The step's counts, for the stage table that closes a CI job. Written only
+  # when they were read, so an absent count stays absent there too.
+  if [ -n "${GITHUB_OUTPUT:-}" ] && [ -n "$COUNT_PASSED" ]; then
+    {
+      echo "passed=$COUNT_PASSED"
+      echo "failed=$COUNT_FAILED"
+      echo "skipped=$COUNT_SKIPPED"
+    } >> "$GITHUB_OUTPUT"
+  fi
+  # A selection that matches nothing builds, runs no test and exits 0, which a
+  # typo in a dispatched class name turns into a PASS. Only a clean exit with a
+  # readable bundle that ran no test is changed; a run that failed keeps its
+  # own status, and a run that ran anything is untouched.
+  #
+  # The two shapes of "nothing ran" have different causes. With skips, the
+  # selection matched and every test in it abstained, which on a simulator
+  # without NLTagger's lexical-class model is skipIfBlind doing its job; only
+  # with no skips either is a mistyped class name the likely reading. Both
+  # still exit 3, because neither measured anything.
+  if [ "$status" = "0" ] && [ -n "$COUNT_PASSED" ] \
+    && [ "$COUNT_PASSED" = "0" ] && [ "$COUNT_FAILED" = "0" ]; then
+    if [ "${COUNT_SKIPPED:-0}" -gt 0 ] 2>/dev/null; then
+      echo "unit-tests.sh: every test in '$ONLY' skipped (0 passed, 0 failed, $COUNT_SKIPPED skipped), so nothing was measured; likely skipIfBlind on a simulator without NLTagger's lexical-class model, not a mistyped class name" >&2
+    else
+      echo "unit-tests.sh: '$ONLY' ran no test (0 passed, 0 failed, 0 skipped); check the class names" >&2
+    fi
+    status=3
+  fi
   exit $status
 fi
 
