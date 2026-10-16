@@ -8,8 +8,10 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     private static let externalCaptureDeduplicationWindow: TimeInterval = 5
     private static let inAppCaptureDeduplicationWindow: TimeInterval = 15
 
+    /// Item IDs (every row the alert stands for), title, place description,
+    /// notification identifier.
     typealias PlaceReminderDelivery = @MainActor (
-        UUID,
+        [UUID],
         String,
         String,
         String
@@ -41,9 +43,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         self.captureAllowance = captureAllowance
         self.requestsReminderAuthorization = requestsReminderAuthorization
         self.permitsOnDeviceIntelligence = permitsOnDeviceIntelligence
-        self.placeReminderDelivery = placeReminderDelivery ?? { itemID, title, place, identifier in
+        self.placeReminderDelivery = placeReminderDelivery ?? { itemIDs, title, place, identifier in
             await ReminderScheduler.deliverPlaceReminder(
-                itemID: itemID,
+                itemIDs: itemIDs,
                 title: title,
                 placeDescription: place,
                 notificationIdentifier: identifier
@@ -517,9 +519,21 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 && $0.temporalIntent?.clockBoundary == nil
                 && $0.locationIntent?.isRetired != true
         }
+        // Rows split off one place-triggered list share a single region: the
+        // carrier is watched, and its siblings report whatever it reports.
+        let carriers = Self.placeListCarriers(in: live)
         var reconciliation = monitor.reconcile(
-            live.compactMap { $0.locationMonitorRequest(authorization: authorization) }
+            live
+                .filter { item in carriers[item.id].map { $0 == item.id } ?? true }
+                .compactMap { $0.locationMonitorRequest(authorization: authorization) }
         )
+        for (siblingID, carrierID) in carriers where siblingID != carrierID {
+            if reconciliation.monitored.contains(carrierID) {
+                reconciliation.monitored.append(siblingID)
+            } else if let blocker = reconciliation.blocked[carrierID] {
+                reconciliation.blocked[siblingID] = blocker
+            }
+        }
         // Items that never produced a request are blocked for a reason the
         // monitor never saw — a missing Home, an unsearched place name — so
         // their blockers are merged in here rather than being lost.
@@ -530,6 +544,83 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             }
         }
         return reconciliation
+    }
+
+    /// The rows of one place-triggered shopping list that share one trigger.
+    ///
+    /// "When I get to Costco, buy milk, eggs and cheese" becomes three checkable
+    /// rows, each carrying the same place intent from the same capture. They
+    /// are one reminder to the person, so they are watched as one region and
+    /// delivered as one alert — the place counterpart of how the scheduler
+    /// coalesces a timed list into one notification. An edit that changes one
+    /// row's trigger bumps its revision, which takes it out of the group.
+    static func placeListKey(for item: CapturedItem) -> String? {
+        guard item.itemType == .shopping,
+              let sessionID = item.captureSession?.id,
+              let intent = item.locationIntent,
+              intent.place != .currentLocation else { return nil }
+        return [
+            sessionID.uuidString, intent.event.rawValue, intent.repeats ? "repeats" : "once",
+            "r\(intent.triggerRevision)", String(describing: intent.place)
+        ].joined(separator: "|")
+    }
+
+    /// Sibling ID → carrier ID for every list row that has at least one live
+    /// sibling. The carrier is the first row in spoken (creation) order, so a
+    /// completed carrier hands the region to the next row on the next pass.
+    static func placeListCarriers(in live: [CapturedItem]) -> [UUID: UUID] {
+        var groups: [String: [CapturedItem]] = [:]
+        for item in live {
+            guard let key = placeListKey(for: item) else { continue }
+            groups[key, default: []].append(item)
+        }
+        var carriers: [UUID: UUID] = [:]
+        for members in groups.values where members.count > 1 {
+            let ordered = members.sorted {
+                $0.createdAt == $1.createdAt
+                    ? $0.id.uuidString < $1.id.uuidString
+                    : $0.createdAt < $1.createdAt
+            }
+            for member in ordered { carriers[member.id] = ordered[0].id }
+        }
+        return carriers
+    }
+
+    /// The live rows that one place crossing should deliver together, in
+    /// spoken order. Always includes `item` itself.
+    private func placeListMembers(of item: CapturedItem) -> [CapturedItem] {
+        guard let key = Self.placeListKey(for: item),
+              let session = item.captureSession else { return [item] }
+        let members = session.items.filter { member in
+            member.id == item.id || (
+                Self.placeListKey(for: member) == key
+                    && !member.isArchived && !member.isCompleted && !member.needsClarification
+                    && !member.constrainsBothPlaceAndTime
+                    && member.temporalIntent?.clockBoundary == nil
+                    && member.locationIntent?.isRetired != true
+            )
+        }
+        return members.sorted {
+            $0.createdAt == $1.createdAt
+                ? $0.id.uuidString < $1.id.uuidString
+                : $0.createdAt < $1.createdAt
+        }
+    }
+
+    /// "Milk · Eggs · Cheese" for a list, the row's own title otherwise.
+    static func placeListAlertTitle(_ members: [CapturedItem]) -> String {
+        guard members.count > 1 else { return members.first?.displayTitle ?? "" }
+        let names = members.prefix(3).map { member -> String in
+            let stripped = member.displayTitle.replacingOccurrences(
+                of: #"^(?:buy|get|grab|order|purchase|pick\s+up)\s+"#,
+                with: "",
+                options: [.regularExpression, .caseInsensitive]
+            )
+            guard let first = stripped.first else { return member.displayTitle }
+            return first.uppercased() + stripped.dropFirst()
+        }
+        let joined = names.joined(separator: " · ")
+        return members.count > 3 ? "\(joined) · +\(members.count - 3) more" : joined
     }
 
     /// The shortest gap between two deliveries of a repeating place reminder.
@@ -597,14 +688,18 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             guard now.timeIntervalSince(firedAt) >= Self.locationTriggerCooldown else { return }
         }
 
-        let deliveryKey = "\(itemID.uuidString).\(event.rawValue).r\(intent.triggerRevision)"
+        // A list's rows share one claim, so two of its regions crossing at once
+        // (a carrier handover left both briefly registered) send one alert.
+        let deliveryKey = Self.placeListKey(for: item)
+            ?? "\(itemID.uuidString).\(event.rawValue).r\(intent.triggerRevision)"
         guard locationDeliveriesInFlight.insert(deliveryKey).inserted else { return }
         defer { locationDeliveriesInFlight.remove(deliveryKey) }
 
+        let members = placeListMembers(of: item)
         let notificationIdentifier = "SpeakIt.place.\(itemID.uuidString).r\(intent.triggerRevision).\(UUID().uuidString)"
         let result = await placeReminderDelivery(
-            itemID,
-            item.displayTitle,
+            members.map(\.id),
+            Self.placeListAlertTitle(members),
             intent.displayDescription,
             notificationIdentifier
         )
@@ -634,6 +729,21 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
 
         currentIntent.firedAt = now
         current.locationIntent = currentIntent
+        // The siblings were in the alert, so they share its delivery: a
+        // one-shot list retires as a whole, and a repeating one shares the
+        // cooldown. A sibling edited or finished during the await no longer
+        // matches the key and keeps its own state.
+        let key = Self.placeListKey(for: current)
+        var delivered = [current]
+        for member in members where member.id != current.id {
+            guard key != nil, let sibling = try? findItem(withID: member.id),
+                  Self.placeListKey(for: sibling) == key,
+                  !sibling.isArchived, !sibling.isCompleted,
+                  var siblingIntent = sibling.locationIntent else { continue }
+            siblingIntent.firedAt = now
+            sibling.locationIntent = siblingIntent
+            delivered.append(sibling)
+        }
         try? modelContext.save()
 
         // Once scheduling has succeeded and the saved trigger still matches,
@@ -641,7 +751,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         // launch from reconstructing it; the in-flight claim covered callbacks
         // that arrived while scheduling was suspended.
         if !currentIntent.repeats {
-            LocationReminderMonitor.shared.stopMonitoring(itemID: itemID)
+            for row in delivered {
+                LocationReminderMonitor.shared.stopMonitoring(itemID: row.id)
+            }
         }
     }
 

@@ -594,10 +594,9 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         }
     }
 
-    /// The same shared pass must still refuse to split what the rules path
-    /// refuses: a list held whole by a place trigger stays one row, because
-    /// splitting would need one monitored region per grocery.
-    func testRefinedPlaceTriggeredListStaysWhole() {
+    /// A refined place-triggered list splits like the rules path does: one
+    /// row per product, every row keeping the shared place trigger and list.
+    func testRefinedPlaceTriggeredListSplitsIntoRows() {
         let capture = "When I get to Costco, remind me to buy milk, eggs, and cheese"
         let deterministic = ThoughtOrganizer.organize(capture)
         let refined = [ExtractedThought(
@@ -630,8 +629,11 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
 
         let shaped = RuleBasedThoughtExtractor.shapingShoppingLists(refined, capture: capture)
 
-        XCTAssertEqual(shaped.count, 1, "a place-triggered list stays one row")
-        XCTAssertEqual(shaped.first?.shoppingGroup, "Costco")
+        XCTAssertEqual(shaped.map(\.suggestedTitle), ["buy milk", "buy eggs", "buy cheese"])
+        XCTAssertEqual(shaped.map(\.shoppingGroup), ["Costco", "Costco", "Costco"])
+        for row in shaped {
+            XCTAssertEqual(row.organization.locationIntent, deterministic.locationIntent)
+        }
     }
 
     /// Items an older build parked in review for the place-and-time combo are
@@ -3564,7 +3566,7 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         ])
     }
 
-    func testQuantitiesAndLongShoppingListsStayOneThought() {
+    func testQuantitiesAndLongPlaceListsKeepTheirPlaceOnEveryRow() {
         let captures = [
             "When I get to Costco, remind me to buy roast beef, 20 loaves of bread for sandwiches, cheese, a tray of chicken thighs, and bison meat",
             "When I get to Costco, remind me to buy 20 loaves of bread and 12 chicken thighs",
@@ -3574,14 +3576,42 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
 
         for capture in captures {
             let result = ThoughtExtractionEngine.extractWithRules(capture)
-            XCTAssertEqual(result.items.count, 1, capture)
-            XCTAssertEqual(result.items.first?.organization.itemType, .shopping, capture)
-            XCTAssertEqual(result.items.first?.organization.category, .shopping, capture)
-            XCTAssertEqual(
-                result.items.first?.organization.locationIntent?.place,
-                .named("costco"),
-                capture
-            )
+            XCTAssertFalse(result.items.isEmpty, capture)
+            for item in result.items {
+                XCTAssertEqual(item.organization.itemType, .shopping, capture)
+                XCTAssertEqual(item.organization.category, .shopping, capture)
+                XCTAssertEqual(item.organization.locationIntent?.place, .named("costco"), capture)
+            }
+        }
+        // A plain fourteen-product list is fourteen checkable rows.
+        XCTAssertEqual(ThoughtExtractionEngine.extractWithRules(captures[2]).items.count, 14)
+    }
+
+    /// Calvin's example, and the phrasings around it: a list said with a place
+    /// trigger is one row per product, each keeping the trigger.
+    func testPlaceTriggeredListsBecomeOneRowPerProduct() {
+        let cases: [(String, [String])] = [
+            ("When I get to Costco, remind me to buy milk, eggs, and cheese", ["buy milk", "buy eggs", "buy cheese"]),
+            ("when I go to the grocery store, go get milk, eggs, and cheese", ["get milk", "get eggs", "get cheese"]),
+            ("When I go to the grocery store get milk, eggs and cheese", ["get milk", "get eggs", "get cheese"]),
+            ("remind me to grab bread, butter and jam when I leave work", ["grab bread", "grab butter", "grab jam"]),
+        ]
+        XCTAssertEqual(
+            ThoughtExtractionEngine.extractWithRules("pick up milk, eggs and cheese on the way home")
+                .items.map { $0.analysisText.lowercased() },
+            ["pick up milk", "pick up eggs", "pick up cheese"])
+        XCTAssertEqual(
+            ThoughtExtractionEngine.extractWithRules("go get milk, eggs, and cheese")
+                .items.map(\.organization.itemType),
+            [.shopping, .shopping, .shopping])
+        for (capture, expected) in cases {
+            let result = ThoughtExtractionEngine.extractWithRules(capture)
+            XCTAssertEqual(result.items.map { $0.analysisText.lowercased() }, expected, capture)
+            for item in result.items {
+                XCTAssertEqual(item.organization.itemType, .shopping, capture)
+                XCTAssertNotNil(item.organization.locationIntent, capture)
+                XCTAssertFalse(item.needsReview, capture)
+            }
         }
     }
 
@@ -3629,14 +3659,12 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
 
         XCTAssertEqual(result.items.count, 1)
         XCTAssertEqual(result.items.first?.organization.itemType, .shopping)
-        XCTAssertEqual(
-            result.items.first?.analysisText,
-            "When I get to Costco remind me to buy eggs"
-        )
+        XCTAssertEqual(result.items.first?.organization.locationIntent?.place, .named("costco"))
+        XCTAssertTrue(result.items.first?.analysisText.lowercased().contains("eggs") == true)
         XCTAssertFalse(result.items.first?.analysisText.lowercased().contains("milk") == true)
     }
 
-    func testRamblingPreambleStillProducesOneConciseShoppingThought() throws {
+    func testRamblingPreambleStillProducesConciseShoppingRows() throws {
         let transcript = "I've been thinking about dinner for a while, but the main thing is "
             + "when I get to Costco remind me to buy roast beef, bread, and cheese"
         let item = try repository.createCapture(
@@ -3646,11 +3674,13 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
             schedulesReminder: false
         )
 
-        XCTAssertEqual(item.captureSession?.items.count, 1)
-        XCTAssertEqual(item.itemType, .shopping)
-        XCTAssertEqual(item.category, .shopping)
-        XCTAssertEqual(item.locationIntent?.place, .named("costco"))
-        XCTAssertEqual(item.displayTitle, "Buy roast beef, bread, and cheese")
+        let rows = try XCTUnwrap(item.captureSession?.items).sorted { $0.createdAt < $1.createdAt }
+        XCTAssertEqual(rows.map(\.displayTitle), ["Buy roast beef", "Buy bread", "Buy cheese"])
+        for row in rows {
+            XCTAssertEqual(row.itemType, .shopping)
+            XCTAssertEqual(row.category, .shopping)
+            XCTAssertEqual(row.locationIntent?.place, .named("costco"))
+        }
         XCTAssertEqual(item.captureSession?.originalTranscription, transcript)
     }
 

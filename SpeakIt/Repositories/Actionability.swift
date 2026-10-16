@@ -1983,6 +1983,12 @@ enum ActionabilityReader {
         return String(text[frame.upperBound...])
     }
 
+    /// "go get", "go and buy", "run grab", "come pick up": the motion verb a
+    /// person puts in front of a purchase. Only removed when the very next
+    /// word is a purchase verb, so "go home" and "go to the gym" are untouched.
+    static let serialMotionBeforePurchase =
+        #"(?i)^(?:go|come|run|pop|nip|hurry)\s+(?:out\s+)?(?:and\s+)?(?=(?:buy|purchase|order|get|grab|pick\s+up)\s+\S)"#
+
     static func actionBody(_ text: String) -> String {
         // The title and consolidation readers share this guarded structural
         // peeling, including nested present-tense obligations and hedges.
@@ -1994,6 +2000,10 @@ enum ActionabilityReader {
         value = replace(value, ReminderPhrasing.sentenceLeadThroughAction, "")
         value = replace(value, #"^(?:okay|ok|alright|well|so|like|um+|uh+)\b[\s,]*"#, "")
         value = replace(value, #"^now,?\s+(?=\#(actionVerb)\b)"#, "")
+        // "Go get milk, eggs and cheese": a motion verb in front of a purchase
+        // verb is the trip, not the errand. Without this the sentence opened on
+        // "go", read as a generic task, and its list could never be split.
+        value = replace(value, serialMotionBeforePurchase, "")
         // Priority labels frame the action; they are not its verb. Without
         // stripping them, "Urgent: call Mom" was correctly marked urgent but
         // filed as a Memory note because the action reader stopped at the

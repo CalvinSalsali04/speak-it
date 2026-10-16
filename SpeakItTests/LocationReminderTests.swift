@@ -127,6 +127,74 @@ final class LocationReminderTests: XCTestCase {
         XCTAssertNotNil(item.locationIntent?.firedAt)
     }
 
+    /// A place-triggered list becomes one checkable row per product, and the
+    /// rows still behave as one reminder: one watched region, one alert that
+    /// names every product, one retirement.
+    func testPlaceTriggeredListSplitsIntoRowsThatShareOneAlert() async throws {
+        setHome()
+        var deliveredIDs: [[UUID]] = []
+        var deliveredTitles: [String] = []
+        repository = SwiftDataThoughtRepository(
+            modelContext: container.mainContext,
+            placeReminderDelivery: { ids, title, _, _ in
+                deliveredIDs.append(ids)
+                deliveredTitles.append(title)
+                return .scheduled
+            },
+            requestsReminderAuthorization: false)
+        let first = try repository.createCapture(
+            text: "When I get home remind me to buy milk, eggs, and cheese",
+            source: .inAppText, createdAt: .now, schedulesReminder: false)
+        let rows = try XCTUnwrap(first.captureSession?.items)
+            .sorted { $0.createdAt < $1.createdAt }
+
+        XCTAssertEqual(rows.map(\.displayTitle), ["Buy milk", "Buy eggs", "Buy cheese"])
+        for row in rows {
+            XCTAssertEqual(row.itemType, .shopping)
+            XCTAssertEqual(row.locationIntent?.place, .home)
+            XCTAssertFalse(row.needsClarification)
+        }
+
+        let carriers = SwiftDataThoughtRepository.placeListCarriers(in: rows)
+        XCTAssertEqual(Set(carriers.values), [rows[0].id], "one region for the whole list")
+        let requests = rows.filter { carriers[$0.id] == $0.id }
+            .compactMap { $0.locationMonitorRequest(authorization: authorized) }
+        XCTAssertEqual(LocationReminderMonitor.plan(for: requests, authorization: authorized).monitored,
+                       [rows[0].id])
+
+        await repository.handleLocationTrigger(itemID: rows[1].id, event: .arrive)
+        XCTAssertEqual(deliveredIDs, [rows.map(\.id)])
+        XCTAssertEqual(deliveredTitles, ["Milk · Eggs · Cheese"])
+        XCTAssertTrue(rows.allSatisfy { $0.locationIntent?.firedAt != nil }, "the list retires together")
+
+        await repository.handleLocationTrigger(itemID: rows[2].id, event: .arrive)
+        XCTAssertEqual(deliveredIDs.count, 1, "a sibling's region cannot alert twice")
+    }
+
+    func testPlaceListHandsItsRegionToTheNextRowWhenTheFirstIsDone() throws {
+        setHome()
+        let first = try repository.createCapture(
+            text: "When I get home remind me to buy milk, eggs, and cheese",
+            source: .inAppText, createdAt: .now, schedulesReminder: false)
+        let rows = try XCTUnwrap(first.captureSession?.items)
+            .sorted { $0.createdAt < $1.createdAt }
+        XCTAssertEqual(rows.count, 3)
+        try repository.setCompleted(rows[0], completed: true)
+
+        let live = rows.filter { !$0.isCompleted }
+        let carriers = SwiftDataThoughtRepository.placeListCarriers(in: live)
+        XCTAssertEqual(Set(carriers.values), [rows[1].id])
+    }
+
+    /// Splitting must not reach the cases it cannot keep as one reminder.
+    func testRecurringAndHereListsStayWhole() {
+        let recurring = ThoughtExtractionEngine.extractWithRules("Every Sunday buy milk, eggs and cheese")
+        XCTAssertEqual(recurring.items.filter { $0.organization.itemType == .shopping }.count, 1)
+        let here = ThoughtExtractionEngine.extractWithRules(
+            "Remind me to buy milk, eggs and cheese when I get here")
+        XCTAssertLessThanOrEqual(here.items.filter { $0.organization.itemType == .shopping }.count, 1)
+    }
+
     func testWorkArrivalAndDeparture() {
         XCTAssertEqual(LocationIntentParser.parse("Remind me when I get to work")?.place, .work)
         XCTAssertEqual(LocationIntentParser.parse("Remind me when I get to work")?.event, .arrive)

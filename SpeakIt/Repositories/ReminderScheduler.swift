@@ -529,7 +529,7 @@ enum ReminderScheduler {
     /// person's side a reminder is a reminder, whatever caused it.
     @discardableResult
     static func deliverPlaceReminder(
-        itemID: UUID,
+        itemIDs: [UUID],
         title: String,
         placeDescription: String,
         notificationIdentifier: String
@@ -554,7 +554,8 @@ enum ReminderScheduler {
         content.sound = .default
         content.threadIdentifier = "speak-it-reminders"
         content.categoryIdentifier = reminderCategoryIdentifier
-        content.userInfo = ["itemIDs": [itemID.uuidString]]
+        // Every row the alert names, so Done completes the whole list.
+        content.userInfo = ["itemIDs": itemIDs.map(\.uuidString)]
         if settings.timeSensitiveSetting == .enabled {
             content.interruptionLevel = .timeSensitive
         }
