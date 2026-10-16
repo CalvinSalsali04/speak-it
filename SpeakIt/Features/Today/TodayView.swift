@@ -123,9 +123,37 @@ enum TodayActionTiming: Hashable {
         for dueDate: Date?,
         isDateOnly: Bool = false,
         calendarDay: CalendarDay? = nil,
+        deadlineIntent: TemporalIntent? = nil,
         relativeTo now: Date = .now,
         calendar: Calendar = .autoupdatingCurrent
     ) -> TodayActionTiming {
+        if let intent = deadlineIntent, let boundary = intent.clockBoundary {
+            guard let anchor = intent.clockBoundaryDate(calendar: calendar),
+                  anchor == dueDate,
+                  let day = intent.clockBoundaryDayInterval(calendar: calendar)
+            else { return .noDate }
+            switch boundary {
+            case .after:
+                if now >= day.end { return .overdue }
+                return now < anchor ? .comingUp : .today
+            case .before:
+                if now >= anchor { return .overdue }
+                return calendar.isDate(anchor, inSameDayAs: now) ? .today : .comingUp
+            case .unrecognized:
+                return .noDate
+            }
+        }
+        if let intent = deadlineIntent, intent.deadlineBoundary != nil {
+            guard let endpoint = intent.endOfDayDeadlineDate(calendar: calendar),
+                  endpoint == dueDate,
+                  let day = CalendarDay(from: endpoint.addingTimeInterval(-1), calendar: calendar),
+                  let today = CalendarDay(from: now, calendar: calendar)
+            else { return .noDate }
+            // This subtraction only identifies the local day containing the
+            // final included moment. It is never a replacement due instant.
+            if now >= endpoint { return .overdue }
+            return today == day ? .today : .comingUp
+        }
         // "August 15" means August 15 wherever the person is standing. When the
         // day itself was recorded, compare days directly and never go through
         // the stored instant: a Toronto midnight read in Los Angeles is the
@@ -159,7 +187,7 @@ enum TodayActionTiming: Hashable {
         calendar: Calendar = .autoupdatingCurrent
     ) -> TodayActionTiming {
         if let intent = item.temporalIntent,
-           intent.kind == .calendarWindow,
+           intent.kind == .calendarWindow, intent.deadlineBoundary == nil, intent.clockBoundary == nil,
            let start = intent.day,
            let end = intent.windowEndDay,
            let today = CalendarDay(from: now, calendar: intent.calendar(default: calendar)) {
@@ -171,6 +199,7 @@ enum TodayActionTiming: Hashable {
             for: item.dueDate,
             isDateOnly: item.isDateOnly,
             calendarDay: item.isDateOnly ? item.temporalIntent?.day : nil,
+            deadlineIntent: item.temporalIntent,
             relativeTo: now,
             calendar: calendar
         )
@@ -224,6 +253,7 @@ struct TodayView: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @EnvironmentObject private var subscriptionStore: SubscriptionStore
     @Query(
         filter: #Predicate<CapturedItem> { $0.isArchived == false },
@@ -433,6 +463,8 @@ struct TodayView: View {
                     for: item.reminderDate ?? item.dueDate,
                     isDateOnly: item.isDateOnly,
                     calendarDay: item.isDateOnly ? item.temporalIntent?.day : nil,
+                    deadlineIntent: item.reminderDate == nil || item.reminderDate == item.dueDate
+                        ? item.temporalIntent : nil,
                     relativeTo: referenceNow
                 )
             }
@@ -1297,7 +1329,7 @@ struct TodayView: View {
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 7) {
                         Text(item.displayTitle)
-                            .lineLimit(2)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
                             .font(.body.weight(.medium))
                             .foregroundStyle(Color.speakInverseInk)
                             .multilineTextAlignment(.leading)
@@ -1305,6 +1337,14 @@ struct TodayView: View {
                         Text(itemContext(item))
                             .font(.caption)
                             .foregroundStyle(Color.speakInverseInk.opacity(0.58))
+
+                        if let deadlineLabel = ItemPresentation.clockBoundaryLabel(for: item)
+                            ?? ItemPresentation.endOfDayDeadlineLabel(for: item) {
+                            Text(deadlineLabel)
+                                .font(.caption)
+                                .foregroundStyle(Color.speakInverseInk.opacity(0.68))
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -1313,7 +1353,9 @@ struct TodayView: View {
                     // day reads as "12:00 AM", a precision the person never
                     // gave. This card is always today's next item, so the day
                     // itself needs no restating either.
-                    if let dueDate = item.dueDate, !item.isDateOnly {
+                    if let dueDate = item.dueDate, !item.isDateOnly,
+                              item.temporalIntent?.deadlineBoundary == nil,
+                              item.temporalIntent?.clockBoundary == nil {
                         Text(dueDate.formatted(date: .omitted, time: .shortened))
                             .font(.caption)
                             .foregroundStyle(Color.speakInverseInk.opacity(0.68))
@@ -1324,6 +1366,8 @@ struct TodayView: View {
             }
             .buttonStyle(.speakIt)
             .accessibilityLabel("Edit \(item.displayTitle)")
+            .accessibilityValue(ItemPresentation.clockBoundaryLabel(for: item)
+                ?? ItemPresentation.endOfDayDeadlineLabel(for: item) ?? "")
             .accessibilityIdentifier("item.edit.\(item.displayTitle)")
         }
         .padding(18)
@@ -1685,7 +1729,7 @@ struct TodayView: View {
 
     private func orderingDate(for item: CapturedItem) -> Date {
         if let intent = item.temporalIntent,
-           intent.kind == .calendarWindow,
+           intent.kind == .calendarWindow, intent.deadlineBoundary == nil, intent.clockBoundary == nil,
            let start = intent.day?.startOfDay(in: intent.calendar(default: .autoupdatingCurrent)) {
             return start
         }
@@ -1800,6 +1844,7 @@ struct TodayView: View {
 struct CaptureHistoryView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.thoughtRepository) private var repository
+    @EnvironmentObject private var subscriptionStore: SubscriptionStore
     @Query(sort: \CaptureSession.createdAt, order: .reverse) private var sessions: [CaptureSession]
 
     @State private var recoveryDrafts: [CaptureDraftStore.Draft] = []
@@ -2134,8 +2179,10 @@ struct CaptureHistoryView: View {
                     text: recoveredText,
                     source: draft.captureSource,
                     createdAt: draft.startedAt,
+                    allowancePolicy: SubscriptionStore.backgroundCapturePolicy(source: draft.captureSource),
                     schedulesReminders: true
                 )
+                subscriptionStore.refreshFreeAllowance()
                 CaptureDraftStore.clear(id: draft.id)
                 recoveringDraftID = nil
                 reloadDrafts()
@@ -2186,12 +2233,15 @@ struct CaptureHistoryView: View {
         }
 
         do {
+            let source = draft.captureSource.typedRecoverySource
             _ = try await repository.createCaptureResult(
                 text: typed,
-                source: .inAppText,
+                source: source,
                 createdAt: draft.startedAt,
+                allowancePolicy: SubscriptionStore.backgroundCapturePolicy(source: source),
                 schedulesReminders: true
             )
+            subscriptionStore.refreshFreeAllowance()
             CaptureDraftStore.deleteRecording(id: draft.id)
             typingSelection = nil
             reloadDrafts()

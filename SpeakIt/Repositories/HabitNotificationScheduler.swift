@@ -19,19 +19,22 @@ struct MorningBriefItem: Equatable, Sendable {
     var calendarDay: CalendarDay?
     var title: String
     var reminderDate: Date?
+    var deadlineIntent: TemporalIntent?
 
     init(
         dueDate: Date?,
         isDateOnly: Bool = false,
         calendarDay: CalendarDay? = nil,
         title: String = "",
-        reminderDate: Date? = nil
+        reminderDate: Date? = nil,
+        deadlineIntent: TemporalIntent? = nil
     ) {
         self.dueDate = dueDate
         self.isDateOnly = isDateOnly
         self.calendarDay = calendarDay
         self.title = title
         self.reminderDate = reminderDate
+        self.deadlineIntent = deadlineIntent
     }
 
     /// Whether this item will announce itself on the morning in question
@@ -126,7 +129,8 @@ enum MorningBriefPlanner {
                 isDateOnly: $0.isDateOnly,
                 calendarDay: $0.isDateOnly ? $0.temporalIntent?.day : nil,
                 title: $0.displayTitle,
-                reminderDate: $0.reminderDate
+                reminderDate: $0.reminderDate,
+                deadlineIntent: ($0.temporalIntent?.deadlineBoundary != nil || $0.temporalIntent?.clockBoundary != nil) ? $0.temporalIntent : nil
             )
         }
         let lists = ShoppingListProjection.groupSummaries(in: items).compactMap { group -> MorningBriefItem? in
@@ -139,7 +143,10 @@ enum MorningBriefPlanner {
                 // "Groceries" is what the person would recognise, and naming
                 // one entry would also disclose more than the Today card does.
                 title: group.name,
-                reminderDate: item.reminderDate
+                reminderDate: item.reminderDate,
+                // A distinct alert remains its own timing authority.
+                deadlineIntent: (item.reminderDate ?? item.dueDate) == item.dueDate
+                    && (item.temporalIntent?.deadlineBoundary != nil || item.temporalIntent?.clockBoundary != nil) ? item.temporalIntent : nil
             )
         }
         return rows + lists
@@ -175,6 +182,7 @@ enum MorningBriefPlanner {
                     for: item.dueDate,
                     isDateOnly: item.isDateOnly,
                     calendarDay: item.calendarDay,
+                    deadlineIntent: item.deadlineIntent,
                     relativeTo: morning,
                     calendar: calendar
                 )
@@ -236,6 +244,23 @@ enum MorningBriefPlanner {
         locale: Locale = .autoupdatingCurrent
     ) -> String? {
         guard let dueDate = item.dueDate else { return nil }
+        let detailCalendar = calendar
+        var logicalDay: Date?
+        if let intent = item.deadlineIntent, intent.clockBoundary != nil {
+            guard intent.clockBoundaryDate(calendar: calendar) == dueDate,
+                  intent.clockBoundaryDayInterval(calendar: calendar) != nil else { return nil }
+            if !isOverdue {
+                return ItemPresentation.clockBoundaryLabel(intent: intent, dueDate: dueDate,
+                    calendar: calendar, locale: locale)
+            }
+        } else if let intent = item.deadlineIntent {
+            guard intent.endOfDayDeadlineDate(calendar: calendar) == dueDate else { return nil }
+            // A fixed-zone source caption retains its named day, while
+            // Today/age use the last included day in the user's calendar.
+            // This subtraction is presentation only, never a stored deadline.
+            logicalDay = calendar.startOfDay(for: dueDate.addingTimeInterval(-1))
+            if !isOverdue { return intent.endOfDayDeadlineLabel(calendar: calendar, locale: locale) }
+        }
         guard isOverdue else {
             // Same rule, and the same whole-hour trimming, the Lock Screen
             // widget already uses. Nil for a date-only day, which is correct:
@@ -246,17 +271,17 @@ enum MorningBriefPlanner {
             )
         }
 
-        let dueDay = calendar.startOfDay(for: dueDate)
-        let thisMorning = calendar.startOfDay(for: morning)
-        let days = calendar.dateComponents([.day], from: dueDay, to: thisMorning).day ?? 0
+        let dueDay = logicalDay ?? detailCalendar.startOfDay(for: dueDate)
+        let thisMorning = detailCalendar.startOfDay(for: morning)
+        let days = detailCalendar.dateComponents([.day], from: dueDay, to: thisMorning).day ?? 0
         switch days {
         case ..<1: return "overdue"
         case 1: return "overdue since yesterday"
         case 2...6:
             // Inside a week a weekday name is the fastest thing to read. Past
             // that it stops being unambiguous, so fall back to a plain count.
-            let weekday = dueDate.formatted(
-                Date.FormatStyle(locale: locale, calendar: calendar, timeZone: calendar.timeZone)
+            let weekday = dueDay.formatted(
+                Date.FormatStyle(locale: locale, calendar: detailCalendar, timeZone: detailCalendar.timeZone)
                     .weekday(.wide)
             )
             return "overdue since \(weekday)"

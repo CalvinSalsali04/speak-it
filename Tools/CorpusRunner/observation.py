@@ -13,12 +13,12 @@ The motivating cases were identified on 2026-09-14. Their figures below are
 remeasured on the integrated Build 22 source, rather than kept at that date's
 population:
 
-  * `plus` appears in 63 readable utterances across 8 sources. 41 of them
+  * `plus` appears in 66 readable utterances across 8 sources. 41 of them
     appear in each of four files the census's own containment check reports
     as views of one population, and repair views add further occurrences;
-    27 stems carry all 63 rows with one frame taking 49%. Eight sources
+    30 stems carry all 66 rows with one frame taking 47%. Eight sources
     therefore do not establish eight independent bodies of evidence.
-  * `wait` appears in 121 over 18 sources, with 71 stems and its largest
+  * `wait` appears in 122 over 18 sources, with 72 stems and its largest
     frame, `I was going to ask— wait, ...`, taking 16%. The wider integrated
     test material has moved this below the unchanged 25% concentration
     threshold. The earlier population was concentrated; the current one is

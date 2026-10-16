@@ -6,6 +6,120 @@ struct SharedTodayItem: Codable, Equatable, Identifiable, Sendable {
     let title: String
     let dueDate: Date?
     let isUrgent: Bool
+    /// Optional and backward compatible. Only the app's validated full intent
+    /// can publish this source-day label; extensions never infer it from 00:00.
+    let deadline: Deadline?
+    let deadlineNeedsReview: Bool?
+    let clockBoundary: ClockBoundary?
+    let clockBoundaryNeedsReview: Bool?
+
+    /// Full source-day/clock provenance lets a cached extension reject travel
+    /// mismatch; a scalar alone cannot express After/Before.
+    struct ClockBoundary: Codable, Equatable, Sendable {
+        let relation: String
+        let year: Int
+        let month: Int
+        let day: Int
+        let hour: Int
+        let minute: Int
+        let timeZoneIdentifier: String
+        let followsDeviceLocal: Bool
+        let summary: String
+
+        func validatedSummary(for dueDate: Date?, calendar current: Calendar) -> String? {
+            guard let dueDate, relation == "after" || relation == "before",
+                  (0...23).contains(hour), (0...59).contains(minute),
+                  !summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            var calendar = current
+            if !followsDeviceLocal {
+                guard let zone = TimeZone(identifier: timeZoneIdentifier) else { return nil }
+                calendar.timeZone = zone
+            }
+            guard let anchor = calendar.date(from: DateComponents(year: year, month: month, day: day,
+                    hour: hour, minute: minute)),
+                  calendar.component(.year, from: anchor) == year,
+                  calendar.component(.month, from: anchor) == month,
+                  calendar.component(.day, from: anchor) == day,
+                  calendar.component(.hour, from: anchor) == hour,
+                  calendar.component(.minute, from: anchor) == minute,
+                  anchor == dueDate else { return nil }
+            return summary
+        }
+    }
+
+    struct Deadline: Codable, Equatable, Sendable {
+        let year: Int
+        let month: Int
+        let day: Int
+        let timeZoneIdentifier: String
+        let summary: String
+        /// Missing or unreadable behavior never grants a stale midnight label.
+        let followsDeviceLocal: Bool?
+
+        init(year: Int, month: Int, day: Int, timeZoneIdentifier: String,
+             summary: String, followsDeviceLocal: Bool? = nil) {
+            self.year = year; self.month = month; self.day = day
+            self.timeZoneIdentifier = timeZoneIdentifier; self.summary = summary
+            self.followsDeviceLocal = followsDeviceLocal
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case year, month, day, timeZoneIdentifier, summary, followsDeviceLocal
+        }
+
+        init(from decoder: Decoder) throws {
+            let values = try decoder.container(keyedBy: CodingKeys.self)
+            year = try values.decode(Int.self, forKey: .year)
+            month = try values.decode(Int.self, forKey: .month)
+            day = try values.decode(Int.self, forKey: .day)
+            timeZoneIdentifier = try values.decode(String.self, forKey: .timeZoneIdentifier)
+            summary = try values.decode(String.self, forKey: .summary)
+            // Absent/null/unknown present type remains a reviewable deadline.
+            followsDeviceLocal = try? values.decode(Bool.self, forKey: .followsDeviceLocal)
+        }
+
+        func validatedSummary(for dueDate: Date?, calendar current: Calendar) -> String? {
+            guard let dueDate, let followsDeviceLocal,
+                  !summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            var calendar = current
+            if !followsDeviceLocal {
+                guard let zone = TimeZone(identifier: timeZoneIdentifier) else { return nil }
+                calendar.timeZone = zone
+            }
+            guard let start = calendar.date(from: DateComponents(year: year, month: month, day: day)),
+                  calendar.component(.year, from: start) == year,
+                  calendar.component(.month, from: start) == month,
+                  calendar.component(.day, from: start) == day,
+                  calendar.dateInterval(of: .day, for: start)?.end == dueDate else { return nil }
+            return summary
+        }
+    }
+
+    init(id: UUID, title: String, dueDate: Date?, isUrgent: Bool, deadline: Deadline? = nil,
+         deadlineNeedsReview: Bool? = nil, clockBoundary: ClockBoundary? = nil,
+         clockBoundaryNeedsReview: Bool? = nil) {
+        self.id = id; self.title = title; self.dueDate = dueDate
+        self.isUrgent = isUrgent; self.deadline = deadline; self.deadlineNeedsReview = deadlineNeedsReview
+        self.clockBoundary = clockBoundary; self.clockBoundaryNeedsReview = clockBoundaryNeedsReview
+    }
+
+    /// Shared by the Home widget and app-side tests; legacy scalar labels keep
+    /// their old meaning. Present stale metadata never falls through to Thu00.
+    func timingText(now: Date = .now, calendar: Calendar = .autoupdatingCurrent,
+                    locale: Locale = .autoupdatingCurrent) -> String? {
+        if clockBoundaryNeedsReview == true { return "Time needs review" }
+        if let clockBoundary { return clockBoundary.validatedSummary(for: dueDate, calendar: calendar) ?? "Time needs review" }
+        if deadlineNeedsReview == true { return "Deadline time needs review" }
+        if let deadline { return deadline.validatedSummary(for: dueDate, calendar: calendar) ?? "Deadline time needs review" }
+        guard let dueDate else { return nil }
+        let style = Date.FormatStyle(locale: locale, calendar: calendar, timeZone: calendar.timeZone)
+        if calendar.isDate(dueDate, inSameDayAs: now) {
+            return dueDate.formatted(style.hour(.defaultDigits(amPM: .abbreviated)).minute())
+        }
+        if let tomorrow = calendar.date(byAdding: .day, value: 1, to: now),
+           calendar.isDate(dueDate, inSameDayAs: tomorrow) { return "Tomorrow" }
+        return dueDate.formatted(style.weekday(.abbreviated))
+    }
 }
 
 struct SharedTodaySnapshot: Codable, Equatable, Sendable {
@@ -51,10 +165,12 @@ struct LockScreenTodayRow: Equatable, Sendable {
     /// Set only for a task due on the reference day. A bare "5:00 PM" against
     /// some other day would be a lie, and the slot has no room to say which day.
     let timeText: String?
+    let timingIsDeadline: Bool
 
-    init(title: String, timeText: String? = nil) {
+    init(title: String, timeText: String? = nil, timingIsDeadline: Bool = false) {
         self.title = title
         self.timeText = timeText
+        self.timingIsDeadline = timingIsDeadline
     }
 }
 
@@ -104,7 +220,7 @@ struct LockScreenTodaySummary: Equatable, Sendable {
         guard !rows.isEmpty else { return "Speak It. \(openLine)." }
         let spoken = rows.map { row in
             guard let timeText = row.timeText else { return row.title }
-            return "\(row.title) at \(timeText)"
+            return row.timingIsDeadline ? "\(row.title), \(timeText)" : "\(row.title) at \(timeText)"
         }
         return "Speak It. \(openLine). \(spoken.joined(separator: ", "))."
     }
@@ -148,9 +264,23 @@ enum LockScreenTodayVisibility {
         let rows = snapshot.items
             .lazy
             .map { item -> LockScreenTodayRow in
-                LockScreenTodayRow(
+                let timingText: String?
+                if item.clockBoundaryNeedsReview == true {
+                    timingText = "Time needs review"
+                } else if let boundary = item.clockBoundary {
+                    timingText = boundary.validatedSummary(for: item.dueDate, calendar: calendar) ?? "Time needs review"
+                } else if item.deadlineNeedsReview == true {
+                    timingText = "Deadline time needs review"
+                } else if let deadline = item.deadline {
+                    timingText = deadline.validatedSummary(for: item.dueDate, calendar: calendar) ?? "Deadline time needs review"
+                } else {
+                    timingText = Self.timeText(for: item.dueDate, now: now, calendar: calendar)
+                }
+                return LockScreenTodayRow(
                     title: item.title.trimmingCharacters(in: .whitespacesAndNewlines),
-                    timeText: timeText(for: item.dueDate, now: now, calendar: calendar)
+                    timeText: timingText,
+                    timingIsDeadline: item.deadline != nil || item.deadlineNeedsReview == true
+                        || item.clockBoundary != nil || item.clockBoundaryNeedsReview == true
                 )
             }
             .filter { !$0.title.isEmpty }

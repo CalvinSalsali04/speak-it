@@ -41,6 +41,40 @@ struct CaptureSessionReviewView: View {
             || items.contains { PendingOperationStore.record(for: $0.id) != nil }
     }
 
+    /// Only a processing fallback without a saved operation changes order.
+    /// Tutorial and saved-change review keep their existing section sequence.
+    private var prioritizesOrganizationRecovery: Bool {
+        session.captureSource != .tutorial && savedChange == nil && !hasPendingChange
+            && items.contains { $0.clarificationRequirement == .organizationIncomplete }
+    }
+
+    private var originalCaptureSection: some View {
+        Section("Original capture") {
+            Text(session.originalTranscription)
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+                .accessibilityIdentifier("capture.review.originalTranscription")
+        }
+    }
+
+    @ViewBuilder
+    private var organizedItemsSection: some View {
+        if !items.isEmpty { Section(items.contains { $0.clarificationRequirement == .organizationIncomplete }
+            ? "Needs organization" : "Organized into \(items.count)") {
+            ForEach(items, id: \.id) { item in
+                CaptureReviewItemRow(
+                    item: item,
+                    canMerge: nextItem(after: item) != nil,
+                    editAction: { beginEditing(item) },
+                    splitAction: { beginSplitting(item) },
+                    keepAsOneAction: item.clarificationRequirement == .splitDecision && !hasPendingChange
+                        ? { keepAsOne(item) } : nil,
+                    mergeAction: { mergeWithNext(item) }
+                )
+            }
+        } }
+    }
+
     var body: some View {
         List {
             if session.processingStatus != .complete {
@@ -59,11 +93,10 @@ struct CaptureSessionReviewView: View {
                 }
             }
 
-            Section("Original capture") {
-                Text(session.originalTranscription)
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
+            if prioritizesOrganizationRecovery {
+                organizedItemsSection
             }
+            originalCaptureSection
 
             if let change = savedChange {
                 Section("Saved change") {
@@ -75,8 +108,10 @@ struct CaptureSessionReviewView: View {
                             LabeledContent("Current person", value: receipt.after.person ?? "None")
                         }
                         if receipt.before.due != receipt.after.due {
-                            LabeledContent("Previous due date", value: receipt.before.due?.formatted(date: .abbreviated, time: TemporalKind(rawValue: receipt.before.temporalKind ?? "")?.carriesTimeOfDay == true ? .shortened : .omitted) ?? "None")
-                            LabeledContent("Current due date", value: receipt.after.due?.formatted(date: .abbreviated, time: TemporalKind(rawValue: receipt.after.temporalKind ?? "")?.carriesTimeOfDay == true ? .shortened : .omitted) ?? "None")
+                            LabeledContent("Previous due date", value: Self.savedDueDateSummary(dueDate: receipt.before.due,
+                                temporalData: receipt.before.temporal, temporalKind: receipt.before.temporalKind))
+                            LabeledContent("Current due date", value: Self.savedDueDateSummary(dueDate: receipt.after.due,
+                                temporalData: receipt.after.temporal, temporalKind: receipt.after.temporalKind))
                         }
                         if let before = receipt.before.reminder {
                             LabeledContent("Previous reminder", value: before.formatted(date: .abbreviated, time: .shortened))
@@ -100,19 +135,9 @@ struct CaptureSessionReviewView: View {
                 }
             }
 
-            if !items.isEmpty { Section("Organized into \(items.count)") {
-                ForEach(items, id: \.id) { item in
-                    CaptureReviewItemRow(
-                        item: item,
-                        canMerge: nextItem(after: item) != nil,
-                        editAction: { beginEditing(item) },
-                        splitAction: { beginSplitting(item) },
-                        keepAsOneAction: item.clarificationRequirement == .splitDecision && !hasPendingChange
-                            ? { keepAsOne(item) } : nil,
-                        mergeAction: { mergeWithNext(item) }
-                    )
-                }
-            } }
+            if !prioritizesOrganizationRecovery {
+                organizedItemsSection
+            }
 
             if savedChange == nil, !hasPendingChange { Section {
                 Button {
@@ -188,6 +213,26 @@ struct CaptureSessionReviewView: View {
         .repositoryErrorAlert($errorMessage)
     }
 
+    static func savedDueDateSummary(
+        dueDate: Date?, temporalData: Data?, temporalKind: String?,
+        calendar: Calendar = .autoupdatingCurrent, locale: Locale = .autoupdatingCurrent
+    ) -> String {
+        if let data = temporalData, let intent = try? JSONDecoder().decode(TemporalIntent.self, from: data),
+           intent.clockBoundary != nil {
+            return ItemPresentation.clockBoundaryLabel(intent: intent, dueDate: dueDate,
+                calendar: calendar, locale: locale) ?? "Time needs review"
+        }
+        if let data = temporalData, let intent = try? JSONDecoder().decode(TemporalIntent.self, from: data),
+           intent.deadlineBoundary != nil {
+            guard intent.endOfDayDeadlineDate(calendar: calendar) == dueDate,
+                  let summary = intent.endOfDayDeadlineLabel(calendar: calendar, locale: locale)
+            else { return "Deadline time needs review" }
+            return summary
+        }
+        return dueDate?.formatted(date: .abbreviated,
+            time: TemporalKind(rawValue: temporalKind ?? "")?.carriesTimeOfDay == true ? .shortened : .omitted) ?? "None"
+    }
+
     private func beginSplitting(_ item: CapturedItem) {
         itemCountBeforeSplit = session.items.count
         splitTarget = item
@@ -260,8 +305,15 @@ private struct CaptureReviewItemRow: View {
                     .frame(width: 24)
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(item.displayTitle)
-                        .font(.body.weight(.medium))
+                    if item.clarificationRequirement == .organizationIncomplete {
+                        Text(item.displayTitle)
+                            .font(.body.weight(.medium))
+                            .lineLimit(3)
+                            .accessibilityLabel(item.displayTitle)
+                    } else {
+                        Text(item.displayTitle)
+                            .font(.body.weight(.medium))
+                    }
                     Text("\(item.category.displayName) · \(item.itemType.displayName)")
                         .font(.caption)
                         .foregroundStyle(.secondary)

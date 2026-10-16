@@ -823,6 +823,11 @@ struct CaptureView: View {
                     Text(savedConfirmationDetail)
                         .foregroundStyle(Color.speakMuted)
 
+                    // Recovery stays reachable before a long unorganized preview.
+                    if tutorialMission == nil, let savedResult, savedResult.needsOrganizationReview {
+                        clarificationActions(for: savedResult)
+                    }
+
                     if let savedResult, savedResult.hasItems {
                         ForEach(tutorialMission == nil ? [savedResult.primaryItem] : savedResult.items) { item in
                             CapturedItemRow(
@@ -847,7 +852,9 @@ struct CaptureView: View {
                                 RoundedRectangle(cornerRadius: 20, style: .continuous)
                                     .stroke(Color.speakDivider, lineWidth: 1)
                             }
-                            .accessibilityHint("Shows the final organized item")
+                            .accessibilityHint(savedResult.needsOrganizationReview
+                                ? "Shows saved words that still need organization"
+                                : "Shows the final organized item")
                             .onAppear {
                                 performance?.markOrganizedRowVisible(result: savedResult)
                             }
@@ -919,65 +926,9 @@ struct CaptureView: View {
                         .padding(.top, 8)
                         .frame(maxWidth: 330)
                     } else if let savedResult, savedResult.needsInterpretationConfirmation {
-                        VStack(spacing: 10) {
-                            Button {
-                                confirmationDismissTask?.cancel()
-                                showsCaptureReview = true
-                            } label: {
-                                Label("Review and edit saved items", systemImage: "square.and.pencil")
-                                    .font(.headline)
-                                    .frame(maxWidth: .infinity, minHeight: 54)
-                            }
-                            .buttonStyle(.speakIt)
-                            .foregroundStyle(Color.speakInverseInk)
-                            .background(
-                                Color.speakInverseSurface,
-                                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            )
-                            .accessibilityHint("Edit only the item that needs help while keeping the original words")
-                            .accessibilityIdentifier("capture.clarificationReview")
-
-                            Button(action: retryUnclearCapture) {
-                                Text("Try saying the capture again")
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(Color.speakInk)
-                                    .frame(maxWidth: .infinity, minHeight: 46)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.speakIt)
-                            .accessibilityHint("Keeps this attempt safe until the new one is saved")
-                            .accessibilityIdentifier("capture.clarificationRetry")
-
-                            Button(action: finishSavedCapture) {
-                                Text("Keep it as saved")
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(Color.speakMuted)
-                                    .frame(maxWidth: .infinity, minHeight: 46)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.speakIt)
-
-                            // Offered only for a thought that stopped mid-sentence.
-                            // Everywhere else, a capture the app merely failed to
-                            // understand still holds words worth keeping, and putting a
-                            // one-tap delete under them invites throwing away the very
-                            // thing this app promises to preserve. A fragment is the
-                            // one case where the person knows there is nothing there.
-                            if isUnfinishedThought {
-                                Button(role: .destructive, action: discardUnfinishedCapture) {
-                                    Text("Discard it")
-                                        .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(Color.speakWarning)
-                                        .frame(maxWidth: .infinity, minHeight: 46)
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.speakIt)
-                                .accessibilityHint("Deletes this unfinished capture. Nothing is saved.")
-                                .accessibilityIdentifier("capture.discardUnfinished")
-                            }
+                        if !savedResult.needsOrganizationReview {
+                            clarificationActions(for: savedResult)
                         }
-                        .padding(.top, 8)
-                        .frame(maxWidth: 330)
                     } else if let savedResult,
                               savedResult.itemCount > 1 || savedResult.needsReviewCount > 0 {
                         VStack(spacing: 10) {
@@ -1031,6 +982,70 @@ struct CaptureView: View {
             }
             .scrollBounceBehavior(.basedOnSize)
         }
+    }
+
+    private func clarificationActions(for savedResult: CaptureCreationResult) -> some View {
+        VStack(spacing: 10) {
+            Button {
+                confirmationDismissTask?.cancel()
+                showsCaptureReview = true
+            } label: {
+                Label("Review and edit saved items", systemImage: "square.and.pencil")
+                    .font(.headline)
+                    .frame(maxWidth: .infinity, minHeight: 54)
+            }
+            .buttonStyle(.speakIt)
+            .foregroundStyle(Color.speakInverseInk)
+            .background(
+                Color.speakInverseSurface,
+                in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+            )
+            .accessibilityHint("Edit only the item that needs help while keeping the original words")
+            .accessibilityIdentifier("capture.clarificationReview")
+
+            if !savedResult.needsOrganizationReview {
+                Button(action: retryUnclearCapture) {
+                    Text("Try saying the capture again")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.speakInk)
+                        .frame(maxWidth: .infinity, minHeight: 46)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.speakIt)
+                .accessibilityHint("Keeps this attempt safe until the new one is saved")
+                .accessibilityIdentifier("capture.clarificationRetry")
+            }
+
+            Button(action: finishSavedCapture) {
+                Text("Keep it as saved")
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.speakMuted)
+                    .frame(maxWidth: .infinity, minHeight: 46)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.speakIt)
+
+            // Offered only for a thought that stopped mid-sentence.
+            // Everywhere else, a capture the app merely failed to
+            // understand still holds words worth keeping, and putting a
+            // one-tap delete under them invites throwing away the very
+            // thing this app promises to preserve. A fragment is the
+            // one case where the person knows there is nothing there.
+            if isUnfinishedThought {
+                Button(role: .destructive, action: discardUnfinishedCapture) {
+                    Text("Discard it")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.speakWarning)
+                        .frame(maxWidth: .infinity, minHeight: 46)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.speakIt)
+                .accessibilityHint("Deletes this unfinished capture. Nothing is saved.")
+                .accessibilityIdentifier("capture.discardUnfinished")
+            }
+        }
+        .padding(.top, 8)
+        .frame(maxWidth: 330)
     }
 
     /// Shown only for a normal guided first capture. Tutorial missions keep
@@ -1544,6 +1559,9 @@ struct CaptureView: View {
                     text: normalizedText,
                     source: persistenceSource,
                     createdAt: captureStartedAt ?? .now,
+                    allowancePolicy: persistenceSource == .tutorial ? .practice
+                        : retryingUnclearResult.map { .replacement($0.session.id) }
+                            ?? (subscriptionStore.hasProAccess ? .pro : .free),
                     schedulesReminders: persistenceSource != .tutorial,
                     performance: performance,
                     onDurablySaved: acknowledgeDurableCapture
@@ -1559,9 +1577,7 @@ struct CaptureView: View {
                     // A clarification retry replaces an already-charged
                     // attempt, so the person never spends two captures for
                     // helping Speak It understand one thought.
-                    if result.consumesFreeCapture, !replacesRetrySource {
-                        subscriptionStore.recordSuccessfulCapture()
-                    }
+                    subscriptionStore.refreshFreeAllowance()
                     if tutorialMission == nil {
                         SpeakItAnalytics.track(.captureSaved(
                             source: source == .inAppVoice ? .voice : .text,
@@ -1611,6 +1627,10 @@ struct CaptureView: View {
                     savedConfirmationDetail = result.hasItems
                         ? "\(copy.detail) \(result.itemCount) saved \(result.itemCount == 1 ? "item" : "items") below."
                         : copy.detail
+                } else if result.needsOrganizationReview {
+                    savedConfirmationTitle = "Words saved"
+                    savedConfirmationSymbol = "square.and.pencil"
+                    savedConfirmationDetail = clarificationDetail(for: result)
                 } else if result.needsInterpretationConfirmation {
                     savedConfirmationTitle = "Can you clarify?"
                     savedConfirmationSymbol = "questionmark"
@@ -1634,7 +1654,12 @@ struct CaptureView: View {
                     showsSavedConfirmation = true
                 }
                 Task {
-                    if result.needsInterpretationConfirmation {
+                    if result.needsOrganizationReview {
+                        await CaptureActivityManager.showProblem(
+                            title: "Words saved",
+                            detail: "Organization didn’t finish. Open Speak It to review your capture."
+                        )
+                    } else if result.needsInterpretationConfirmation {
                         await CaptureActivityManager.showProblem(
                             title: "Needs clarification",
                             detail: "Open Speak It to try again or review what was saved."
@@ -1739,6 +1764,8 @@ struct CaptureView: View {
             return "I heard a day but not a decision. Review that item to set the day you meant."
         case .incompleteThought:
             return "It sounded like that thought wasn’t finished. Your words are safe — pick it up where you left off."
+        case .organizationIncomplete:
+            return "Your words are saved, but organization didn’t finish. Review this capture to organize it."
         case .unsupportedLocationTrigger, .unsupportedConditionTrigger,
              .locationTrigger, .combinedTimeAndPlace, .pendingOperation:
             return "This needs a quick review. Your original words are safe."

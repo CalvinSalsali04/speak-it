@@ -189,7 +189,8 @@ struct SpeakItApp: App {
         RetiredAccountProfile.clearStoredDetails()
         let container = PersistenceController.shared
         modelContainer = container
-        repository = SwiftDataThoughtRepository(modelContext: container.mainContext)
+        repository = SwiftDataThoughtRepository(modelContext: container.mainContext,
+            captureAllowance: .live(container: container))
         storageInitializationError = PersistenceController.initializationError
 
         let notificationDelegate = NotificationPresentationDelegate.shared

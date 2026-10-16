@@ -240,6 +240,67 @@ enum DisfluencyFilter {
         return value
     }
 
+    /// A bare command cannot be the finite/gerund/infinitival complement of
+    /// "I was thinking". In this closed first-person shape the frame is an
+    /// opener, whether dictation rendered its pause as a comma or whitespace.
+    /// Return its original range so source accounting licenses exactly those
+    /// removed occurrences, rather than treating arbitrary deletion as filler.
+    static func imperativeThinkingFrameRange(in text: String) -> Range<String.Index>? {
+        let opening = #"(?:(?:\#(pureFillers)|\#(leadIns))\b[\s,]*|(?:\#(punctuatedLeadIns))\s*,\s*)"#
+        let prefix = #"(?i)^(?:\#(opening))*(?:(?:the\s+)?thing\s+is\b[\s,]*(?:\#(opening))*)?i\s+was\s+thinking(?:\s*,\s*|\s+)"#
+        guard let frame = text.range(of: prefix, options: .regularExpression) else { return nil }
+        let body = String(text[frame.upperBound...])
+        let command = #"(?i)^(?:please\s+)?(?:\#(ActionabilityReader.actionVerb)|\#(ActionabilityReader.headOnlyImperativeVerb)|remind\s+me)\b(?=\s+\S)"#
+        guard let commandRange = body.range(of: command, options: .regularExpression),
+              !text.contains("?"),
+              !QuotedSpeechScope.hasUnclosedQuote(text) else { return nil }
+        let argument = String(body[commandRange.upperBound...])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        // A verb-shaped first word can instead modify a nominal subject:
+        // "text messages are better" is a thinking complement. Require its
+        // complete nominal + finite shape, rather than a platform noun tag.
+        let finiteNominal = #"(?i)^(?:(?:the|a|an|my|our|your|his|her|their|these|those)\s+)?(?:(?!(?:that|which|who|because|if|when|to|and|or|but)\b)[\p{L}'’-]+\s+){1,5}(?:is|are|was|were|has|have|had|will|would|can|could|should|must|does|did)\b"#
+        guard argument.range(of: finiteNominal, options: .regularExpression) == nil else { return nil }
+        if text[frame].range(of: #"(?i)thinking\s*,"#, options: .regularExpression) == nil {
+            // Without a dictated pause, a bare common-noun continuation is
+            // ambiguous ("book club Friday"). Admit an explicit object slot,
+            // a proved addressee, a reminder, or a complete purchase nominal.
+            let explicitObject = argument.range(
+                of: #"(?i)^(?:the|a|an|my|our|your|his|her|their|this|that|these|those|it|them|him|her|me|us|off|up|down|out|in|over)\b"#,
+                options: .regularExpression) != nil
+            let recipient: Bool
+            if case .person = PersonMentionResolver.followUpTarget(in: body) { recipient = true }
+            else { recipient = false }
+            let purchase = body.range(of: #"(?i)^(?:buy|purchase|order|get|grab|pick\s+up)\b"#,
+                                      options: .regularExpression) != nil
+                && ShoppingGroupParser.certifiesImplicitProducts(
+                    ReminderCopy.withoutTrailingTiming(ShoppingGroupParser.withoutStoreContext(in: body))
+                        .replacingOccurrences(of: #"(?i)^(?:buy|purchase|order|get|grab|pick\s+up)\s+"#,
+                                              with: "", options: .regularExpression))
+            guard explicitObject || recipient || purchase || ReminderPhrasing.requestsReminder(body) else { return nil }
+        }
+        // Read conditions and temporal hedges in their grammatical scopes.
+        // A literal recipient May or store No Frills is not a modal/denial.
+        guard ConditionalIntentScope.trailing(in: body) == nil else { return nil }
+        let hedges = #"(?i)\b(?:maybe|perhaps|possibly|potentially)\b"#
+        if let regex = NSRegularExpression.speakItCached(hedges) {
+            for match in regex.matches(in: body, range: NSRange(body.startIndex..., in: body)) {
+                guard let range = Range(match.range, in: body) else { continue }
+                if TemporalCommitment.unsettled(in: String(body[range.lowerBound...])) != nil { return nil }
+            }
+        }
+        // A finite own denial/classification is not an opaque argument word.
+        // Its subject, predicate and clause boundary must all be present.
+        let boundary = #"(?:^|[,;.!?]\s*|\b(?:and|but)\s+)"#
+        let denial = #"(?:i|we)\s+(?:(?:have\s+not|haven['’]?t|do\s+not|don['’]?t)\s+(?:decided|agreed|promised|committed|adopted|chosen|intend|want)\b|(?:might|may|would|could)\b)"#
+        let thought = #"(?:it|this|that)\s+(?:is|was|remains)\s+(?:just|only)\s+(?:an?|the)\s+(?:idea|thought|possibility)\b"#
+        let mentionedCommand = #"\s+(?:is|was)\s+(?:an?|the)\s+(?:good\s+)?(?:slogan|phrase|example)\b"#
+        guard body.range(of: "(?i)" + boundary + "(?:" + denial + "|" + thought + ")", options: .regularExpression) == nil,
+              body.range(of: "(?i)" + mentionedCommand, options: .regularExpression) == nil,
+              body.range(of: #"(?i)\s+or\s+(?:maybe|perhaps|possibly|potentially)\b"#, options: .regularExpression) == nil else { return nil }
+        return frame
+    }
+
     static func stripped(_ text: String) -> String {
         var value = text
 
@@ -264,13 +325,11 @@ enum DisfluencyFilter {
         // "Okay so the thing is I need to renew insurance" -> "I need to renew
         // insurance". Runs after the lead-in strip so it sees the bare phrase.
         value = replace(value, #"^(?:the\s+)?thing\s+is\b[\s,]*"#, "")
-        // "I was thinking ..." can frame a proposal with a finite complement,
-        // not only "of/about/to". Stripping that frame can make an executable
-        // verb appear committed. Only a marked pause followed by an
-        // independently imperative clause licenses the preamble reading.
-        value = replace(value,
-                        #"^i\s+was\s+thinking\s*,\s*(?=\#(imperativeLead)\b)"#,
-                        "")
+        // A literal bare command licenses this opener independently of the
+        // recognizer's comma. Actual thinking complements remain untouched.
+        if let frame = imperativeThinkingFrameRange(in: value) {
+            value.removeSubrange(frame)
+        }
         value = replace(value, #"^i\s+was\s+thinking\s+(?=(?:of|about)\s*$)"#, "")
         // A leading "I mean" is the same throat-clearing as "the thing is".
         // Left in place it cost real rows: "so uh I mean um the car needs the
@@ -2707,7 +2766,7 @@ enum ClauseJuxtaposition {
         "wouldnt", "wouldn't", "shouldnt", "shouldn't", "havent", "haven't",
         "hasnt", "hasn't", "hadnt", "hadn't",
         // Cliticized pronouns, which are subjects like any other.
-        "i'll", "we'll", "you'll", "he'll", "she'll", "they'll", "i've",
+        "i'll", "we'll", "you'll", "he'll", "she'll", "it'll", "they'll", "i've",
         "we've", "you've", "they've", "i'd", "we'd", "you'd", "it's", "that's",
         // Determiners and possessives: what follows is the head of a noun
         // phrase, even when the word can also be a verb.
@@ -2757,7 +2816,32 @@ enum ClauseJuxtaposition {
         + #"|remind|think|know|knows|knew|remember|remembers|hope|hopes"#
         + #"|guess|guesses|bet|bets|reckon|notice|notices|noticed"#
         + #"|realise|realises|realised|realize|realizes|realized"#
-        + #"|see|sees|saw|worry|worries|worried)"#
+        + #"|see|sees|saw|worry|worries|worried|confirm|check|verify|ask)"#
+
+    // Head-only verbs gain no general mid-sentence permission. A clausal
+    // governor must supply an explicit subject and an existing finite or
+    // completed predicate before it can propose its own instruction boundary.
+    private static let clausalInstructionOpener =
+        #"(?=\#(complementTakingVerb)\b)\#(ActionabilityReader.headOnlyImperativeVerb)(?=\s+(?:i|we|he|she|they)\s+(?:(?:not|never)\s+)?(?:is|are|was|were|am|has|have|had|will|would|can|could|should|must|did|does|do|\#(ActionabilityReader.completedVerb)|\#(ActionabilityReader.pastReportVerb)|\#(ActionabilityReader.actionVerb)(?:s|es)?)\b)"#
+
+    /// A determiner-owned noun head may introduce an omitted relative marker
+    /// ("the spelling test he missed"). A clausal governor instead opens its
+    /// own instruction ("confirm they paid"), even inside a prior message.
+    private static func isNominalRelativeBoundary(_ boundary: Range<String.Index>,
+                                                  in clause: String, body: Range<String.Index>) -> Bool {
+        let tail = String(clause[boundary.upperBound...])
+        guard let head = tail.range(of: #"(?i)^[\p{L}'’-]+(?=\s+(?:i|we|he|she|they)\b)"#,
+                                    options: .regularExpression),
+              String(tail[head]).range(of: "(?i)^" + complementTakingVerb + "$",
+                                      options: .regularExpression) == nil else { return false }
+        let noun = String(tail[head])
+        let prefix = String(clause[body.lowerBound..<boundary.lowerBound])
+        guard ClauseScope.openDeterminerNominalSpan(in: prefix) != nil else { return false }
+        let start = clause.index(boundary.upperBound, offsetBy: tail.distance(from: tail.startIndex, to: head.lowerBound))
+        let end = clause.index(boundary.upperBound, offsetBy: tail.distance(from: tail.startIndex, to: head.upperBound))
+        return ActionabilityReader.hasScheduledNominalHead(noun)
+            || SentenceContextCache.context(for: clause).tokens(in: start..<end).first?.lexicalClass == .noun
+    }
 
     /// Whether the head has already opened a clausal complement, so the verb
     /// behind it is that complement's predicate rather than a new instruction.
@@ -2870,8 +2954,14 @@ enum ClauseJuxtaposition {
     /// clause. The whole clause, because the tagger cannot read "Marcus
     /// prefers" on its own and calls "prefers" a noun there.
     private static func precedingTokenIsVerb(in clause: String, before cut: String.Index) -> Bool {
-        guard let token = SentenceContextCache.context(for: clause).tokens
-            .last(where: { $0.range.upperBound <= cut }) else { return false }
+        let preceding = SentenceContextCache.context(for: clause).tokens
+            .filter { $0.range.upperBound <= cut }
+        guard let token = preceding.last else { return false }
+        // A determiner supplies a noun role even when the same word can
+        // command an action: "email Sam the invoice" has reached its object.
+        // That noun cannot require the next command as a verb complement.
+        if let determiner = preceding.dropLast().last,
+           nounDeterminers.contains(determiner.text.lowercased()) { return false }
         // A completed intransitive change-of-state predicate has no object
         // slot for the next verb-shaped word. Preserve the boundary in
         // “the poster faded set the timer”, while “Marcus prefers phone
@@ -2952,6 +3042,54 @@ enum ClauseJuxtaposition {
             && tail.range(of: #"(?i)^call\b"#, options: .regularExpression) != nil
     }
 
+    /// A determined for-object can end in the action/artifact homograph
+    /// "file". An implicit filing object is insufficient evidence for a fresh
+    /// instruction here when the next words are only its constraint. This is
+    /// a local boundary veto, not a global File valency or nominal reading.
+    static func isPrepositionalFileObject(
+        in clause: String, at start: String.Index, from lowerBound: String.Index
+    ) -> Bool {
+        let tail = clause[start...]
+        guard let file = tail.range(of: #"(?i)^file[ \t]+"#,
+                                    options: .regularExpression) else { return false }
+        let head = String(clause[lowerBound..<start])
+        guard let nominal = head.range(
+            of: #"(?i)\bfor\s+(?:a|an|the|my|our|his|her|their)\s+\p{L}[\p{L}'’-]*(?:\s+\p{L}[\p{L}'’-]*)?\s*$"#,
+            options: .regularExpression
+        ) else { return false }
+        let modifiers = head[nominal].split(whereSeparator: \.isWhitespace).dropFirst(2)
+        // These are candidate modifiers, not noun proofs. Reuse the existing
+        // structural-word sets and finite/clitic refusal; correction grammar
+        // owns any repair instead of lending its cue a nominal role.
+        let finiteOrBoundary = #"(?i)^(?:is|are|am|was|were|be|been|being|has|have|had|do|does|did|will|would|can|could|should|shall|may|might|must|not|never|if|unless|when|whenever|once|while|because|without|regarding|concerning)$|n['’]t$|['’](?:ll|d|re|ve|m)$"#
+        guard modifiers.allSatisfy({ modifier in
+            let word = modifier.lowercased().replacingOccurrences(of: "’", with: "'")
+            return !clauseInternalLead.contains(word)
+                && !frontingPrepositions.contains(word)
+                && !RuleBasedThoughtExtractor.consistsOnlyOfDiscourseWords(word)
+                && word.range(of: finiteOrBoundary, options: .regularExpression) == nil
+                && word.range(of: #"(?i)^\#(ActionabilityReader.nonPossessiveSHead)'s$"#,
+                              options: .regularExpression) == nil
+        }) else { return false }
+        // The pure reader establishes condition shape/word count, not a fully
+        // closed grammatical clause. Vetoing this file cut consumes no later
+        // and-call boundary. dependency()/standalone() would recurse through
+        // instructionText into clause segmentation and are not used here.
+        let rest = tail[file.upperBound...]
+        let end = rest.firstIndex(where: { ",;.!?\n\r".contains($0) }) ?? rest.endIndex
+        let condition = String(rest[..<end])
+        // Keep an immediate repair under correction ownership, including its
+        // comma cues, without borrowing a repair from a later independent act.
+        let hardEnd = rest.firstIndex(where: { ";.!?\n\r".contains($0) }) ?? rest.endIndex
+        let independent = rest[..<hardEnd].range(
+            of: #"(?i)\b(?:and|then|also|but|plus)\s+(?:\#(instructionOpeners)|\#(ActionabilityReader.headOnlyImperativeVerb))\b"#,
+            options: .regularExpression)
+        let correctionEnd = independent?.lowerBound ?? hardEnd
+        guard !SelfCorrectionResolver.hasCorrectionJunction(
+            in: String(clause[lowerBound..<correctionEnd])) else { return false }
+        return ConditionalIntentScope.isStandaloneCondition(condition)
+    }
+
     /// An article plus adjectives still needs its noun: in "a portable drive"
     /// the verb-shaped head belongs to the object, not a fresh instruction.
     private static func insideModifiedNounPhrase(_ clause: String, before cut: String.Index) -> Bool {
@@ -3020,9 +3158,11 @@ enum ClauseJuxtaposition {
 
     /// The pieces of one clause, or the clause itself when no boundary is
     /// confident enough to propose.
-    static func pieces(in clause: String) -> [String] {
+    static func pieces(in clause: String,
+        protectingPairedCallDetail detail: Range<String.Index>? = nil
+    ) -> [String] {
         guard let regex = NSRegularExpression.speakItCached(
-            #"(?i)\s+(?=\#(instructionOpeners)\s+"#
+            #"(?i)\s+(?=(?:\#(instructionOpeners)|\#(clausalInstructionOpener))\s+"#
                 // A bare pronoun object points back at the clause before:
                 // "invoice 1042 is thirty days overdue chase it" is one
                 // thought, and "chase it" alone would name nothing.
@@ -3032,15 +3172,49 @@ enum ClauseJuxtaposition {
                 + #"(?!(?:it|them|that|those|him|her)\s*[.!?]?\s*$)\S)"#
         ) else { return [clause] }
 
+        let wholeScope = ClauseScope.read(clause)
+        let nominalArtifact = ClauseScope.nominalCommunicationArtifact(in: clause)
+        let contactPurpose = ClauseScope.finiteContactPurpose(in: clause)
         var pieces: [String] = []
         var lowerBound = clause.startIndex
         for match in regex.matches(in: clause, range: NSRange(clause.startIndex..., in: clause)) {
             guard let range = Range(match.range, in: clause) else { continue }
+            // Only the already-proved named detail's internal Ask cut is
+            // protected. Every other verb boundary and the default caller
+            // retain the ordinary juxtaposition rules.
+            if let detail, detail.lowerBound < range.lowerBound,
+               range.upperBound < detail.upperBound,
+               clause[range.upperBound...].range(of: #"(?i)^ask\s+whether\b"#,
+                    options: .regularExpression) != nil { continue }
+            // This same literal-source certificate owns only a complete
+            // finite Call/Phone purpose (and its proved anaphoric question).
+            // An independent command makes the certificate decline; ordinary
+            // juxtaposition boundaries outside its strict interior stay intact.
+            if let contactPurpose,
+               contactPurpose.complementRange.lowerBound < range.lowerBound,
+               range.upperBound < contactPurpose.complementRange.upperBound { continue }
             if QuotedSpeechScope.protects(range, in: clause) { continue }
+            // The bounded nominal artifact owns action-shaped words inside
+            // its object, including an event modifier such as shift. Keep the
+            // exact recipient/body seam and any earlier matrix cut untouched.
+            if let nominalArtifact,
+               lowerBound <= nominalArtifact.matrixRange.lowerBound,
+               nominalArtifact.objectRange.lowerBound < range.upperBound,
+               range.upperBound < nominalArtifact.objectRange.upperBound {
+                continue
+            }
+            // Preserve a positively owned nominal relative. A nominative
+            // subject alone is also a valid clausal command complement.
+            if wholeScope.act == .communicating,
+               let body = wholeScope.complementRange,
+               range.lowerBound >= body.lowerBound,
+               isNominalRelativeBoundary(range, in: clause, body: body) { continue }
             if ClauseScope.continuesAttributedAction(
                 left: String(clause[lowerBound..<range.lowerBound]),
                 right: String(clause[range.upperBound...])
             ) { continue }
+            if isPrepositionalFileObject(in: clause, at: range.upperBound,
+                                         from: lowerBound) { continue }
             let head = String(clause[lowerBound..<range.lowerBound])
             // In “keep the dietary preference message as a separate task”,
             // “message” is the object noun, not a new instruction. An
@@ -3070,6 +3244,8 @@ enum ClauseJuxtaposition {
                 // A repair leaves dash-joined text behind — "at 5—to call Alex"
                 // — and the word that matters is the one after the dash.
                 $0.lowercased()
+                    // Dictation may use curly apostrophes; this lookup set is ASCII.
+                    .replacingOccurrences(of: "’", with: "'")
                     .split(whereSeparator: { "—–-".contains($0) })
                     .last
                     .map(String.init)?
@@ -3756,7 +3932,10 @@ enum CaptureOperationDetector {
                     continue
                 }
             }
-            if let operation = detect(piece, within: text) {
+            // This exact immutable complete source already passed the
+            // hasUnprovedFieldRequest guard above. Child detection still runs
+            // all other checks; direct callers keep their own complete guard.
+            if let operation = detect(piece, within: text, checksCompleteFieldScope: false) {
                 // A withdrawal that names no target takes back the thought it
                 // was spoken after — the one it scopes over, and only that one.
                 // "Buy milk and tomorrow I need to, never mind" used to reach
@@ -4574,6 +4753,11 @@ enum CaptureOperationDetector {
     ///   and the clause splitter has by then thrown that half away. Defaults to
     ///   the clause itself for callers that never split.
     static func detect(_ text: String, within containing: String? = nil) -> CaptureOperationRequest? {
+        detect(text, within: containing, checksCompleteFieldScope: true)
+    }
+
+    private static func detect(_ text: String, within containing: String?,
+                               checksCompleteFieldScope: Bool) -> CaptureOperationRequest? {
         let source = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let lower = source
             .lowercased()
@@ -4583,7 +4767,8 @@ enum CaptureOperationDetector {
         // Direct callers receive the same fail-closed field scope as the
         // partitioner; a partial clause cannot borrow authority from a failed
         // complete capture supplied by its caller.
-        if SavedFieldRevision.hasUnprovedFieldRequest(containing ?? source) {
+        if checksCompleteFieldScope,
+           SavedFieldRevision.hasUnprovedFieldRequest(containing ?? source) {
             return request(.revise, target: nil, source: containing ?? source, review: true)
         }
 

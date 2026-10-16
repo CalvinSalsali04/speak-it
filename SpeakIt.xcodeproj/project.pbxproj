@@ -20,6 +20,7 @@
 		A10000000000000000000002 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000002 /* RootView.swift */; };
 		A10000000000000000000003 /* DomainEnums.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000003 /* DomainEnums.swift */; };
 		A10000000000000000000004 /* CaptureSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000004 /* CaptureSession.swift */; };
+		A14A00000000000000000001 /* CaptureAllowance.swift in Sources */ = {isa = PBXBuildFile; fileRef = B14A00000000000000000001 /* CaptureAllowance.swift */; };
 		A10000000000000000000005 /* CapturedItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000005 /* CapturedItem.swift */; };
 		A10000000000000000000006 /* UserPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000006 /* UserPreferences.swift */; };
 		A10000000000000000000007 /* ThoughtRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000000000000000000007 /* ThoughtRepository.swift */; };
@@ -65,6 +66,7 @@
 		D200000000000000000F20 /* ThoughtCompletionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000000000F20 /* ThoughtCompletionTests.swift */; };
 		D200000000000000000F21 /* AbandonmentTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000000000F21 /* AbandonmentTests.swift */; };
 		D200000000000000000F10 /* SchemaFreezeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000000000F10 /* SchemaFreezeTests.swift */; };
+		A14A00000000000000000002 /* CaptureAllowanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B14A00000000000000000002 /* CaptureAllowanceTests.swift */; };
 		D200000000000000000F13 /* SemanticStatePersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E200000000000000000F13 /* SemanticStatePersistenceTests.swift */; };
 		D200000000000000000F11 /* SpeakItVersionThree.store in Resources */ = {isa = PBXBuildFile; fileRef = E200000000000000000F11 /* SpeakItVersionThree.store */; };
 		D300000000000000000F02 /* SemanticCorpusDataQ.swift in Sources */ = {isa = PBXBuildFile; fileRef = E300000000000000000F02 /* SemanticCorpusDataQ.swift */; };
@@ -206,6 +208,7 @@
 		B10000000000000000000002 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		B10000000000000000000003 /* DomainEnums.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DomainEnums.swift; sourceTree = "<group>"; };
 		B10000000000000000000004 /* CaptureSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureSession.swift; sourceTree = "<group>"; };
+		B14A00000000000000000001 /* CaptureAllowance.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureAllowance.swift; sourceTree = "<group>"; };
 		B10000000000000000000005 /* CapturedItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CapturedItem.swift; sourceTree = "<group>"; };
 		B10000000000000000000006 /* UserPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserPreferences.swift; sourceTree = "<group>"; };
 		B10000000000000000000007 /* ThoughtRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThoughtRepository.swift; sourceTree = "<group>"; };
@@ -255,6 +258,7 @@
 		E200000000000000000F20 /* ThoughtCompletionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThoughtCompletionTests.swift; sourceTree = "<group>"; };
 		E200000000000000000F21 /* AbandonmentTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AbandonmentTests.swift; sourceTree = "<group>"; };
 		E200000000000000000F10 /* SchemaFreezeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SchemaFreezeTests.swift; sourceTree = "<group>"; };
+		B14A00000000000000000002 /* CaptureAllowanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureAllowanceTests.swift; sourceTree = "<group>"; };
 		E200000000000000000F13 /* SemanticStatePersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticStatePersistenceTests.swift; sourceTree = "<group>"; };
 		E200000000000000000F11 /* SpeakItVersionThree.store */ = {isa = PBXFileReference; lastKnownFileType = file; path = SpeakItVersionThree.store; sourceTree = "<group>"; };
 		E300000000000000000F02 /* SemanticCorpusDataQ.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SemanticCorpusDataQ.swift; sourceTree = "<group>"; };
@@ -445,6 +449,7 @@
 			children = (
 				B10000000000000000000003 /* DomainEnums.swift */,
 				B10000000000000000000004 /* CaptureSession.swift */,
+				B14A00000000000000000001 /* CaptureAllowance.swift */,
 				B10000000000000000000005 /* CapturedItem.swift */,
 				B1000000000000000000010B /* SchemaV1.swift */,
 				B100000000000000000000F2 /* LocationIntent.swift */,
@@ -591,6 +596,7 @@
 				E200000000000000000F20 /* ThoughtCompletionTests.swift */,
 				E200000000000000000F21 /* AbandonmentTests.swift */,
 				E200000000000000000F10 /* SchemaFreezeTests.swift */,
+				B14A00000000000000000002 /* CaptureAllowanceTests.swift */,
 				E200000000000000000F13 /* SemanticStatePersistenceTests.swift */,
 				E200000000000000000F12 /* Fixtures */,
 				E300000000000000000F02 /* SemanticCorpusDataQ.swift */,
@@ -931,6 +937,7 @@
 				A10000000000000000000002 /* RootView.swift in Sources */,
 				A10000000000000000000003 /* DomainEnums.swift in Sources */,
 				A10000000000000000000004 /* CaptureSession.swift in Sources */,
+				A14A00000000000000000001 /* CaptureAllowance.swift in Sources */,
 				A10000000000000000000005 /* CapturedItem.swift in Sources */,
 				A1000000000000000000010B /* SchemaV1.swift in Sources */,
 				A100000000000000000000F2 /* LocationIntent.swift in Sources */,
@@ -1032,6 +1039,7 @@
 				D200000000000000000F20 /* ThoughtCompletionTests.swift in Sources */,
 				D200000000000000000F21 /* AbandonmentTests.swift in Sources */,
 				D200000000000000000F10 /* SchemaFreezeTests.swift in Sources */,
+				A14A00000000000000000002 /* CaptureAllowanceTests.swift in Sources */,
 				D200000000000000000F13 /* SemanticStatePersistenceTests.swift in Sources */,
 				D300000000000000000F02 /* SemanticCorpusDataQ.swift in Sources */,
 				D300000000000000000F03 /* SemanticCorpusDataR.swift in Sources */,

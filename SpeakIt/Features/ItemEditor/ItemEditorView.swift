@@ -945,6 +945,16 @@ struct ItemEditorView: View {
                     }
     }
 
+    private var unchangedClockBoundaryRelation: String? {
+        guard dueDate == item.dueDate, dueDateHasTime == !item.isDateOnly,
+              !item.clockBoundaryNeedsReview(), let boundary = item.temporalIntent?.clockBoundary else { return nil }
+        switch boundary {
+        case .after: return "After"
+        case .before: return "Before"
+        case .unrecognized: return nil
+        }
+    }
+
     private var timingSection: some View {
         Section("Timing") {
                     Toggle("Has a due date", isOn: $hasDueDate)
@@ -952,12 +962,24 @@ struct ItemEditorView: View {
                         .accessibilityHint("Turn off to keep this item unscheduled")
 
                     if hasDueDate {
+                        if dueDate == item.dueDate, dueDateHasTime == !item.isDateOnly,
+                           item.temporalIntent?.clockBoundary != nil {
+                            Text(ItemPresentation.clockBoundaryLabel(for: item) ?? "Time needs review")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                        if dueDate == item.dueDate, dueDateHasTime == !item.isDateOnly,
+                           item.temporalIntent?.deadlineBoundary != nil {
+                            Text(ItemPresentation.endOfDayDeadlineLabel(for: item) ?? "Deadline time needs review")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
                         Toggle("Has a time", isOn: $dueDateHasTime)
                             .tint(Color.speakToggleTint)
                             .accessibilityHint("Turn off when only the day matters")
 
                         DatePicker(
-                            "Due",
+                            unchangedClockBoundaryRelation ?? "Due",
                             selection: $dueDate,
                             displayedComponents: dueDateHasTime
                                 ? [.date, .hourAndMinute]
@@ -1282,7 +1304,8 @@ struct ItemEditorView: View {
         case .confirmation: return confirmedRequiredValue
         case .splitDecision, .pendingOperation, .none: return false
         case .missingAction, .ambiguousPerson, .reportedSpeech,
-             .ambiguousActor, .ambiguousTemporalScope, .incompleteThought: return false
+             .ambiguousActor, .ambiguousTemporalScope, .incompleteThought,
+             .organizationIncomplete: return false
         }
     }
 
@@ -1408,7 +1431,9 @@ struct ItemEditorView: View {
         guard hasDueDate, !item.isCompleted else { return false }
         return TodayActionTiming.group(
             for: editedDueDate,
-            isDateOnly: !dueDateHasTime
+            isDateOnly: !dueDateHasTime,
+            deadlineIntent: editedDueDate == item.dueDate && dueDateHasTime == !item.isDateOnly
+                ? item.temporalIntent : nil
         ) == .overdue
     }
 

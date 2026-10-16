@@ -2944,3 +2944,104 @@ final class SavedFieldRevisionScopeTests: XCTestCase {
         }
     }
 }
+
+final class CompleteSourceFieldScopeSnapshotTests: XCTestCase {
+    func testSnapshotMatchesEveryOriginalPunctuationBoundaryAndStrictEndpointRule() throws {
+        for source in [
+            "Vera said,   \"Call Maël! Buy tea?\" Then leave.",
+            "‘Call Nwosu.’ Ask Zoë; she is outside.",
+            "Copy 'Call Vera.' and retain café 🪴.",
+            "The quoted call Vera instruction should not become a task.",
+            "The cited send the parcel message must not become a task.",
+            "An unclosed \"call Vera. stays unresolved",
+            "No stops or quotations here",
+            "Vera said,\r\n\"Go.\"\r\nCall Zoë.",
+            "Copy 👩‍👩‍👧‍👦 'Go!'. Call Zoë.",
+            "Vera said, \"\u{301}Go.\" Then leave.",
+            "Vera said, \"Copy ‘Go!’ now.\" Call Zoë.",
+            "Copy \"Go.\"\"Stop?\" Then leave."
+        ] {
+            let snapshot = QuotedSpeechScope.BoundaryProtection(in: source)
+            XCTAssertEqual(snapshot.quotedRanges, QuotedSpeechScope.ranges(in: source), source)
+            for index in source.indices where ".!?;,:\"'‘’“”".contains(source[index]) {
+                let boundary = index..<source.index(after: index)
+                XCTAssertEqual(snapshot.protects(boundary),
+                    QuotedSpeechScope.protects(boundary, in: source), source + " " + String(source[boundary]))
+            }
+        }
+        // Character boundaries, not UTF-16 offsets, include the complete ZWJ
+        // emoji and quote-attached combining mark. Every i <= j is checked on
+        // this one small fixture, including empty endIndex and nonpunctuation.
+        let compact = "\r\n👩‍💻\"\u{301}é!\"'x'"
+        XCTAssertLessThanOrEqual(compact.count, 15)
+        let boundaries = Array(compact.indices) + [compact.endIndex]
+        let compactSnapshot = QuotedSpeechScope.BoundaryProtection(in: compact)
+        for lower in boundaries.indices {
+            for upper in lower..<boundaries.count {
+                let boundary = boundaries[lower]..<boundaries[upper]
+                XCTAssertEqual(Range(NSRange(boundary, in: compact), in: compact), boundary)
+                XCTAssertEqual(compactSnapshot.protects(boundary),
+                    QuotedSpeechScope.protects(boundary, in: compact),
+                    "compact unicode range \(lower)..<\(upper)")
+            }
+        }
+        let quoted = "\"Call Vera.\" Then leave."
+        let quote = try XCTUnwrap(QuotedSpeechScope.ranges(in: quoted).first)
+        let quoteSnapshot = QuotedSpeechScope.BoundaryProtection(in: quoted)
+        XCTAssertFalse(quoteSnapshot.protects(quote), "Quote upper endpoint remains strict <")
+        let inside = quote.lowerBound..<quoted.index(before: quote.upperBound)
+        XCTAssertTrue(quoteSnapshot.protects(inside))
+        XCTAssertEqual(quoteSnapshot.protects(quote), QuotedSpeechScope.protects(quote, in: quoted))
+        let cited = "The quoted call Vera instruction should not become a task."
+        let subject = try XCTUnwrap(ClauseScope.deniedCitedActionSubject(in: cited))
+        let citedSnapshot = QuotedSpeechScope.BoundaryProtection(in: cited)
+        XCTAssertTrue(citedSnapshot.protects(subject), "Cited upper endpoint remains inclusive <=")
+        XCTAssertFalse(citedSnapshot.protects(subject.lowerBound..<cited.index(after: subject.upperBound)))
+        XCTAssertEqual(citedSnapshot.protects(subject), QuotedSpeechScope.protects(subject, in: cited))
+        let opening = "Vera said,   \"Call Maël.\""
+        let comma = try XCTUnwrap(opening.range(of: ","))
+        XCTAssertTrue(QuotedSpeechScope.BoundaryProtection(in: opening).protects(comma),
+            "The original whitespace lookahead still protects the opening quote")
+    }
+
+    func testPartitionReusesOnlyItsExactAlreadyCheckedCompleteFieldScope() throws {
+        let previous = SentenceContext.taggerDisabledForEvaluation
+        defer { SentenceContext.taggerDisabledForEvaluation = previous; SentenceContextCache.invalidate() }
+        for disabled in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disabled; SentenceContextCache.invalidate()
+            let mode = "taggerDisabled=\(disabled)"
+            let source = "Print the invoice. Cancel the saved dentist reminder. Call Vera."
+            XCTAssertFalse(SavedFieldRevision.hasUnprovedFieldRequest(source), mode)
+            let partition = CaptureOperationDetector.partitionWithOwnership(source)
+            XCTAssertEqual(partition.operations.count, 1, mode)
+            let operation = try XCTUnwrap(partition.operations.first, mode)
+            let direct = try XCTUnwrap(CaptureOperationDetector.detect(operation.sourceQuote, within: source), mode)
+            XCTAssertEqual(operation.operation, direct.operation, mode)
+            XCTAssertEqual(operation.target, direct.target, mode)
+            XCTAssertEqual(operation.polarity, direct.polarity, mode)
+            XCTAssertEqual(operation.needsReview, direct.needsReview, mode)
+            XCTAssertEqual(operation.sourceQuote, direct.sourceQuote, mode)
+            XCTAssertEqual(operation.newTimingText, direct.newTimingText, mode)
+            XCTAssertEqual(operation.savedFieldRevision, direct.savedFieldRevision, mode)
+            let ledger = SourceUnitLedger(source)
+            let printRange = try XCTUnwrap(source.range(of: "Print the invoice"))
+            let callRange = try XCTUnwrap(source.range(of: "Call Vera"))
+            XCTAssertEqual(partition.retainedUnitIDs, ledger.ids(in: printRange).union(ledger.ids(in: callRange)), mode)
+            XCTAssertTrue(partition.unownedMeaningfulIDs(in: source).isEmpty, mode)
+
+            let prefix = "Change my saved dentist reminder so I call Noor instead of Maya"
+            let failed = prefix + " and adjust the bracket."
+            XCTAssertTrue(SavedFieldRevision.hasUnprovedFieldRequest(failed), mode)
+            let held = try XCTUnwrap(CaptureOperationDetector.detect(prefix, within: failed), mode)
+            XCTAssertTrue(held.needsReview, mode)
+            XCTAssertNil(held.savedFieldRevision, mode)
+            XCTAssertEqual(held.sourceQuote, failed, mode)
+            let heldPartition = CaptureOperationDetector.partitionWithOwnership(failed)
+            XCTAssertEqual(heldPartition.operations.count, 1, mode)
+            XCTAssertTrue(heldPartition.operations.first?.needsReview == true, mode)
+            XCTAssertNil(heldPartition.operations.first?.savedFieldRevision, mode)
+            XCTAssertEqual(heldPartition.operations.first?.sourceQuote, failed, mode)
+            XCTAssertTrue(heldPartition.unownedMeaningfulIDs(in: failed).isEmpty, mode)
+        }
+    }
+}

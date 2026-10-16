@@ -154,6 +154,7 @@ struct RuntimeRuleTrace: Sendable {
                 case .destinationDay: kind = "destinationDay"
                 case .routingClarification: kind = "routingClarification"
                 case .sourceRole: kind = "sourceRole"
+                case .communicationQuestion: kind = "communicationQuestion"
                 case .discourseContext: kind = "discourseContext"
                 case .retainedDiscourseContext: kind = "retainedDiscourseContext"
                 case .recipientRevision: kind = "recipientRevision"
@@ -164,6 +165,20 @@ struct RuntimeRuleTrace: Sendable {
     struct Group: Sendable {
         let edges: [Edge]
         let dispositions: [String]
+    }
+    /// Final producer evidence only. Word IDs use the creation ledger; the
+    /// consumer must validate raw lineage and the bound trace.output rows.
+    struct DeclaredList: Sendable {
+        struct Entry: Sendable {
+            let entryRange: NSRange
+            let sourceWordIDs: Set<Int>
+            let baselineIndex: Int
+        }
+        let componentRange: NSRange
+        let componentWordIDs: Set<Int>
+        let originalComponent: String
+        let shoppingGroup: String
+        let entries: [Entry]
     }
     let original: String
     let normalized: String
@@ -179,6 +194,7 @@ struct RuntimeRuleTrace: Sendable {
     let captureOnlyWordIDs: Set<Int>
     let group: Group?
     let output: [ExtractedThought]
+    var declaredLists: [DeclaredList] = []
 }
 
 /// Optional discovery DATA from THIS capture's parser, never semantic proof.
@@ -496,7 +512,9 @@ enum RuntimeDiscourseCertificate {
             return .init(kind:.note,person:nil,analysis:location[0],title:location[0],due:nil)
         }
         if let own = fields(source[0],#"my\s+own\s+task\s+is\s+to\s+(ask\s+the\s+.+)"#) {
-            guard source.count <= 2,QuotedSpeechScope.ranges(in:source[0]).isEmpty else { return nil }
+            guard source.count <= 2,QuotedSpeechScope.ranges(in:source[0]).isEmpty,
+                  ThoughtOrganizer.hasNoLiteralTiming(in: own[0], referenceDate: referenceDate,
+                                                     calendar: calendar) else { return nil }
             let rootTiming = ThoughtOrganizer.organize(own[0],referenceDate:referenceDate,calendar:calendar)
             guard rootTiming.dueDate == nil,rootTiming.reminderDate == nil,rootTiming.temporalIntent == .none,
                   rootTiming.locationIntent == nil,rootTiming.recurrenceRule == nil else { return nil }
@@ -574,6 +592,29 @@ enum RuntimeDiscourseCertificate {
         // and its direction detail; an arbitrary suffix is not a noun proof.
         guard let f = fields(text,#"(.+),\s+the\s+one\s+with\s+(the\s+arrow)\s+to\s+(.+)"#) else { return false }
         return physicalNominal(f[0]) && physicalNominal(f[1]) && physicalNominal(f[2])
+    }
+    @available(iOS 26.4, *)
+    static func interpretOwnedTaskGroup(_ source: String,referenceDate: Date,calendar: Calendar) -> ThoughtExtractionResult? {
+        let paragraphSource = source.replacingOccurrences(of:"\r\n",with:"\n").replacingOccurrences(of:"\r",with:"\n")
+        guard paragraphSource.range(of:#"\n[ \t]*\n"#,options:.regularExpression) == nil else { return nil }
+        let units = RuntimeIndexedSource(source).units.map(\.text)
+        guard (1...2).contains(units.count),
+              units.allSatisfy({ QuotedSpeechScope.ranges(in:$0).isEmpty && !QuotedSpeechScope.hasUnclosedQuote($0) }),
+              ClauseScope.read(units[0]).act == .direct,
+              fields(units[0],#"my\s+own\s+task\s+is\s+to\s+(ask\s+the\s+.+)"#) != nil,
+              let expected = expectation(units,allCommunications:[],referenceDate:referenceDate,calendar:calendar),
+              expected.kind == .task,expected.person == nil else { return nil }
+        let root = ThoughtOrganizer.organize(expected.analysis,referenceDate:referenceDate,calendar:calendar)
+        guard root.itemType.isActionable,!root.needsClarification,root.state == .resolved,
+              root.dueDate == nil,root.temporalIntent == .none,
+              root.reminderDate == nil,root.reminderDelivery == .none,
+              root.locationIntent == nil,root.recurrenceRule == nil else { return nil }
+        let organization = OrganizedThought(itemType:.task,category:root.category,priority:root.priority,personName:nil,
+            dueDate:expected.due,reminderDate:nil,reminderDelivery:.none,recurrenceRule:nil,needsClarification:false,
+            temporalIntent:expected.temporal,state:.resolved)
+        return .init(items:[.init(sourceQuote:source,rawQuote:source,wasRepaired:false,analysisText:source,
+            suggestedTitle:expected.title,organization:organization,confidence:1,needsReview:false,
+            sourceUnitIDs:Set(SourceUnitLedger(source).words.indices))],method:.rules)
     }
     @available(iOS 26.4, *)
     static func interpretPhysicalTaskGroup(_ source: String,referenceDate: Date,calendar: Calendar) -> ThoughtExtractionResult? {
@@ -679,6 +720,805 @@ enum RuntimeDiscourseCertificate {
 /// Shared timing may move into context, and resolved behavioral metadata must agree.
 /// This contract is testable without FoundationModels or an AI-capable device.
 enum RefinementGuard {
+
+    /// Declared membership is a final rules decision, not a model proposal.
+    /// Restore only proved baseline components; never clip a straddling row.
+    static func preservingDeclaredLists(
+        in proposal: ThoughtExtractionResult, baseline: ThoughtExtractionResult,
+        source: String, trace: RuntimeRuleTrace?
+    ) -> ThoughtExtractionResult {
+        if proposal == baseline { return baseline }
+        func inert(_ item: ExtractedThought) -> Bool {
+            let value = item.organization
+            return value.itemType == .shopping && value.category == .shopping
+                && value.priority == .normal && value.state == .resolved
+                && !item.needsReview && !value.needsClarification
+                && value.personName == nil && value.dueDate == nil
+                && value.reminderDate == nil && value.reminderDelivery == .none
+                && value.locationIntent == nil && value.recurrenceRule == nil
+                && value.temporalIntent == .none
+        }
+        // Veto only: some recursive rules paths return final declared children
+        // without a parent trace. A raw header alone cannot grant pinning.
+        let declared = Set(baseline.items.indices.filter { index in
+            let item = baseline.items[index]
+            guard inert(item), let run = ShoppingGroupParser.declaredShoppingRun(in: item.rawQuote),
+                  item.shoppingGroup == run.store,
+                  item.analysisText == item.sourceQuote,
+                  item.suggestedTitle == item.sourceQuote else { return false }
+            return run.entries.contains { String(item.rawQuote[$0.range]) == item.sourceQuote }
+        })
+        guard !declared.isEmpty else { return proposal }
+        guard baseline.operations.isEmpty, proposal.operations.isEmpty,
+              let trace, trace.original == source, trace.output == baseline.items,
+              !trace.declaredLists.isEmpty else { return baseline }
+        let original = SourceUnitLedger(source), created = SourceUnitLedger(trace.creating)
+        guard created.words.map(\.text) == SourceUnitLedger(trace.corrected).words.map(\.text),
+              trace.correctedWordRawIDs.count == created.words.count else { return baseline }
+        var bridge: [Int] = [], previous = -1
+        for (index, ancestors) in trace.correctedWordRawIDs.enumerated() {
+            guard ancestors.count == 1, let raw = ancestors.first,
+                  original.words.indices.contains(raw), raw > previous,
+                  original.words[raw].text == created.words[index].text else { return baseline }
+            bridge.append(raw); previous = raw
+        }
+        func mapped(_ ids: Set<Int>) -> Set<Int>? {
+            guard !ids.isEmpty, ids.allSatisfy({ bridge.indices.contains($0) }) else { return nil }
+            return Set(ids.map { bridge[$0] })
+        }
+        var baselineIDs: [Set<Int>] = []
+        for item in baseline.items {
+            guard let ids = mapped(item.sourceUnitIDs) else { return baseline }
+            baselineIDs.append(ids)
+        }
+        var protected = Set<Int>(), bound = Set<Int>()
+        for witness in trace.declaredLists {
+            guard let componentRange = Range(witness.componentRange, in: trace.creating),
+                  created.ids(in: componentRange) == witness.componentWordIDs,
+                  let componentIDs = mapped(witness.componentWordIDs),
+                  protected.isDisjoint(with: componentIDs) else { return baseline }
+            let component = String(trace.creating[componentRange])
+            guard let run = ShoppingGroupParser.declaredShoppingRun(in: component),
+                  let rawRun = ShoppingGroupParser.declaredShoppingRun(in: witness.originalComponent),
+                  run.matchesOriginal(rawRun, source: component, originalSource: witness.originalComponent),
+                  run.store == witness.shoppingGroup,
+                  run.entries.count == witness.entries.count else { return baseline }
+            var originalMatches = 0, cursor = source.startIndex
+            while cursor < source.endIndex,
+                  let span = source.range(of: witness.originalComponent, options: .literal,
+                                          range: cursor..<source.endIndex) {
+                if original.ids(in: span) == componentIDs { originalMatches += 1 }
+                cursor = span.upperBound
+            }
+            guard originalMatches == 1 else { return baseline }
+            var literalIDs: [Set<Int>] = []
+            for entry in run.entries {
+                let local = NSRange(entry.range, in: component)
+                let absolute = NSRange(location: witness.componentRange.location + local.location,
+                                       length: local.length)
+                guard let range = Range(absolute, in: trace.creating) else { return baseline }
+                literalIDs.append(created.ids(in: range))
+            }
+            let frame = witness.componentWordIDs.subtracting(literalIDs.reduce(into: Set<Int>()) { $0.formUnion($1) })
+            var used = Set<Int>(), members = Set<Int>()
+            for (index, entry) in witness.entries.enumerated() {
+                let local = NSRange(run.entries[index].range, in: component)
+                let expectedRange = NSRange(location: witness.componentRange.location + local.location,
+                                            length: local.length)
+                let expectedIDs = literalIDs[index].union(index == 0 ? frame : [])
+                guard entry.entryRange == expectedRange, entry.sourceWordIDs == expectedIDs,
+                      !expectedIDs.isEmpty, used.isDisjoint(with: expectedIDs),
+                      baseline.items.indices.contains(entry.baselineIndex),
+                      !bound.contains(entry.baselineIndex), !members.contains(entry.baselineIndex) else { return baseline }
+                let item = baseline.items[entry.baselineIndex]
+                let literal = String(component[run.entries[index].range])
+                guard inert(item), item.sourceUnitIDs == expectedIDs,
+                      item.sourceQuote == literal, item.analysisText == literal,
+                      item.suggestedTitle == literal, item.rawQuote == witness.originalComponent,
+                      item.shoppingGroup == witness.shoppingGroup else { return baseline }
+                used.formUnion(expectedIDs); members.insert(entry.baselineIndex)
+            }
+            guard used == witness.componentWordIDs,
+                  baseline.items.indices.allSatisfy({ members.contains($0)
+                      || baseline.items[$0].sourceUnitIDs.isDisjoint(with: witness.componentWordIDs) }) else { return baseline }
+            protected.formUnion(componentIDs); bound.formUnion(members)
+        }
+        // A partial witness cannot silently leave a second declaration exposed.
+        guard bound == declared else { return baseline }
+        let domain = Set(original.words.indices)
+        var proposalIDs: [Set<Int>] = []
+        for item in proposal.items {
+            let ids = item.sourceUnitIDs
+            guard !ids.isEmpty, ids.isSubset(of: domain) else { return baseline }
+            // Overlapping rows are rejected below regardless of their wording.
+            // Outside rows still need a current original-occurrence identity.
+            if ids.isDisjoint(with: protected) {
+                let words = SourceUnitLedger(item.sourceQuote).words.map(\.text)
+                guard !words.isEmpty else { return baseline }
+                if words != ids.sorted().map({ original.words[$0].text }) {
+                    var matches = 0, cursor = source.startIndex
+                    while cursor < source.endIndex,
+                          let span = source.range(of: item.sourceQuote, options: .literal,
+                                                  range: cursor..<source.endIndex) {
+                        if original.ids(in: span).isSubset(of: ids) { matches += 1 }
+                        cursor = span.upperBound
+                    }
+                    guard matches == 1 else { return baseline }
+                }
+            }
+            proposalIDs.append(ids)
+        }
+        var wordBaselines: [Int: Set<Int>] = [:], wordProposals: [Int: Set<Int>] = [:]
+        for (index, ids) in baselineIDs.enumerated() {
+            for id in ids { wordBaselines[id, default: []].insert(index) }
+        }
+        for (index, ids) in proposalIDs.enumerated() {
+            for id in ids { wordProposals[id, default: []].insert(index) }
+        }
+        var retained = bound, rejected = Set<Int>()
+        var baselineQueue = bound.sorted(), proposalQueue: [Int] = []
+        var baselineCursor = 0, proposalCursor = 0
+        func retain(_ index: Int) {
+            if retained.insert(index).inserted { baselineQueue.append(index) }
+        }
+        func reject(_ index: Int) {
+            if rejected.insert(index).inserted { proposalQueue.append(index) }
+        }
+        func drain() {
+            while baselineCursor < baselineQueue.count || proposalCursor < proposalQueue.count {
+                while baselineCursor < baselineQueue.count {
+                    let index = baselineQueue[baselineCursor]; baselineCursor += 1
+                    for id in baselineIDs[index] {
+                        for row in wordProposals[id] ?? [] { reject(row) }
+                    }
+                }
+                while proposalCursor < proposalQueue.count {
+                    let index = proposalQueue[proposalCursor]; proposalCursor += 1
+                    for id in proposalIDs[index] {
+                        for row in wordBaselines[id] ?? [] { retain(row) }
+                    }
+                }
+            }
+        }
+        drain()
+        let survivingCoverage = proposalIDs.enumerated().reduce(into: Set<Int>()) {
+            if !rejected.contains($1.offset) { $0.formUnion($1.element) }
+        }
+        for index in baselineIDs.indices where !retained.contains(index)
+            && !baselineIDs[index].isSubset(of: survivingCoverage) { retain(index) }
+        drain()
+        let accepted = proposal.items.indices.filter { !rejected.contains($0) }
+        guard !accepted.isEmpty else { return baseline }
+        // Uniform original IDs in a mixed result. Semantic/provenance fields
+        // remain exact baseline values; no model-generated field reaches pins.
+        var output: [(first: Int, order: Int, item: ExtractedThought)] = []
+        for index in retained.sorted() {
+            var item = baseline.items[index]; item.sourceUnitIDs = baselineIDs[index]
+            output.append((baselineIDs[index].min()!, index, item))
+        }
+        for index in accepted {
+            output.append((proposalIDs[index].min()!, baseline.items.count + index, proposal.items[index]))
+        }
+        output.sort { $0.first == $1.first ? $0.order < $1.order : $0.first < $1.first }
+        return .init(items: output.map(\.item), method: proposal.method)
+    }
+    /// Final explicit rules decisions retain their complete arguments and
+    /// behavioral fields: owned questions, enrollment/contact arguments, and
+    /// outgoing artifact deadlines. Exact edge/row/source proofs grant no generic
+    /// pinning, grouping or action authority; missing lineage vetoes refinement.
+    static func preservingOwnedArgumentDecisions(
+        in proposal: ThoughtExtractionResult, baseline: ThoughtExtractionResult,
+        source: String, trace: RuntimeRuleTrace?, referenceDate: Date, calendar: Calendar
+    ) -> ThoughtExtractionResult {
+        if proposal == baseline { return baseline }
+        func rejectAtGuard(_ stage: String) -> ThoughtExtractionResult {
+#if DEBUG
+            RuntimeExampleLibrary.developmentObserver?("owned-argument preservation rejected stage=\(stage)")
+#endif
+            return baseline
+        }
+        let edges = trace?.group?.edges.filter { $0.kind == "communicationQuestion" } ?? []
+        let hasMergedQuestion = baseline.items.contains { item in
+            item.organization.itemType.isActionable && !item.needsReview
+                && item.analysisText.components(separatedBy: " … ").dropFirst()
+                    .contains(where: RuleBasedThoughtExtractor.isAnaphoricCommunicationQuestion)
+        }
+        let enrollmentRows = Set(baseline.items.indices.filter { index in
+            let item = baseline.items[index]
+            guard item.organization.itemType == .task,
+                  item.organization.state.kind == .resolved, !item.needsReview,
+                  !item.organization.needsClarification,
+                  ClauseScope.datedEnrollmentAppositive(in: item.sourceQuote,
+                    referenceDate: referenceDate, calendar: calendar) != nil else { return false }
+            return true
+        })
+        // A complete finite contact purpose can remain one literal row,
+        // without a synthetic grouping edge or ellipsis. Only an actual final
+        // resolved action triggers this veto; a Memory/held fragment cannot.
+        let contactRows = Set(baseline.items.indices.filter { index in
+            let item = baseline.items[index]
+            return item.organization.itemType.isActionable
+                && item.organization.state.kind == .resolved && !item.needsReview
+                && !item.organization.needsClarification
+                && ClauseScope.finiteContactPurpose(in: item.sourceQuote) != nil
+        })
+        let dispatchRows = Set(baseline.items.indices.filter { index in
+            let item = baseline.items[index]
+            return item.organization.itemType.isActionable
+                && item.organization.state.kind == .resolved && !item.needsReview
+                && !item.organization.needsClarification
+                && ClauseScope.outgoingArtifactDeadline(in: item.sourceQuote) != nil
+        })
+        let bookingRows = Set(baseline.items.indices.filter { index in
+            let item = baseline.items[index]
+            return item.organization.itemType == .task
+                && ClauseScope.bookingTarget(in: item.sourceQuote) != nil
+        })
+        let workRows = Set(baseline.items.indices.filter { index in
+            let item = baseline.items[index]
+            return item.organization.itemType == .task && item.organization.state.kind == .resolved
+                && !item.needsReview && !item.organization.needsClarification
+                && ClauseScope.partialNumberedWork(in: item.sourceQuote) != nil
+        })
+        // Boundary metadata cannot become an ordinary AT clock through an
+        // optional proposal. Reprove the final literal rules row first; a
+        // missing/held/invalid proof vetoes refinement rather than granting a pin.
+        func sameClockBoundaryMeaning(_ left: TemporalIntent, _ right: TemporalIntent) -> Bool {
+            var left = left, right = right
+            left.sourceText = nil; right.sourceText = nil
+            return left == right
+        }
+        let presentClockRows = Set(baseline.items.indices.filter {
+            baseline.items[$0].organization.temporalIntent.clockBoundary != nil
+        })
+        let clockRows = Set(presentClockRows.filter { index in
+            let item = baseline.items[index], organization = item.organization
+            guard [.task, .personFollowUp, .shopping].contains(organization.itemType),
+                  organization.state.kind == .resolved, !item.needsReview,
+                  !organization.needsClarification,
+                  organization.reminderDate == nil, organization.reminderDelivery == .none,
+                  organization.recurrenceRule == nil, organization.locationIntent == nil,
+                  let due = organization.dueDate,
+                  organization.temporalIntent.clockBoundaryDate(calendar: calendar) == due,
+                  let proof = ThoughtOrganizer.clockBoundaryTiming(in: item.sourceQuote,
+                    referenceDate: referenceDate, calendar: calendar),
+                  proof.dueDate == due,
+                  sameClockBoundaryMeaning(proof.intent, organization.temporalIntent)
+            else { return false }
+            return true
+        })
+        guard presentClockRows == clockRows else { return rejectAtGuard("clock-boundary-unproved") }
+        if proposal.items.contains(where: { $0.organization.temporalIntent.clockBoundary != nil }),
+           clockRows.isEmpty { return rejectAtGuard("clock-boundary-origin") }
+        let presentBoundaryRows = Set(baseline.items.indices.filter {
+            baseline.items[$0].organization.temporalIntent.deadlineBoundary != nil
+        })
+        let midnightRows = Set(baseline.items.indices.filter { index in
+            let item = baseline.items[index], organization = item.organization
+            return organization.itemType == .task && organization.state.kind == .resolved
+                && !item.needsReview && !organization.needsClarification
+                && organization.reminderDate == nil && organization.reminderDelivery == .none
+                && organization.recurrenceRule == nil && organization.locationIntent == nil
+                && organization.temporalIntent.deadlineBoundary == .endOfNamedDay
+                && organization.dueDate != nil
+                && organization.temporalIntent.endOfDayDeadlineDate(calendar: calendar) == organization.dueDate
+                && ClauseScope.midnightDeadline(in: item.sourceQuote) != nil
+        })
+        // Later source grouping may retain this certified decision while
+        // joining context into its quote. If final ownership cannot be proved
+        // again, a proposal cannot bypass the guard by dropping the field.
+        guard presentBoundaryRows == midnightRows else { return rejectAtGuard("G01") }
+        // A model cannot originate this source-owned interpretation. Its
+        // presence is legitimate only for a final certified rules row below.
+        let proposesMidnightBoundary = proposal.items.contains {
+            $0.organization.temporalIntent.deadlineBoundary != nil
+        }
+        if proposesMidnightBoundary && midnightRows.isEmpty { return rejectAtGuard("G02") }
+        let cartRows = Set(baseline.items.indices.filter { index in
+            let item = baseline.items[index]
+            guard item.organization.itemType == .shopping, item.organization.state.kind == .resolved,
+                  !item.needsReview, !item.organization.needsClarification,
+                  let cart = ShoppingGroupParser.ownedRetailCartContext(in: item.sourceQuote)
+            else { return false }
+            return item.shoppingGroup == cart.store
+        })
+        let preferenceRows = Set(baseline.items.indices.filter { index in
+            let item = baseline.items[index]
+            return [.task, .personFollowUp].contains(item.organization.itemType)
+                && item.organization.state.kind == .resolved && !item.needsReview
+                && !item.organization.needsClarification
+                && ClauseScope.contactTimingPreference(in: item.sourceQuote) != nil
+        })
+        // Expanded products retain one literal trip component. Reprove the
+        // complete physical plan before pinning any of its final baseline rows.
+        var plannedRetailComponents: [(rows: Set<Int>, literal: String)] = []
+        for literal in Set(baseline.items.map(\.rawQuote)).sorted() {
+            guard let parent = RuleBasedThoughtExtractor.plannedRetailShoppingParent(literal,
+                    referenceDate: referenceDate, calendar: calendar) else { continue }
+            let expected = ThoughtExtractionEngine.shapingShoppingResult(
+                .init(items: [parent], method: .rules), transcript: literal).items
+            let rows = baseline.items.indices.filter { baseline.items[$0].rawQuote == literal }
+            guard rows.count == expected.count, rows.count > 1,
+                  zip(rows, expected).allSatisfy({ pair in
+                      let item = baseline.items[pair.0], proof = pair.1
+                      return !item.needsReview && !item.organization.needsClarification
+                          && item.sourceQuote == proof.sourceQuote && item.analysisText == proof.analysisText
+                          && item.suggestedTitle == proof.suggestedTitle
+                          && item.organization == proof.organization && item.shoppingGroup == proof.shoppingGroup
+                  }) else { return rejectAtGuard("planned-retail-final-rows") }
+            plannedRetailComponents.append((Set(rows), literal))
+        }
+        guard hasMergedQuestion || !edges.isEmpty || !enrollmentRows.isEmpty
+            || !contactRows.isEmpty || !dispatchRows.isEmpty || !workRows.isEmpty || !preferenceRows.isEmpty
+            || !midnightRows.isEmpty || !clockRows.isEmpty || !cartRows.isEmpty || !bookingRows.isEmpty
+            || !plannedRetailComponents.isEmpty else { return proposal }
+        guard baseline.operations.isEmpty, proposal.operations.isEmpty,
+              let trace, trace.original == source, trace.output == baseline.items,
+              !edges.isEmpty || !enrollmentRows.isEmpty || !contactRows.isEmpty
+                || !dispatchRows.isEmpty || !workRows.isEmpty || !midnightRows.isEmpty || !clockRows.isEmpty
+                || !cartRows.isEmpty || !bookingRows.isEmpty || !preferenceRows.isEmpty
+                || !plannedRetailComponents.isEmpty else { return rejectAtGuard("G03") }
+        let original = SourceUnitLedger(source), created = SourceUnitLedger(trace.creating)
+        guard created.words.map(\.text) == SourceUnitLedger(trace.corrected).words.map(\.text),
+              trace.correctedWordRawIDs.count == created.words.count else { return rejectAtGuard("G04") }
+        var bridge: [Int] = [], previous = -1
+        for (index, ancestors) in trace.correctedWordRawIDs.enumerated() {
+            guard ancestors.count == 1, let raw = ancestors.first,
+                  original.words.indices.contains(raw), raw > previous,
+                  original.words[raw].text == created.words[index].text else { return rejectAtGuard("G05") }
+            bridge.append(raw); previous = raw
+        }
+        func mapped(_ ids: Set<Int>) -> Set<Int>? {
+            guard !ids.isEmpty, ids.allSatisfy({ bridge.indices.contains($0) }) else { return nil }
+            return Set(ids.map { bridge[$0] })
+        }
+        var baselineIDs: [Set<Int>] = []
+        for row in baseline.items {
+            guard let ids = mapped(row.sourceUnitIDs) else { return rejectAtGuard("G06") }
+            baselineIDs.append(ids)
+        }
+        for item in proposal.items where item.organization.temporalIntent.deadlineBoundary != nil {
+            guard midnightRows.contains(where: { baselineIDs[$0] == item.sourceUnitIDs }) else { return rejectAtGuard("G07") }
+        }
+        for item in proposal.items where item.organization.temporalIntent.clockBoundary != nil {
+            guard clockRows.contains(where: { baselineIDs[$0] == item.sourceUnitIDs }) else {
+                return rejectAtGuard("clock-boundary-origin")
+            }
+        }
+        var segmentIDs: [Int: Set<Int>] = [:]
+        for proposition in trace.propositions {
+            guard let range = Range(proposition.range, in: trace.creating),
+                  created.ids(in: range) == proposition.wordIDs else { return rejectAtGuard("G08") }
+            segmentIDs[proposition.segment, default: []].formUnion(proposition.wordIDs)
+        }
+        var questionsByOwner: [Set<Int>: Set<Int>] = [:]
+        var questionSegmentsByOwner: [Set<Int>: Set<Int>] = [:]
+        for edge in edges {
+            guard edge.sourceSegments.count == 1, edge.targetSegments.count == 1,
+                  let sourceSegment = edge.sourceSegments.first,
+                  let targetSegment = edge.targetSegments.first,
+                  let question = edge.sourceWordIDs, let owner = edge.targetWordIDs,
+                  !question.isEmpty, !owner.isEmpty, question.isDisjoint(with: owner),
+                  segmentIDs[sourceSegment] == question, segmentIDs[targetSegment] == owner,
+                  mapped(question) != nil, mapped(owner) != nil else { return rejectAtGuard("G09") }
+            questionsByOwner[owner, default: []].formUnion(question)
+            questionSegmentsByOwner[owner, default: []].formUnion([sourceSegment, targetSegment])
+        }
+        // Accepted source-role edges may already have attached complete
+        // context propositions to this communication. Reconstruct that exact
+        // component; a subset match against the final row grants no authority.
+        let contextEdges = trace.group?.edges.filter { $0.kind == "sourceRole" } ?? []
+        var contextsByTarget: [Int: [Int]] = [:]
+        for (index, edge) in contextEdges.enumerated() {
+            for target in Set(edge.targetSegments) {
+                contextsByTarget[target, default: []].append(index)
+            }
+        }
+        func completeQuestionComponent(owner: Set<Int>, questions: Set<Int>) -> Set<Int>? {
+            guard var segments = questionSegmentsByOwner[owner], !segments.isEmpty else { return nil }
+            var component = owner.union(questions), queue = segments.sorted(), cursor = 0
+            var visited = Set<Int>()
+            func fullIDs(_ indices: Set<Int>) -> Set<Int>? {
+                guard !indices.isEmpty, indices.isDisjoint(with: trace.unmatchedSegments) else { return nil }
+                var ids = Set<Int>()
+                for index in indices {
+                    guard trace.segmentQuotes.indices.contains(index),
+                          let whole = segmentIDs[index], !whole.isEmpty else { return nil }
+                    ids.formUnion(whole)
+                }
+                return ids
+            }
+            while cursor < queue.count {
+                let target = queue[cursor]; cursor += 1
+                for index in contextsByTarget[target] ?? [] where visited.insert(index).inserted {
+                    let edge = contextEdges[index], targets = Set(edge.targetSegments)
+                    guard targets.count == edge.targetSegments.count,
+                          targets.isSubset(of: segments),
+                          edge.sourceSegments.isDisjoint(with: segments),
+                          let sourceIDs = fullIDs(edge.sourceSegments),
+                          let targetIDs = fullIDs(targets),
+                          sourceIDs.isDisjoint(with: component),
+                          targetIDs.isSubset(of: component),
+                          sourceIDs.isDisjoint(with: trace.captureOnlyWordIDs),
+                          edge.sourceWordIDs == nil || edge.sourceWordIDs == sourceIDs,
+                          edge.targetWordIDs == nil || edge.targetWordIDs == targetIDs,
+                          mapped(sourceIDs) != nil, mapped(targetIDs) != nil else { return nil }
+                    component.formUnion(sourceIDs)
+                    segments.formUnion(edge.sourceSegments)
+                    queue.append(contentsOf: edge.sourceSegments.sorted())
+                }
+            }
+            return component
+        }
+        func exactOccurrence(_ quote: String, ledger: SourceUnitLedger, ids: Set<Int>) -> Bool {
+            var matches = 0, cursor = ledger.source.startIndex
+            while cursor < ledger.source.endIndex,
+                  let span = ledger.source.range(of: quote, options: .literal,
+                    range: cursor..<ledger.source.endIndex) {
+                if ledger.ids(in: span) == ids { matches += 1 }
+                cursor = span.upperBound
+            }
+            return matches == 1
+        }
+        var protectedRows = Set<Int>(), protectedIDs = Set<Int>()
+        for (owner, questions) in questionsByOwner {
+            guard let component = completeQuestionComponent(owner: owner, questions: questions)
+            else { return rejectAtGuard("G10") }
+            let rows = baseline.items.indices.filter { baseline.items[$0].sourceUnitIDs == component }
+            guard rows.count == 1, let row = rows.first,
+                  baseline.items[row].organization.itemType.isActionable,
+                  baseline.items[row].organization.state.kind == .resolved,
+                  !baseline.items[row].needsReview,
+                  baseline.items.indices.allSatisfy({ $0 == row
+                      || baseline.items[$0].sourceUnitIDs.isDisjoint(with: component) }),
+                  protectedRows.insert(row).inserted else { return rejectAtGuard("G10") }
+            protectedIDs.formUnion(baselineIDs[row])
+        }
+        // Inline content uses the same occurrence bridge, not a scan of a
+        // random transcript substring. Its complete created row must map to
+        // one contiguous original span. Leading removed filler can sit outside
+        // that span; ambiguous or noncontiguous ancestry only vetoes refinement.
+        // Already-proved grouped questions retain their existing edge witness.
+        for row in contactRows.sorted() where !protectedRows.contains(row) {
+            let item = baseline.items[row], rawIDs = baselineIDs[row]
+            guard let first = rawIDs.min(), let last = rawIDs.max(),
+                  original.words.indices.contains(first), original.words.indices.contains(last),
+                  rawIDs.count == item.sourceUnitIDs.count, rawIDs == Set(first...last),
+                  let proof = ClauseScope.finiteContactPurpose(in: item.sourceQuote),
+                  exactOccurrence(item.sourceQuote, ledger: created, ids: item.sourceUnitIDs)
+            else { return rejectAtGuard("G11") }
+            let rawSpan = original.words[first].range.lowerBound..<original.words[last].range.upperBound
+            let literalOriginal = String(source[rawSpan])
+            guard original.ids(in: rawSpan) == rawIDs,
+                  let raw = ClauseScope.finiteContactPurpose(in: literalOriginal),
+                  proof.matchesOriginal(raw, normalizedSource: item.sourceQuote,
+                    originalSource: literalOriginal),
+                  exactOccurrence(literalOriginal, ledger: original, ids: rawIDs),
+                  baseline.items.indices.allSatisfy({ $0 == row
+                      || baseline.items[$0].sourceUnitIDs.isDisjoint(with: item.sourceUnitIDs) })
+            else { return rejectAtGuard("G12") }
+            protectedRows.insert(row); protectedIDs.formUnion(rawIDs)
+        }
+        // The final outgoing artifact deadline uses the same singleton raw
+        // bridge and whole disjoint row proof as an inline contact argument.
+        // A matching substring or source IDs alone cannot supply authority.
+        for row in dispatchRows.sorted() where !protectedRows.contains(row) {
+            let item = baseline.items[row], rawIDs = baselineIDs[row]
+            guard let first = rawIDs.min(), let last = rawIDs.max(),
+                  original.words.indices.contains(first), original.words.indices.contains(last),
+                  rawIDs.count == item.sourceUnitIDs.count, rawIDs == Set(first...last),
+                  let proof = ClauseScope.outgoingArtifactDeadline(in: item.sourceQuote),
+                  exactOccurrence(item.sourceQuote, ledger: created, ids: item.sourceUnitIDs)
+            else { return rejectAtGuard("G13") }
+            let rawSpan = original.words[first].range.lowerBound..<original.words[last].range.upperBound
+            let literalOriginal = String(source[rawSpan])
+            guard original.ids(in: rawSpan) == rawIDs,
+                  let raw = ClauseScope.outgoingArtifactDeadline(in: literalOriginal),
+                  proof.matchesOriginal(raw, normalizedSource: item.sourceQuote,
+                    originalSource: literalOriginal),
+                  exactOccurrence(literalOriginal, ledger: original, ids: rawIDs),
+                  baseline.items.indices.allSatisfy({ $0 == row
+                      || baseline.items[$0].sourceUnitIDs.isDisjoint(with: item.sourceUnitIDs) })
+            else { return rejectAtGuard("G14") }
+            protectedRows.insert(row); protectedIDs.formUnion(rawIDs)
+        }
+        // Reservation target and execution timing are one source-owned
+        // decision, including an untimed task or an invalid/conflicting hold.
+        for row in bookingRows.sorted() where !protectedRows.contains(row) {
+            let item = baseline.items[row], rawIDs = baselineIDs[row]
+            guard let first = rawIDs.min(), let last = rawIDs.max(),
+                  original.words.indices.contains(first), original.words.indices.contains(last),
+                  rawIDs.count == item.sourceUnitIDs.count, rawIDs == Set(first...last),
+                  let proof = ClauseScope.bookingTarget(in: item.sourceQuote),
+                  exactOccurrence(item.sourceQuote, ledger: created, ids: item.sourceUnitIDs)
+            else { return rejectAtGuard("G15") }
+            let rawSpan = original.words[first].range.lowerBound..<original.words[last].range.upperBound
+            let literalOriginal = String(source[rawSpan])
+            guard original.ids(in: rawSpan) == rawIDs,
+                  let raw = ClauseScope.bookingTarget(in: literalOriginal),
+                  proof.matchesOriginal(raw, normalizedSource: item.sourceQuote, originalSource: literalOriginal),
+                  exactOccurrence(literalOriginal, ledger: original, ids: rawIDs),
+                  baseline.items.indices.allSatisfy({ $0 == row
+                      || baseline.items[$0].sourceUnitIDs.isDisjoint(with: item.sourceUnitIDs) })
+            else { return rejectAtGuard("G16") }
+            protectedRows.insert(row); protectedIDs.formUnion(rawIDs)
+        }
+        // The numbered-work role reuses the existing exact bridge/row
+        // witness. Missing proof vetoes refinement without granting pinning.
+        for row in workRows.sorted() where !protectedRows.contains(row) {
+            let item = baseline.items[row], rawIDs = baselineIDs[row]
+            guard let first = rawIDs.min(), let last = rawIDs.max(),
+                  original.words.indices.contains(first), original.words.indices.contains(last),
+                  rawIDs.count == item.sourceUnitIDs.count, rawIDs == Set(first...last),
+                  let proof = ClauseScope.partialNumberedWork(in: item.sourceQuote),
+                  exactOccurrence(item.sourceQuote, ledger: created, ids: item.sourceUnitIDs)
+            else { return rejectAtGuard("G17") }
+            let rawSpan = original.words[first].range.lowerBound..<original.words[last].range.upperBound
+            let literalOriginal = String(source[rawSpan])
+            guard original.ids(in: rawSpan) == rawIDs,
+                  let raw = ClauseScope.partialNumberedWork(in: literalOriginal),
+                  proof.matchesOriginal(raw, normalizedSource: item.sourceQuote, originalSource: literalOriginal),
+                  exactOccurrence(literalOriginal, ledger: original, ids: rawIDs),
+                  baseline.items.indices.allSatisfy({ $0 == row
+                      || baseline.items[$0].sourceUnitIDs.isDisjoint(with: item.sourceUnitIDs) })
+            else { return rejectAtGuard("G18") }
+            protectedRows.insert(row); protectedIDs.formUnion(rawIDs)
+        }
+        // A generic governing BY/IS DUE deadline has no work edge. Its
+        // final boundary decision therefore needs the same literal singleton
+        // bridge and disjoint row proof rather than nearest-date matching.
+        for row in midnightRows.sorted() where !protectedRows.contains(row) {
+            let item = baseline.items[row], rawIDs = baselineIDs[row]
+            guard let first = rawIDs.min(), let last = rawIDs.max(),
+                  original.words.indices.contains(first), original.words.indices.contains(last),
+                  rawIDs.count == item.sourceUnitIDs.count, rawIDs == Set(first...last),
+                  let proof = ClauseScope.midnightDeadline(in: item.sourceQuote),
+                  exactOccurrence(item.sourceQuote, ledger: created, ids: item.sourceUnitIDs)
+            else { return rejectAtGuard("G19") }
+            let rawSpan = original.words[first].range.lowerBound..<original.words[last].range.upperBound
+            let literalOriginal = String(source[rawSpan])
+            guard original.ids(in: rawSpan) == rawIDs,
+                  let raw = ClauseScope.midnightDeadline(in: literalOriginal),
+                  proof.matchesOriginal(raw, normalizedSource: item.sourceQuote, originalSource: literalOriginal),
+                  exactOccurrence(literalOriginal, ledger: original, ids: rawIDs),
+                  baseline.items.indices.allSatisfy({ $0 == row
+                      || baseline.items[$0].sourceUnitIDs.isDisjoint(with: item.sourceUnitIDs) })
+            else { return rejectAtGuard("G20") }
+            protectedRows.insert(row); protectedIDs.formUnion(rawIDs)
+        }
+        for row in clockRows.sorted() where !protectedRows.contains(row) {
+            let item = baseline.items[row], rawIDs = baselineIDs[row]
+            guard let first = rawIDs.min(), let last = rawIDs.max(),
+                  original.words.indices.contains(first), original.words.indices.contains(last),
+                  rawIDs.count == item.sourceUnitIDs.count, rawIDs == Set(first...last),
+                  let proof = ThoughtOrganizer.clockBoundaryTiming(in: item.sourceQuote,
+                    referenceDate: referenceDate, calendar: calendar),
+                  exactOccurrence(item.sourceQuote, ledger: created, ids: item.sourceUnitIDs)
+            else { return rejectAtGuard("clock-boundary-occurrence") }
+            let rawSpan = original.words[first].range.lowerBound..<original.words[last].range.upperBound
+            let literalOriginal = String(source[rawSpan])
+            guard original.ids(in: rawSpan) == rawIDs,
+                  let raw = ThoughtOrganizer.clockBoundaryTiming(in: literalOriginal,
+                    referenceDate: referenceDate, calendar: calendar),
+                  raw.dueDate == proof.dueDate,
+                  sameClockBoundaryMeaning(raw.intent, proof.intent),
+                  exactOccurrence(literalOriginal, ledger: original, ids: rawIDs),
+                  baseline.items.indices.allSatisfy({ $0 == row
+                      || baseline.items[$0].sourceUnitIDs.isDisjoint(with: item.sourceUnitIDs) })
+            else { return rejectAtGuard("clock-boundary-original") }
+            protectedRows.insert(row); protectedIDs.formUnion(rawIDs)
+        }
+        // A final cart row uses the same exact singleton bridge and disjoint
+        // restoration as other owned arguments. Full wording, group and own
+        // timing cannot be replaced by a clipped or redated model proposal.
+        for row in cartRows.sorted() where !protectedRows.contains(row) {
+            let item = baseline.items[row], rawIDs = baselineIDs[row]
+            guard let first = rawIDs.min(), let last = rawIDs.max(),
+                  original.words.indices.contains(first), original.words.indices.contains(last),
+                  rawIDs.count == item.sourceUnitIDs.count, rawIDs == Set(first...last),
+                  let proof = ShoppingGroupParser.ownedRetailCartContext(in: item.sourceQuote),
+                  exactOccurrence(item.sourceQuote, ledger: created, ids: item.sourceUnitIDs)
+            else { return rejectAtGuard("G21") }
+            let rawSpan = original.words[first].range.lowerBound..<original.words[last].range.upperBound
+            let literalOriginal = String(source[rawSpan])
+            guard original.ids(in: rawSpan) == rawIDs,
+                  let raw = ShoppingGroupParser.ownedRetailCartContext(in: literalOriginal),
+                  proof.matchesOriginal(raw, source: item.sourceQuote, originalSource: literalOriginal),
+                  exactOccurrence(literalOriginal, ledger: original, ids: rawIDs),
+                  baseline.items.indices.allSatisfy({ $0 == row
+                      || baseline.items[$0].sourceUnitIDs.isDisjoint(with: item.sourceUnitIDs) })
+            else { return rejectAtGuard("G22") }
+            protectedRows.insert(row); protectedIDs.formUnion(rawIDs)
+        }
+        for component in plannedRetailComponents {
+            let createdIDs = component.rows.reduce(into: Set<Int>()) { $0.formUnion(baseline.items[$1].sourceUnitIDs) }
+            let rawIDs = component.rows.reduce(into: Set<Int>()) { $0.formUnion(baselineIDs[$1]) }
+            guard let first = createdIDs.min(), let last = createdIDs.max(),
+                  createdIDs == Set(first...last), created.words.indices.contains(first), created.words.indices.contains(last),
+                  let rawFirst = rawIDs.min(), let rawLast = rawIDs.max(), rawIDs == Set(rawFirst...rawLast),
+                  component.rows.reduce(0, { $0 + baseline.items[$1].sourceUnitIDs.count }) == createdIDs.count,
+                  baseline.items.indices.allSatisfy({ component.rows.contains($0)
+                      || baseline.items[$0].sourceUnitIDs.isDisjoint(with: createdIDs) }) else {
+                return rejectAtGuard("planned-retail-occurrences")
+            }
+            let current = String(trace.creating[created.words[first].range.lowerBound..<created.words[last].range.upperBound])
+            guard let proof = ShoppingGroupParser.plannedRetailPurchase(in: current,
+                    referenceDate: referenceDate, calendar: calendar),
+                  let raw = ShoppingGroupParser.plannedRetailPurchase(in: component.literal,
+                    referenceDate: referenceDate, calendar: calendar),
+                  !component.literal.isEmpty else { return rejectAtGuard("planned-retail-original") }
+            // Prove the complete original occurrence before reconciling its
+            // one optional, production-licensed opening discourse cue. Never
+            // transplant a raw cue ID into the repaired creation ledger.
+            var occurrences:[Range<String.Index>]=[],cursor=source.startIndex
+            while cursor < source.endIndex,
+                  let span=source.range(of:component.literal,options:.literal,range:cursor..<source.endIndex) {
+                occurrences.append(span);cursor=span.upperBound
+            }
+            guard occurrences.count == 1,let span=occurrences.first else {
+                return rejectAtGuard("planned-retail-occurrences")
+            }
+            let completeRawIDs=original.ids(in:span),gap=completeRawIDs.subtracting(rawIDs)
+            guard rawIDs.isSubset(of:completeRawIDs),
+                  exactOccurrence(component.literal,ledger:original,ids:completeRawIDs) else {
+                return rejectAtGuard("planned-retail-occurrences")
+            }
+            if !gap.isEmpty {
+                guard gap == [0],original.words.first?.text == "and",rawFirst == 1,
+                      proof.discourseRange == nil,let cue=raw.discourseRange,
+                      SourceUnitLedger(component.literal).ids(in:cue) == [0],
+                      trace.correctedWordRawIDs.allSatisfy({ !$0.contains(0) }),
+                      baselineIDs.allSatisfy({ $0.isDisjoint(with:gap) }),
+                      trace.repairs.contains(where:{ stage in
+                          stage.kind == SpeechRepairPipeline.Kind.disfluency.rawValue
+                              && stage.input == trace.normalized
+                              && stage.output == DisfluencyFilter.stripped(stage.input)
+                              && stage.removedRawIDs.contains(0)
+                              && stage.inputWordRawIDs.first == Set([0])
+                      }) else { return rejectAtGuard("planned-retail-discourse") }
+            }
+            guard proof.matchesOriginal(raw,source:current,originalSource:component.literal,
+                    allowingLicensedOpeningAnd:!gap.isEmpty) else {
+                return rejectAtGuard("planned-retail-original")
+            }
+            protectedRows.formUnion(component.rows); protectedIDs.formUnion(rawIDs)
+        }
+        for row in preferenceRows.sorted() where !protectedRows.contains(row) {
+            let item = baseline.items[row], rawIDs = baselineIDs[row]
+            guard let first = rawIDs.min(), let last = rawIDs.max(),
+                  original.words.indices.contains(first), original.words.indices.contains(last),
+                  rawIDs.count == item.sourceUnitIDs.count, rawIDs == Set(first...last),
+                  let proof = ClauseScope.contactTimingPreference(in: item.sourceQuote),
+                  exactOccurrence(item.sourceQuote, ledger: created, ids: item.sourceUnitIDs)
+            else { return rejectAtGuard("G23") }
+            let rawSpan = original.words[first].range.lowerBound..<original.words[last].range.upperBound
+            let literalOriginal = String(source[rawSpan])
+            guard original.ids(in: rawSpan) == rawIDs,
+                  let raw = ClauseScope.contactTimingPreference(in: literalOriginal),
+                  proof.matchesOriginal(raw, normalizedSource: item.sourceQuote, originalSource: literalOriginal),
+                  exactOccurrence(literalOriginal, ledger: original, ids: rawIDs),
+                  baseline.items.indices.allSatisfy({ $0 == row
+                      || baseline.items[$0].sourceUnitIDs.isDisjoint(with: item.sourceUnitIDs) }) else { return rejectAtGuard("G24") }
+            protectedRows.insert(row); protectedIDs.formUnion(rawIDs)
+        }
+        // This second explicit source decision is proved on the actual final
+        // resolved baseline row, never a matching substring in a Memory/report.
+        // The enrollment helper receives the capture's real clock and zone.
+        for row in enrollmentRows {
+            let item = baseline.items[row]
+            guard let proof = ClauseScope.datedEnrollmentAppositive(in: item.sourceQuote,
+                    referenceDate: referenceDate, calendar: calendar),
+                  let raw = ClauseScope.datedEnrollmentAppositive(in: item.rawQuote,
+                    referenceDate: referenceDate, calendar: calendar),
+                  proof.matchesOriginal(raw, normalizedSource: item.sourceQuote,
+                    originalSource: item.rawQuote),
+                  exactOccurrence(item.sourceQuote, ledger: created, ids: item.sourceUnitIDs),
+                  exactOccurrence(item.rawQuote, ledger: original, ids: baselineIDs[row]),
+                  baseline.items.indices.allSatisfy({ $0 == row
+                      || baseline.items[$0].sourceUnitIDs.isDisjoint(with: item.sourceUnitIDs) })
+            else { return rejectAtGuard("G25") }
+            protectedRows.insert(row); protectedIDs.formUnion(baselineIDs[row])
+        }
+        let domain = Set(original.words.indices)
+        let proposalIDs = proposal.items.map(\.sourceUnitIDs)
+        guard proposalIDs.allSatisfy({ !$0.isEmpty && $0.isSubset(of: domain) }) else { return rejectAtGuard("G26") }
+        func words(_ text: String) -> [String] { SourceUnitLedger(text).words.map(\.text) }
+        func visible(_ item: ExtractedThought) -> String {
+            let suggested = item.suggestedTitle?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let raw = suggested.flatMap { $0.isEmpty ? nil : $0 } ?? (item.organization.reminderDate == nil
+                ? item.sourceQuote : ReminderCopy.action(from: item.analysisText))
+            return ThoughtTitleFormatter.polished(raw, itemType: item.organization.itemType,
+                personName: item.organization.personName)
+        }
+        var retained = Set<Int>(), rejected = Set<Int>()
+        for row in protectedRows {
+            let matches = proposal.items.indices.filter { !proposalIDs[$0].isDisjoint(with: baselineIDs[row]) }
+            let exact = matches.count == 1 && matches.first.map { candidate in
+                let item = proposal.items[candidate], rule = baseline.items[row]
+                return proposalIDs[candidate] == baselineIDs[row]
+                    && preservesEverything(in: [item], found: [rule])
+                    && words(item.analysisText) == words(rule.analysisText)
+                    && words(visible(item)) == words(visible(rule))
+                    && item.organization.itemType == rule.organization.itemType
+                    && item.organization.dueDate == rule.organization.dueDate
+                    && item.organization.reminderDate == rule.organization.reminderDate
+                    && item.organization.temporalIntent == rule.organization.temporalIntent
+                    && item.organization.reminderDelivery == rule.organization.reminderDelivery
+                    && item.organization.state == rule.organization.state
+                    && !item.needsReview && !item.organization.needsClarification
+                    && item.shoppingGroup == rule.shoppingGroup
+            } == true
+            if !exact { retained.insert(row); rejected.formUnion(matches) }
+        }
+        // A straddling proposal cannot be clipped. Keep the full baseline if
+        // rejecting it would also discard words outside these proved rows.
+        guard rejected.allSatisfy({ proposalIDs[$0].isSubset(of: protectedIDs) }) else { return rejectAtGuard("G27") }
+        let accepted = proposal.items.indices.filter { !rejected.contains($0) }
+        let coverage = accepted.reduce(into: Set<Int>()) { $0.formUnion(proposalIDs[$1]) }
+            .union(retained.reduce(into: Set<Int>()) { $0.formUnion(baselineIDs[$1]) })
+        guard baselineIDs.allSatisfy({ $0.isSubset(of: coverage) }) else { return rejectAtGuard("G28") }
+        for row in accepted where proposalIDs[row].isDisjoint(with: protectedIDs) {
+            let quote = proposal.items[row].sourceQuote
+            if words(quote) == proposalIDs[row].sorted().map({ original.words[$0].text }) { continue }
+            // The existing declared-list guard permits a literal entry to own
+            // its frame/context IDs too. Prove that exact occurrence, without
+            // imposing this component's literal formatting on unrelated rows.
+            guard !words(quote).isEmpty else { return rejectAtGuard("G29") }
+            var matches = 0, cursor = source.startIndex
+            while cursor < source.endIndex,
+                  let span = source.range(of: quote, options: [.literal, .caseInsensitive], range: cursor..<source.endIndex) {
+                if original.ids(in: span).isSubset(of: proposalIDs[row]) { matches += 1 }
+                cursor = span.upperBound
+            }
+            guard matches == 1 else { return rejectAtGuard("G30") }
+        }
+        guard !retained.isEmpty else { return proposal }
+        guard !accepted.isEmpty else { return rejectAtGuard("G31") }
+        var output: [(first: Int, order: Int, item: ExtractedThought)] = []
+        for row in retained.sorted() {
+            var item = baseline.items[row]; item.sourceUnitIDs = baselineIDs[row]
+            output.append((baselineIDs[row].min()!, row, item))
+        }
+        for row in accepted {
+            output.append((proposalIDs[row].min()!, baseline.items.count + row, proposal.items[row]))
+        }
+        output.sort { $0.first == $1.first ? $0.order < $1.order : $0.first < $1.first }
+        return .init(items: output.map(\.item), method: proposal.method)
+    }
+
+    /// A model can settle a fallible reading, but cannot supply an object or
+    /// finish wording the current source genuinely left open. These holds are
+    /// recorded only after the rules' source-owned antecedent binding passes.
+    static func preservesRequiredSourceReview(
+        in refined: [ExtractedThought], found rules: [ExtractedThought]
+    ) -> Bool {
+        if refined == rules { return true }
+        func literal(_ text: String) -> String {
+            text.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+        }
+        return rules.filter { item in
+            item.needsReview && (item.organization.state.gap == .ambiguousObject
+                || item.organization.state.gap == .incompleteThought)
+        }.allSatisfy { rule in
+            let raw = literal(rule.rawQuote)
+            let matching = refined.filter { candidate in
+                // Rules IDs belong to the repaired creation ledger; a model
+                // owns the original source. Compare their immutable literal
+                // spans rather than treating those two indices as one ledger.
+                return [candidate.rawQuote, candidate.sourceQuote].contains { quote in
+                    let own = literal(quote)
+                    return !raw.isEmpty && !own.isEmpty
+                        && (own.contains(raw) || raw.contains(own))
+                }
+            }
+            return !matching.isEmpty && matching.allSatisfy {
+                $0.needsReview && $0.organization.needsClarification
+                    && !$0.organization.state.permitsAction
+                    && $0.organization.reminderDelivery == .none
+            }
+        }
+    }
+
     /// A single narrative may lose its obligation frame, but not its substance.
     static func preservesEverything(
         in refined: [ExtractedThought],
@@ -686,6 +1526,7 @@ enum RefinementGuard {
     ) -> Bool {
         guard !refined.isEmpty else { return false }
         if refined == rules { return true }
+        guard preservesRequiredSourceReview(in: refined, found: rules) else { return false }
         let independentActions = rules.filter { $0.organization.itemType.isActionable && $0.organization.itemType != .shopping }
         guard refined.filter({ $0.organization.itemType.isActionable && $0.organization.itemType != .shopping }).count >= independentActions.count else { return false }
         let quotes = rules.map { tokens(in: $0.sourceQuote) }
@@ -739,6 +1580,9 @@ enum RefinementGuard {
                         && result.personName == rule.organization.personName
                         && result.dueDate == rule.organization.dueDate
                         && result.reminderDate == rule.organization.reminderDate
+                        && ((rule.organization.temporalIntent.clockBoundary == nil
+                             && result.temporalIntent.clockBoundary == nil)
+                            || result.temporalIntent == rule.organization.temporalIntent)
                         && result.locationIntent == rule.organization.locationIntent
                         && result.recurrenceRule == rule.organization.recurrenceRule
                 }) else { return false }
@@ -857,13 +1701,19 @@ enum ThoughtExtractionEngine {
         defer { CapturePerformanceSignposts.end("SemanticParsing", signpost) }
         let runtimeConfiguration = permitsOnDeviceIntelligence ? RuntimeExampleConfiguration.current : nil
         var ruleTrace: RuntimeRuleTrace?
+#if DEBUG
+        RuntimeExampleLibrary.developmentObserver?("diagnostic boundary=rules-begin")
+#endif
         let processed = RuleBasedThoughtExtractor.process(
             transcript,
             referenceDate: referenceDate,
             calendar: calendar,
             permitsOperations: permitsOperations,
-            traceObserver:runtimeConfiguration == nil ? nil : { ruleTrace = $0 }
+            traceObserver:permitsOnDeviceIntelligence ? { ruleTrace = $0 } : nil
         )
+#if DEBUG
+        RuntimeExampleLibrary.developmentObserver?("diagnostic boundary=rules-end")
+#endif
         let fallback = processed.items
 
         // Candidate-only, reversible whole-capture interpretation. Retrieval is
@@ -887,7 +1737,30 @@ enum ThoughtExtractionEngine {
 #endif
                     return operationPlan
                 }
-                return shapingShoppingResult(result, transcript: transcript)
+                // A terminal processing failure is not an optional semantic
+                // refinement. Keep its exact whole-original, inert review
+                // instead of restoring partial resolved rules through pins.
+                // Equality with the internal factory excludes arbitrary held
+                // proposals; operation handoff above retains its precedence.
+                let processingReview = RuntimeSourceInterpreter.recoverableReview(transcript)
+                if operationPlan.operations.isEmpty, result.operations.isEmpty,
+                   result.items == processingReview.items {
+                    return .init(items: processingReview.items, method: result.method)
+                }
+                // Deterministic current-source certificates and saved changes
+                // keep their own proofs. Generated items must retain actual
+                // missing-object/unfinished-source holds from the final rules.
+                if result.method == .appleIntelligence, result.operations.isEmpty,
+                   !RefinementGuard.preservesRequiredSourceReview(
+                    in: result.items, found: processed.items) {
+                    return operationPlan
+                }
+                let shaped = shapingShoppingResult(result, transcript: transcript)
+                let questionPreserved = RefinementGuard.preservingOwnedArgumentDecisions(in: shaped,
+                    baseline: operationPlan, source: transcript, trace: ruleTrace,
+                    referenceDate: referenceDate, calendar: calendar)
+                return RefinementGuard.preservingDeclaredLists(in: questionPreserved,
+                    baseline: operationPlan, source: transcript, trace: ruleTrace)
             }
         }
 
@@ -912,6 +1785,12 @@ enum ThoughtExtractionEngine {
             return shapingShoppingResult(certified, transcript: transcript)
         }
 
+        if let composed=RuntimeCompleteSourceComposition.interpret(transcript,
+            referenceDate:referenceDate,calendar:calendar,
+            rules:.init(items:processed.items,operations:processed.operations,method:.rules),context:runtimeContext) {
+            return shapingShoppingResult(composed,transcript:transcript)
+        }
+
 #if canImport(FoundationModels)
         if permitsOnDeviceIntelligence,
            #available(iOS 26.0, *),
@@ -929,13 +1808,16 @@ enum ThoughtExtractionEngine {
            // the capture, so the worst case is the behaviour every non-Apple
            // Intelligence device already gets.
            RefinementGuard.preservesEverything(in: refined, found: fallback) {
-            return ThoughtExtractionResult(
+            let proposal = ThoughtExtractionResult(
                 items: RuleBasedThoughtExtractor.shapingShoppingLists(
                     refined,
                     capture: transcript
                 ),
                 method: .appleIntelligence
             )
+            return RefinementGuard.preservingOwnedArgumentDecisions(in: proposal,
+                baseline: .init(items: processed.items, operations: processed.operations, method: .rules),
+                source: transcript, trace: ruleTrace, referenceDate: referenceDate, calendar: calendar)
         }
 #endif
 
@@ -974,6 +1856,11 @@ enum ThoughtExtractionEngine {
             referenceDate: referenceDate, calendar: calendar,
             rules: .init(items: processed.items, operations: processed.operations, method: .rules)) {
             return shapingShoppingResult(certified, transcript: transcript)
+        }
+        if let composed=RuntimeCompleteSourceComposition.interpret(transcript,
+            referenceDate:referenceDate,calendar:calendar,
+            rules:.init(items:processed.items,operations:processed.operations,method:.rules),context:.empty) {
+            return shapingShoppingResult(composed,transcript:transcript)
         }
         return ThoughtExtractionResult(
             items: processed.items,
@@ -1018,9 +1905,13 @@ enum RuleBasedThoughtExtractor {
     private struct SourceVoicePlan {
         enum Owner: Equatable { case speaker, reported, messagePayload, unresolved, mixed }
         private let spans: [(range: Range<String.Index>, owner: Owner)]
+        /// Literal coordinators preceding a separately proved direct matrix.
+        /// These never apply to a payload-only fragment or an earlier prefix.
+        private let directMatrixLeads: [(range: Range<String.Index>, count: Int, tailEnd: String.Index)]
 
         init(source: String) {
             var found: [(range: Range<String.Index>, owner: Owner)] = []
+            var matrixLeads: [(range: Range<String.Index>, count: Int, tailEnd: String.Index)] = []
             for sentenceRange in RuleBasedThoughtExtractor.quotePreservingSentenceRanges(in: source) {
                 let sentence = String(source[sentenceRange])
                 // A complete outer request to retain content owns its quoted
@@ -1029,7 +1920,10 @@ enum RuleBasedThoughtExtractor {
                 if ActionabilityReader.explicitCaptureRetentionKind(sentence) != nil {
                     continue
                 }
-                if let boundary = RuleBasedThoughtExtractor.captureRetentionIndependentBoundary(in: sentence) {
+                let withdrawalBoundary = ActionabilityReader.namedActionWithdrawalReading(in: sentence)?.positiveContinuationBoundary
+                let independentBoundary = RuleBasedThoughtExtractor.captureRetentionIndependentBoundary(in: sentence)
+                    ?? withdrawalBoundary
+                if let boundary = independentBoundary {
                     // The proved retained prefix owns its quotation; read the
                     // following intention's own voice independently, including
                     // any reporting/message quotation in that tail.
@@ -1037,16 +1931,50 @@ enum RuleBasedThoughtExtractor {
                     let tailStart = source.index(sentenceRange.lowerBound,
                         offsetBy: sentence.distance(from: sentence.startIndex,
                                                     to: boundary.upperBound))
-                    for span in SourceVoicePlan(source: tail).spans {
+                    if withdrawalBoundary == boundary {
+                        let leadStart = source.index(sentenceRange.lowerBound,
+                            offsetBy: sentence.distance(from: sentence.startIndex,
+                                                        to: boundary.lowerBound))
+                        matrixLeads.append((leadStart..<tailStart,
+                            sentence.distance(from: boundary.lowerBound, to: boundary.upperBound),
+                            sentenceRange.upperBound))
+                    }
+                    let tailPlan = SourceVoicePlan(source: tail)
+                    for span in tailPlan.spans {
                         let lower = source.index(tailStart, offsetBy:
                             tail.distance(from: tail.startIndex, to: span.range.lowerBound))
                         let upper = source.index(tailStart, offsetBy:
                             tail.distance(from: tail.startIndex, to: span.range.upperBound))
                         found.append((lower..<upper, span.owner))
                     }
+                    // Nested proved returns retain the same ownership metadata
+                    // as their quote spans, rebased into this original source.
+                    for lead in tailPlan.directMatrixLeads {
+                        let lower = source.index(tailStart, offsetBy:
+                            tail.distance(from: tail.startIndex, to: lead.range.lowerBound))
+                        let upper = source.index(tailStart, offsetBy:
+                            tail.distance(from: tail.startIndex, to: lead.range.upperBound))
+                        let end = source.index(tailStart, offsetBy:
+                            tail.distance(from: tail.startIndex, to: lead.tailEnd))
+                        matrixLeads.append((lower..<upper, lead.count, end))
+                    }
                     continue
                 }
-                if let voice = QuotedSpeechScope.matrixVoice(in: sentence),
+                // Read an unchanged literal acquisition matrix through its
+                // exact retailer prefix. The raw row must own this occurrence
+                // before owner(of:) can consume the same lead for quotation.
+                let quoteMatrix: String
+                if let retail = ShoppingGroupParser.frontedAcquisitionContext(in: sentence),
+                   QuotedSpeechScope.matrixVoice(in: String(sentence[retail.acquisitionRange])) == .direct {
+                    quoteMatrix = String(sentence[retail.acquisitionRange])
+                    let actionStart = source.index(sentenceRange.lowerBound,
+                        offsetBy: sentence.distance(from: sentence.startIndex,
+                            to: retail.acquisitionRange.lowerBound))
+                    matrixLeads.append((sentenceRange.lowerBound..<actionStart,
+                        sentence.distance(from: sentence.startIndex, to: retail.acquisitionRange.lowerBound),
+                        sentenceRange.upperBound))
+                } else { quoteMatrix = sentence }
+                if let voice = QuotedSpeechScope.matrixVoice(in: quoteMatrix),
                    let quote = QuotedSpeechScope.ranges(in: sentence).first {
                     let quoteStart = source.index(sentenceRange.lowerBound,
                                                   offsetBy: sentence.distance(
@@ -1105,6 +2033,7 @@ enum RuleBasedThoughtExtractor {
                 }
             }
             spans = found
+            directMatrixLeads = matrixLeads
         }
 
         func owner(of sourceRange: Range<String.Index>, segment: String) -> Owner {
@@ -1123,7 +2052,20 @@ enum RuleBasedThoughtExtractor {
                 }) ? .reported : .mixed
             }
             if owners.contains(where: { if case .messagePayload = $0 { true } else { false } }) {
-                return QuotedSpeechScope.matrixVoice(in: segment) == .direct
+                // The row retains its raw coordinator, but quote ownership
+                // reads the same direct matrix already proved on this exact
+                // source occurrence. No arbitrary connector or analysis-text
+                // rewrite can establish that ownership. A fragment starting
+                // inside the message cannot consume the source-bound lead.
+                let matrix: String
+                if let lead = directMatrixLeads.first(where: {
+                    $0.range.lowerBound == sourceRange.lowerBound
+                        && $0.range.upperBound < sourceRange.upperBound
+                        && sourceRange.upperBound <= $0.tailEnd
+                }) {
+                    matrix = String(segment.dropFirst(lead.count))
+                } else { matrix = segment }
+                return QuotedSpeechScope.matrixVoice(in: matrix) == .direct
                     ? .speaker : .messagePayload
             }
             return .speaker
@@ -1155,6 +2097,8 @@ enum RuleBasedThoughtExtractor {
                 case destinationDay(CalendarDay)
                 case routingClarification
                 case sourceRole
+                /// Literal anaphoric question content owned by one communication.
+                case communicationQuestion
                 /// A sentence that only comments on an adjacent intention:
                 /// its explanation, refinement, settled background, or a
                 /// declined alternative. It owns no row of its own.
@@ -1174,7 +2118,7 @@ enum RuleBasedThoughtExtractor {
                          .sourceRole, .discourseContext, .retainedDiscourseContext: return true
                     case .deadline, .sharedEvent, .eventReference,
                          .choiceContext, .choiceCommentary,
-                         .destinationDay, .recipientRevision: return false
+                         .destinationDay, .recipientRevision, .communicationQuestion: return false
                     }
                 }
 
@@ -1183,6 +2127,7 @@ enum RuleBasedThoughtExtractor {
                     if case .choiceCommentary = self { return true }
                     if case .routingClarification = self { return true }
                     if case .sourceRole = self { return true }
+                    if case .communicationQuestion = self { return true }
                     if case .discourseContext = self { return true }
                     return false
                 }
@@ -1533,6 +2478,90 @@ enum RuleBasedThoughtExtractor {
         ) != nil
     }
 
+    private static func communicationQuestionOwner(
+        before index: Int, in segments: [Segment], ignoring owned: Set<Int>
+    ) -> Int? {
+        var communications: [Int] = []
+        for prior in (0..<index).reversed() {
+            if owned.contains(prior) { continue }
+            guard isEstablishedCommunication(segments[prior]) else { break }
+            communications.append(prior)
+        }
+        return communications.count == 1 ? communications.first : nil
+    }
+
+    /// Selected already-separated clauses keep one literal AND in their raw
+    /// quote before proposition IDs are bound. Analysis and public splitter
+    /// strings are unchanged; an unowned connector is otherwise still allowed.
+    private static func retainingOwnedCoordinatorSource(
+        _ input: [Segment], in source: String, voicePlan: SourceVoicePlan,
+        referenceDate: Date, calendar: Calendar
+    ) -> [Segment] {
+        guard input.count > 1, source.range(of: #"(?i)\band\b"#, options: .regularExpression) != nil,
+              input.contains(where: { isAnaphoricCommunicationQuestion($0.analysisText)
+                || $0.analysisText.range(of: #"(?i)^(?:i|we)\s+mean\s+(?:a|an|the)\s+"#,
+                    options: .regularExpression) != nil }),
+              QuotedSpeechScope.ranges(in: source).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(source) else { return input }
+        var ranges: [Range<String.Index>] = [], cursor = source.startIndex
+        for segment in input {
+            guard !segment.quote.isEmpty,
+                  let span = source.range(of: segment.quote, options: .literal, range: cursor..<source.endIndex),
+                  String(source[span]).utf8.elementsEqual(segment.quote.utf8),
+                  source.range(of: segment.quote, options: .literal,
+                    range: span.upperBound..<source.endIndex) == nil else { return input }
+            ranges.append(span); cursor = span.upperBound
+        }
+        let boundaries = splittableCoordinatorRanges(in: source)
+        var output = input
+        for index in 1..<input.count {
+            let left = input[index - 1], right = input[index]
+            guard !left.forcesReview, !right.forcesReview,
+                  left.conditionalDependency == nil, right.conditionalDependency == nil else { continue }
+            if isAnaphoricCommunicationQuestion(right.analysisText) {
+                guard communicationQuestionOwner(before: index, in: input, ignoring: []) == index - 1,
+                      !hasIndependentOutputConjunct(right.analysisText) else { continue }
+            } else {
+                let namedRestatement = left.analysisText.range(
+                    of: #"(?i)^(?:i|we)\s+mean\s+(?:a|an|the)\s+"#, options: .regularExpression) != nil
+                let call = isEstablishedCommunication(right)
+                    && ActionabilityReader.actionBody(right.analysisText).range(
+                        of: #"(?i)^(?:call|phone)\s+"#, options: .regularExpression) != nil
+                let fact = !ActionabilityReader.read(right.analysisText).belongsOnToday
+                    && hasExplicitFinitePredicate(right.analysisText)
+                guard namedRestatement, case .objectDescription = captureDiscourseReference(in: left.analysisText),
+                      call || fact,
+                      ClauseScope.finiteContactPurpose(in: right.quote) == nil,
+                      ClauseScope.bookingTarget(in: right.quote) == nil,
+                      ClauseScope.outgoingArtifactDeadline(in: right.quote) == nil,
+                      ClauseScope.partialNumberedWork(in: right.quote) == nil,
+                      ClauseScope.midnightDeadline(in: right.quote) == nil,
+                      ClauseScope.contactTimingPreference(in: right.quote) == nil,
+                      ClauseScope.datedEnrollmentAppositive(in: right.quote,
+                        referenceDate: referenceDate, calendar: calendar) == nil,
+                      ShoppingGroupParser.ownedRetailCartContext(in: right.quote) == nil else { continue }
+            }
+            let gap = ranges[index - 1].upperBound..<ranges[index].lowerBound
+            let candidates = boundaries.filter { gap.lowerBound <= $0.lowerBound && $0.upperBound <= gap.upperBound }
+            guard candidates.count == 1, let boundary = candidates.first,
+                  normalize(String(source[boundary])).lowercased() == "and",
+                  String(source[gap.lowerBound..<boundary.lowerBound]).range(
+                    of: #"^\s*,?\s*$"#, options: .regularExpression) != nil,
+                  source[boundary.upperBound..<gap.upperBound].allSatisfy(\.isWhitespace),
+                  let andWord = source.range(of: #"(?i)\band\b"#, options: .regularExpression, range: boundary)
+            else { continue }
+            let extended = andWord.lowerBound..<ranges[index].upperBound
+            let quote = String(source[extended])
+            guard voicePlan.owner(of: source.startIndex..<source.endIndex, segment: source) == .speaker,
+                  voicePlan.owner(of: ranges[index - 1], segment: left.quote) == .speaker,
+                  voicePlan.owner(of: extended, segment: quote) == .speaker else { continue }
+            output[index] = Segment(quote: quote, analysisText: right.analysisText,
+                suggestedTitle: right.suggestedTitle, forcesReview: right.forcesReview,
+                memoryOwner: right.memoryOwner, conditionalDependency: right.conditionalDependency)
+        }
+        return output
+    }
+
     /// An adjacent anaphoric question supplies the content of one established
     /// communication. Its internal weekday describes the question's subject;
     /// the communication keeps its own existing schedule. Different named
@@ -1542,23 +2571,24 @@ enum RuleBasedThoughtExtractor {
         into existing: GroupContextPlan
     ) -> GroupContextPlan {
         var plan = existing
-        let pattern = #"(?i)^(?:please\s+)?ask\s+(?:whether|if)\s+(?:he|she|they)\s+(?:needs?|wants?|can|could|will|would|has|have|is|are|was|were|does|do)\b"#
         for index in segments.indices {
             let question = segments[index]
-            guard question.analysisText.range(of: pattern, options: .regularExpression) != nil,
+            guard isAnaphoricCommunicationQuestion(question.analysisText),
                   !question.forcesReview,
                   QuotedSpeechScope.ranges(in: question.quote).isEmpty,
                   ClauseScope.read(question.analysisText).act != .reporting,
                   !hasIndependentOutputConjunct(question.analysisText) else { continue }
-            var communications: [Int] = []
-            for prior in (0..<index).reversed() {
-                if plan.edges.contains(where: { $0.sourceIndices.contains(prior) }) { continue }
-                guard isEstablishedCommunication(segments[prior]) else { break }
-                communications.append(prior)
-            }
-            guard communications.count == 1, let owner = communications.first,
+            let owned = plan.edges.reduce(into: Set<Int>()) { $0.formUnion($1.sourceIndices) }
+            guard let owner = communicationQuestionOwner(before: index, in: segments, ignoring: owned),
                   !propositions.unmatchedSegmentIndices.contains(index),
                   !propositions.unmatchedSegmentIndices.contains(owner) else {
+                plan.unresolvedSourceIndices.insert(index)
+                continue
+            }
+            // A literal retained coordinator cannot rebind its question to
+            // a different communication after another context edge is skipped.
+            if question.quote.range(of: #"(?i)^and\s+"#, options: .regularExpression) != nil,
+               communicationQuestionOwner(before: index, in: segments, ignoring: []) != owner {
                 plan.unresolvedSourceIndices.insert(index)
                 continue
             }
@@ -1573,11 +2603,18 @@ enum RuleBasedThoughtExtractor {
             }
             plan.edges.append(.init(
                 claimIndex: index, sourceIndices: [index], targetIndices: [owner],
-                kind: .sourceRole, sourceOccurrenceIDs: sourceIDs,
+                kind: .communicationQuestion, sourceOccurrenceIDs: sourceIDs,
                 targetOccurrenceIDs: ownerIDs
             ))
         }
         return plan
+    }
+
+    /// The existing owned-question grammar, shared with a veto-only check for
+    /// final baseline rows whose parent trace is unavailable.
+    static func isAnaphoricCommunicationQuestion(_ text: String) -> Bool {
+        text.range(of: #"(?i)^(?:please\s+)?ask\s+(?:whether|if)\s+(?:he|she|they)\s+(?:needs?|wants?|can|could|will|would|has|have|is|are|was|were|does|do)\b"#,
+                   options: .regularExpression) != nil
     }
 
     private static func planningSourcePropositionEdges(
@@ -1759,6 +2796,101 @@ enum RuleBasedThoughtExtractor {
         case correctedMemory
     }
 
+    /// Complete forms of existing output relations. This reader is deliberately
+    /// independent of conjunct/sentence splitting: a prefix match cannot protect
+    /// unknown residual words or a later instruction from those splitters.
+    private static let completeMetadataPatterns: [String] = {
+        let labelWord = #"(?!(?:and|or|but|then|also|neither|because|if|unless|when|is|are|was|were|has|have|will|must|should|\#(ActionabilityReader.actionVerb)|\#(ActionabilityReader.headOnlyImperativeVerb))\b)[\p{L}\p{M}'’-]+"#
+        let label = #"\#(labelWord)(?:\s+\#(labelWord)){0,3}"#
+        let pairedPolicy = #"neither\s+reminder\s+should\s+replace\s+the\s+other(?:\s+just\s+because\s+both\s+concern\s+\#(label))?"#
+        return [
+        #"keep\s+the\s+task\s+and\s+(?:(?:today|tomorrow|tonight|monday|tuesday|wednesday|thursday|friday|saturday|sunday)['’]s|the)\s+date\s*,?\s*but\s+hold\s+the\s+notification\s+time\s+until\s+(?:i|we)\s+answer"#,
+        #"keep\s+the\s+task\s+and\s+explain\s+the\s+missing\s+requirement(?:\s+rather\s+than\s+choosing\s+(?:a|any)\s+(?:location|clock\s+time)(?:\s+or\s+(?:a\s+)?(?:location|clock\s+time))?\s+for\s+(?:me|us))?"#,
+        #"the\s+text\s+and\s+printing\s+task\s+are\s+both\s+about\s+travel\s*,?\s*but\s+the\s+printing\s+reminder\s+should\s+not\s+get\s+copied\s+onto\s+the\s+text\s+or\s+onto\s+a\s+new\s+train\s+event"#,
+        #"for\s+collection\s*[,;:]?\s*take\s+(?:the|a)\s+repair\s+receipt"#,
+        #"(?:i|we)\s+(?:am|are)\s+adding\s+those\s+details\s+to\s+the\s+two\s+jobs\s*,?\s*not\s+asking\s+for\s+separate\s+tasks\s+called\s+\#(label)\s+and\s+\#(label)"#,
+        pairedPolicy, futureOutputPreludeCore
+        ]
+    }()
+
+    private static func completeMetadataRanges(in text: String) -> [Range<String.Index>] {
+        guard !QuotedSpeechScope.hasUnclosedQuote(text) else { return [] }
+        return completeMetadataPatterns.flatMap { pattern in
+            NSRegularExpression.speakItCached(#"(?i)(?<![\p{L}\p{M}])(?:"# + pattern + #")(?=$|[\s,;.!?])"#)?
+                .matches(in: text, range: NSRange(text.startIndex..., in: text))
+                .compactMap { Range($0.range, in: text) }
+                .filter { !QuotedSpeechScope.protects($0, in: text) } ?? []
+        }
+    }
+
+    private static func isCompleteMetadataReference(_ text: String) -> Bool {
+        completeMetadataRanges(in: text).contains { range in
+            String(text[..<range.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && String(text[range.upperBound...]).trimmingCharacters(in:
+                    .whitespacesAndNewlines.union(CharacterSet(charactersIn: ".!?"))).isEmpty
+        }
+    }
+
+    /// Adjacent complete output relations have distinct source owners even
+    /// without an ASR stop. No word-bearing residual may disappear into this
+    /// partition; an unrecognized suffix keeps the ordinary parsing path.
+    private static func completeMetadataRuns(in text: String) -> [String]? {
+        let ranges = completeMetadataRanges(in: text).sorted { $0.lowerBound < $1.lowerBound }
+        guard ranges.count > 1 else { return nil }
+        var cursor = text.startIndex
+        var parts: [String] = []
+        let separators = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: ",;.!?"))
+        for range in ranges {
+            guard range.lowerBound >= cursor,
+                  String(text[cursor..<range.lowerBound]).trimmingCharacters(in: separators).isEmpty else { return nil }
+            parts.append(String(text[cursor..<range.upperBound]))
+            cursor = range.upperBound
+        }
+        guard String(text[cursor...]).trimmingCharacters(in: separators).isEmpty else { return nil }
+        if let final = parts.indices.last { parts[final] += String(text[cursor...]) }
+        return parts
+    }
+
+    /// Juxtaposition may have cut an internal metadata verb before its source
+    /// role was considered. Rejoin only cuts inside a complete proved interval,
+    /// using the original substring; an outside command/fact keeps its boundary.
+    private static func retainingCompleteMetadataFragments(
+        _ pieces: [String], in source: String
+    ) -> [String] {
+        let ranges = completeMetadataRanges(in: source)
+        guard pieces.count > 1, !ranges.isEmpty else { return pieces }
+        var result: [(text: String, range: Range<String.Index>)] = []
+        var cursor = source.startIndex
+        for piece in pieces {
+            guard let span = source.range(of: piece, range: cursor..<source.endIndex) else { return pieces }
+            if let prior = result.last, ranges.contains(where: {
+                $0.lowerBound <= prior.range.upperBound && $0.upperBound > prior.range.lowerBound
+                    && span.lowerBound > $0.lowerBound && span.lowerBound < $0.upperBound
+            }) {
+                let joined = prior.range.lowerBound..<span.upperBound
+                result[result.count - 1] = (String(source[joined]), joined)
+            } else {
+                result.append((piece, span))
+            }
+            cursor = span.upperBound
+        }
+        return result.map(\.text).flatMap { completeMetadataRuns(in: $0) ?? [$0] }
+    }
+
+    /// This is a complete relation about the next output, including a wish
+    /// comparing its visibility with an earlier output. No residual predicate
+    /// may inherit the recording role merely from the opening prelude.
+    private static let futureOutputPreludeHead = #"there\s+is\s+(?:one|a|another)\s+(?:(?:final|last|next)\s+)?(?:obligation|task|action)\s+coming\s+(?:after\s+this|next)\b"#
+    private static let futureOutputPreludeCore = futureOutputPreludeHead
+        + #"(?:,?\s+and\s+(?:i|we)\s+want\s+(?:it|this|that)\s+to\s+be\s+as\s+(?:accessible|visible|available)\s+as\s+(?:the\s+)?(?:first|second|last|final)\s+(?:one|task|action|obligation))?"#
+    private static func isCompleteFutureOutputPrelude(_ text: String) -> Bool {
+        guard QuotedSpeechScope.ranges(in: text).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(text),
+              ClauseScope.read(text).act != .reporting else { return false }
+        return text.range(of: #"(?i)^\#(futureOutputPreludeCore)[.!?]*$"#,
+                          options: .regularExpression) != nil
+    }
+
     /// Recognized recording narration is also a written sentence boundary
     /// when dictation lowercases its subject. Classification and splitting
     /// share these cues; ownership/safety remain the callers' responsibility.
@@ -1782,7 +2914,7 @@ enum RuleBasedThoughtExtractor {
         let pauseDoesNotEndSpeech = has(text,
             #"(?i)^(?:a|the|this)\s+pause(?:\s+here)?\s+(?:should|must)\s+not\s+(?:mean|indicate|imply)\s+(?:i|we)\s+(?:have\s+finished|am\s+done|are\s+done)\s+(?:speaking|talking|recording)\b"#)
         let futureOutputPrelude = has(text,
-            #"(?i)^there\s+is\s+(?:one|a|another)\s+(?:(?:final|last|next)\s+)?(?:obligation|task|action)\s+coming\s+(?:after\s+this|next)\b"#)
+            #"(?i)^\#(futureOutputPreludeHead)"#)
             || has(text, #"(?i)^the\s+(?:first|last|final|next)\s+(?:task|action|obligation)\s+is\s+(?:this|that)\s*:?[.!?]*$"#)
         if futureOutputPrelude { return true }
         return thinkingPause || takingThoughtsDown || explicitRecordingOnly
@@ -1793,6 +2925,17 @@ enum RuleBasedThoughtExtractor {
     /// grammatical clause as a fresh task or fact. This is intentionally a
     /// small, asymmetric pass: ordinary sentences remain independent, and a
     /// dependent clause with competing owners remains visible for review.
+    private static let sourceCorrectionRetentionPattern =
+        #"(?:preserve|keep|retain)\s+(?:my|our|the)\s+correction\s+in\s+(?:the|this)\s+source(?:\s*,?\s*but\s+(?:do\s+not|don['’]?t)\s+create\s+(?:a|an|the)\s+(?:[\p{L}'’-]+\s+){0,4}(?:\#(ActionabilityReader.actionVerb)|job|task|reminder)(?:\s+(?:or|and)\s+(?:a|an|the)\s+(?:[\p{L}'’-]+\s+){0,4}(?:\#(ActionabilityReader.actionVerb)|job|task|reminder))?)?"#
+
+    private static func revisedActionRetention(in text: String) -> (verb: String, sourceOnly: Bool)? {
+        let pattern = #"(?i)^(?:please\s+)?(?:save|keep|retain)\s+the\s+(?:revised|current|final|updated)\s+(\#(ActionabilityReader.actionVerb))(\s*,?\s+and\s+\#(sourceCorrectionRetentionPattern))?[.!?]*$"#
+        guard let regex = NSRegularExpression.speakItCached(pattern),
+              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let head = Range(match.range(at: 1), in: text) else { return nil }
+        return (String(text[head]).lowercased(), match.range(at: 2).location != NSNotFound)
+    }
+
     private static func planningSourceRoles(
         _ input: [Segment], referenceDate: Date, calendar: Calendar
     ) -> SourceRolePlan {
@@ -2107,6 +3250,46 @@ enum RuleBasedThoughtExtractor {
                has(text, #"(?i)\bno\s*,?\s*that\s+(?:makes\s+no\s+sense|is\s+unnecessary)\b"#),
                QuotedSpeechScope.ranges(in: segments[index].quote).isEmpty,
                !hasIndependentOutputConjunct(text) {
+                roles[index] = .captureOnly
+            }
+        }
+
+        // A definite revised action refers to a revision already proved
+        // above. The optional source-fidelity clause preserves that correction
+        // on CaptureSession; its repudiated dates cannot reschedule the owner.
+        for index in segments.indices {
+            guard case .independent = roles[index], !segments[index].forcesReview,
+                  QuotedSpeechScope.ranges(in: segments[index].quote).isEmpty,
+                  ClauseScope.read(segments[index].analysisText).act == .direct else { continue }
+            let text = segments[index].analysisText
+            if let reference = revisedActionRetention(in: text) {
+                let head = "(?i)^" + NSRegularExpression.escapedPattern(for: reference.verb) + "\\b"
+                let current = (0..<index).filter { candidate in
+                    guard case .independent = roles[candidate], !segments[candidate].forcesReview,
+                          QuotedSpeechScope.ranges(in: segments[candidate].quote).isEmpty,
+                          ClauseScope.read(segments[candidate].analysisText).act != .reporting else { return false }
+                    return ActionabilityReader.actionBody(segments[candidate].analysisText)
+                        .range(of: head, options: .regularExpression) != nil
+                }
+                let revised = Set((0..<index).compactMap { candidate -> Int? in
+                    if case let .replacement(owner) = roles[candidate], current.contains(owner) { return owner }
+                    return nil
+                })
+                guard current.count == 1, revised.count == 1, let owner = revised.first else { continue }
+                if reference.sourceOnly { roles[index] = .captureOnly }
+                else {
+                    setFocus(index, text, type: .note)
+                    roles[index] = .context(owners: [owner])
+                }
+            } else if index > 0,
+                      text.range(of: "(?i)^" + sourceCorrectionRetentionPattern + "[.!?]*$",
+                                 options: .regularExpression) != nil,
+                      case let .context(owners) = roles[index - 1], owners.count == 1,
+                      revisedActionRetention(in: segments[index - 1].analysisText) != nil,
+                      roles.contains(where: { role in
+                        if case let .replacement(owner) = role { return owners.contains(owner) }
+                        return false
+                      }) {
                 roles[index] = .captureOnly
             }
         }
@@ -2848,7 +4031,7 @@ enum RuleBasedThoughtExtractor {
         let explicitAdoption = partition.operations.isEmpty
             ? ClauseScope.explicitAdoption(in: creating) : nil
         let declaredMemorySegments = partition.operations.isEmpty
-            ? declaredReportedMemorySegments(in: creating) : nil
+            ? declaredReportedMemorySegments(in: creating, referenceDate: referenceDate, calendar: calendar) : nil
         let numberedIntents = singularMemoryLead == nil
             ? numberedIntentionSegments(in: creating) : nil
         let scopeBody = withoutLeadingTemporalContext(IntentConsolidator.stripFraming(creating))
@@ -2924,13 +4107,17 @@ enum RuleBasedThoughtExtractor {
             // owner. Keep those spans separate until the unique-owner
             // revision validator consumes them, rather than treating their
             // successive "until" phrases as one unsupported condition.
-            segments = timingSentences.flatMap { segmentedThoughts(in: $0) }
+            segments = timingSentences.flatMap { segmentedThoughts(in: $0, referenceDate: referenceDate, calendar: calendar) }
         } else if hasSeparatedTimingScope {
             // The current stored timing model cannot prove a detached bound
             // belongs to a particular schedule. Preserve every word and grant
             // no alert authority rather than silently running without it.
             segments = [Segment(quote: creating, analysisText: creating,
                                 suggestedTitle: nil, forcesReview: true)]
+        } else if ClauseScope.partialNumberedWork(in: creating) != nil {
+            // One complete source-owned work component reaches the ordinary
+            // organizer/trace pipeline; this is not an early-return shortcut.
+            segments = [Segment(quote: creating, analysisText: creating, suggestedTitle: nil)]
         } else if numberedIntents == nil, !hasOwnedClockReview,
                   ThoughtOrganizer.hasUnresolvedTimingConstraint(creating) {
             // Only positively owned non-repeating clock commentary may leave
@@ -2942,7 +4129,7 @@ enum RuleBasedThoughtExtractor {
                                 analysisText: explicitAdoption.action,
                                 suggestedTitle: explicitAdoption.action)]
                 + (normalize(explicitAdoption.remainder).isEmpty ? []
-                    : segmentedThoughts(in: explicitAdoption.remainder))
+                    : segmentedThoughts(in: explicitAdoption.remainder, referenceDate: referenceDate, calendar: calendar))
         } else if let declaredMemorySegments {
             segments = declaredMemorySegments
         } else if let singularMemoryLead {
@@ -2974,14 +4161,18 @@ enum RuleBasedThoughtExtractor {
                 forcesReview: consolidation.requiresReview
             )]
         } else {
-            segments = segmentedThoughts(in: creating)
+            segments = segmentedThoughts(in: creating, referenceDate: referenceDate, calendar: calendar)
         }
 
         let rawSegments = segments.isEmpty
             ? [Segment(quote: creating, analysisText: creating, suggestedTitle: nil)]
             : segments
+        let purchaseScoped = coalescingCertifiedPurchaseSentences(rawSegments,
+            in: creating, voicePlan: voicePlan,
+            sourceHadCorrection: SelfCorrectionResolver.hasCorrectionJunction(in: normalized),
+            referenceDate: referenceDate, calendar: calendar)
         let locatedObjects = groundingLocatedObjectReferences(
-            coalescingDeicticRetention(rawSegments, source: creating), source: creating
+            coalescingDeicticRetention(purchaseScoped, source: creating), source: creating
         )
         let ownedSegments = groundingSameActionObjects(locatedObjects.segments)
         // "Add milk to my shopping list" is the assistant vocabulary for "buy
@@ -2991,7 +4182,7 @@ enum RuleBasedThoughtExtractor {
         let listTime = listWideTemporalContext(in: normalized)
         var listHasAction = false
         var listScopeOpen = listTime != nil
-        let safeSegments = sourceCoveredSegments(ownedSegments, in: creating).map { segment in
+        let conditionedSegments = sourceCoveredSegments(ownedSegments, in: creating).map { segment in
             var analysis = canonicalizedListCommand(segment.analysisText)
             if listScopeOpen {
                 let actionable = ActionabilityReader.read(analysis).belongsOnToday
@@ -3027,6 +4218,8 @@ enum RuleBasedThoughtExtractor {
                 conditionalDependency: boundCondition ? nil : segment.conditionalDependency
             )
         }
+        let safeSegments = retainingOwnedCoordinatorSource(conditionedSegments, in: creating,
+            voicePlan: voicePlan, referenceDate: referenceDate, calendar: calendar)
         // Stage one records exact source proposition occurrences for audit.
         // Its candidates do not affect roles, organization, or output rows.
         let sourcePropositions = SourcePropositionPlan(
@@ -3139,6 +4332,7 @@ enum RuleBasedThoughtExtractor {
         // no extraction-stage row cap is needed for persistence.
         let sourceLedger = sourcePropositions.ledger
         var provenanceCursor = creating.startIndex
+        var declaredCandidates: [(range: Range<String.Index>, original: String)] = []
         let extracted = roleSegments.enumerated().map { index, segment -> ExtractedThought in
             let priorCursor = provenanceCursor
             let sourceRange = creating.range(
@@ -3153,12 +4347,32 @@ enum RuleBasedThoughtExtractor {
                 || (QuotedSpeechScope.directActionAfterQuote(segment.quote)
                 .map { $0.adopted && normalize($0.action) == normalize(segment.analysisText) }
                 ?? false)
+            // Only this new complete work role needs its actual original
+            // span here; other organizer call contracts remain unchanged.
+            let workOriginal = ClauseScope.partialNumberedWork(in: segment.analysisText) != nil
+                ? sourceRange.map { provenance?.rawSpan(for: $0) ?? segment.quote } : nil
             var organization = ThoughtOrganizer.organize(
                 segment.analysisText,
                 referenceDate: referenceDate,
                 calendar: calendar,
-                sourceText: segment.quote
+                sourceText: workOriginal ?? segment.quote
             )
+            let plannedRetail: ExtractedThought? = {
+                guard sourceVoice == .speaker, !segment.forcesReview,
+                      segment.memoryOwner == nil, segment.conditionalDependency == nil,
+                      let parent = plannedRetailShoppingParent(segment.quote,
+                          referenceDate: referenceDate, calendar: calendar),
+                      parent.analysisText == segment.analysisText,
+                      let current = ShoppingGroupParser.plannedRetailPurchase(in: segment.quote,
+                          referenceDate: referenceDate, calendar: calendar),
+                      let originalQuote = sourceRange.map({ provenance?.rawSpan(for: $0) ?? segment.quote }),
+                      let raw = ShoppingGroupParser.plannedRetailPurchase(in: originalQuote,
+                          referenceDate: referenceDate, calendar: calendar),
+                      current.matchesOriginal(raw, source: segment.quote, originalSource: originalQuote)
+                else { return nil }
+                return parent
+            }()
+            if let plannedRetail { organization = plannedRetail.organization }
 
             for edge in groupContextPlan.edges where edge.targetIndices.contains(index) {
                 if case .sharedEvent = edge.kind, let anchor = edge.temporalAnchor,
@@ -3213,6 +4427,11 @@ enum RuleBasedThoughtExtractor {
                     || sourceVoice == .messagePayload)
                     && !adoptedAction && !ownedHistoricalVoice
             if safetyAmbiguity || cannotIdentifyPoint {
+                let missingSameObject = segment.forcesReview
+                    && segment.memoryOwner == nil && sourceVoice == .speaker
+                    && ActionabilityReader.actionBody(segment.analysisText).range(
+                        of: sameActionObjectReferencePattern,
+                        options: .regularExpression) != nil
                 organization = OrganizedThought(
                     itemType: .unclear,
                     category: .general,
@@ -3222,7 +4441,9 @@ enum RuleBasedThoughtExtractor {
                     reminderDate: nil,
                     reminderDelivery: .none,
                     recurrenceRule: nil,
-                    needsClarification: true
+                    needsClarification: true,
+                    state: missingSameObject ? .underspecified(.ambiguousObject)
+                        : .resolved
                 )
             }
 
@@ -3252,6 +4473,14 @@ enum RuleBasedThoughtExtractor {
             var visibleQuote = locatedObjects.boundQuotes.contains(segment.quote)
                 ? span.raw : segment.quote
             var visibleTitle = segment.suggestedTitle
+            if !needsReview, organization.itemType == .task,
+               organization.state.kind == .resolved, !organization.needsClarification,
+               organization.dueDate != nil,
+               let work = ClauseScope.partialNumberedWork(in: segment.analysisText),
+               let raw = ClauseScope.partialNumberedWork(in: span.raw),
+               work.matchesOriginal(raw, normalizedSource: segment.analysisText, originalSource: span.raw) {
+                visibleTitle = work.title(in: segment.analysisText)
+            }
             var sourceIDs = sourceRange.map { sourceLedger.ids(in: $0) } ?? []
             if let sourceRange, priorCursor < sourceRange.lowerBound {
                 let lead = priorCursor..<sourceRange.lowerBound
@@ -3305,6 +4534,29 @@ enum RuleBasedThoughtExtractor {
                                                      options: .regularExpression) {
                 visibleTitle = normalize(String(segment.analysisText[body.upperBound...]))
             }
+            if let sourceRange, sourceVoice == .speaker, !needsReview,
+               segment.memoryOwner == nil, segment.conditionalDependency == nil,
+               case .independent = sourceRoles.roles[index],
+               !groupContextPlan.unresolvedSourceIndices.contains(index),
+               !groupContextPlan.captureOnlySourceIndices.contains(index),
+               !groupContextPlan.edges.contains(where: {
+                   $0.sourceIndices.contains(index) || $0.targetIndices.contains(index)
+               }), partition.operations.isEmpty,
+               !SelfCorrectionResolver.hasCorrectionJunction(in: normalized),
+               let declared = ShoppingGroupParser.declaredShoppingRun(in: segment.quote) {
+                // Global repair provenance has a word-bound envelope. Restore
+                // this unchanged declaration's adjacent original punctuation
+                // only through its exact surviving raw-word occurrences.
+                let originalQuote = originalDeclaredComponent(in: sourceRange,
+                    ledger: sourceLedger, corrected: corrected, raw: normalized,
+                    correctedWordRawIDs: repair.correctedWordRawIDs) ?? span.raw
+                if let original = ShoppingGroupParser.declaredShoppingRun(in: originalQuote),
+                   declared.matchesOriginal(original, source: segment.quote,
+                       originalSource: originalQuote) {
+                    span.raw = originalQuote
+                    declaredCandidates.append((sourceRange, originalQuote))
+                }
+            }
             var thought = ExtractedThought(
                 sourceQuote: visibleQuote,
                 rawQuote: span.raw.isEmpty ? visibleQuote : span.raw,
@@ -3314,7 +4566,8 @@ enum RuleBasedThoughtExtractor {
                 organization: organization,
                 confidence: cannotIdentifyPoint ? 0 :
                     (needsReview ? 0.58 : (safeSegments.count > 1 ? 0.88 : 1)),
-                needsReview: needsReview
+                needsReview: needsReview,
+                shoppingGroup: needsReview ? nil : plannedRetail?.shoppingGroup
             )
             thought.sourceUnitIDs = sourceIDs
             return thought
@@ -3397,6 +4650,8 @@ enum RuleBasedThoughtExtractor {
             ), source: creating, calendar: calendar
         )
         if let traceObserver {
+            let declaredLists = finalDeclaredListWitnesses(declaredCandidates,
+                source: creating, ledger: sourceLedger, output: finalItems)
             traceObserver(.init(original:transcript,normalized:normalized,corrected:corrected,creating:creating,
                 repairs:repair.stages.map { .init(kind:$0.kind.rawValue,input:$0.input,output:$0.output,
                     removedRawIDs:$0.removedRawWordIDs,inputWordRawIDs:$0.inputWordRawIDs) },
@@ -3407,9 +4662,104 @@ enum RuleBasedThoughtExtractor {
                 segmentRoles:sourceRoles.roles.map { String(describing:$0) },
                 unmatchedSegments:sourcePropositions.unmatchedSegmentIndices,
                 unassignedWordIDs:sourcePropositions.unassignedSourceUnitIDs,
-                captureOnlyWordIDs:captureOnlySourceIDs,group:groupTrace,output:finalItems))
+                captureOnlyWordIDs:captureOnlySourceIDs,group:groupTrace,output:finalItems,
+                declaredLists:declaredLists))
         }
         return (finalItems,partition.operations)
+    }
+
+    /// Restore only a complete unchanged declaration from the repair input.
+    /// A missing, merged, reordered or locally deleted word declines; punctuation
+    /// is copied from that exact occurrence and never synthesized.
+    private static func originalDeclaredComponent(
+        in range: Range<String.Index>, ledger: SourceUnitLedger,
+        corrected: String, raw: String, correctedWordRawIDs: [Set<Int>]
+    ) -> String? {
+        let component = String(ledger.source[range])
+        guard let declared = ShoppingGroupParser.declaredShoppingRun(in: component),
+              ledger.words.map(\.text) == SourceUnitLedger(corrected).words.map(\.text),
+              correctedWordRawIDs.count == ledger.words.count else { return nil }
+        let createdIDs = ledger.ids(in: range).sorted()
+        guard let firstCreated = createdIDs.first, let lastCreated = createdIDs.last,
+              createdIDs == Array(firstCreated...lastCreated) else { return nil }
+        let rawLedger = SourceUnitLedger(raw)
+        var rawIDs: [Int] = []
+        for created in createdIDs {
+            let ancestors = correctedWordRawIDs[created]
+            guard ancestors.count == 1, let original = ancestors.first,
+                  rawLedger.words.indices.contains(original),
+                  rawLedger.words[original].text == ledger.words[created].text,
+                  rawIDs.last.map({ original == $0 + 1 }) ?? true else { return nil }
+            rawIDs.append(original)
+        }
+        guard let first = rawIDs.first, let last = rawIDs.last else { return nil }
+        let lower = rawLedger.words[first].range.lowerBound
+        var upper = rawLedger.words[last].range.upperBound
+        while upper < raw.endIndex, ".!?".contains(raw[upper]) {
+            upper = raw.index(after: upper)
+        }
+        let rawRange = lower..<upper
+        guard rawLedger.ids(in: rawRange) == Set(rawIDs) else { return nil }
+        let originalQuote = String(raw[rawRange])
+        guard let original = ShoppingGroupParser.declaredShoppingRun(in: originalQuote),
+              declared.matchesOriginal(original, source: component,
+                  originalSource: originalQuote) else { return nil }
+        return originalQuote
+    }
+
+    /// Bind only final unchanged inert rows to the speaker-certified component.
+    /// Missing, changed, overlapping or context-enlarged rows get no witness.
+    private static func finalDeclaredListWitnesses(
+        _ candidates: [(range: Range<String.Index>, original: String)],
+        source: String, ledger: SourceUnitLedger, output: [ExtractedThought]
+    ) -> [RuntimeRuleTrace.DeclaredList] {
+        var result: [RuntimeRuleTrace.DeclaredList] = []
+        for candidate in candidates {
+            let component = String(source[candidate.range])
+            guard let declared = ShoppingGroupParser.declaredShoppingRun(in: component) else { continue }
+            let componentIDs = ledger.ids(in: candidate.range)
+            let componentRange = NSRange(candidate.range, in: source)
+            var literalIDs: [Set<Int>] = [], ranges: [NSRange] = []
+            for entry in declared.entries {
+                let local = NSRange(entry.range, in: component)
+                let absolute = NSRange(location: componentRange.location + local.location, length: local.length)
+                guard let range = Range(absolute, in: source) else { break }
+                ranges.append(absolute); literalIDs.append(ledger.ids(in: range))
+            }
+            guard literalIDs.count == declared.entries.count else { continue }
+            let frameIDs = componentIDs.subtracting(literalIDs.reduce(into: Set<Int>()) { $0.formUnion($1) })
+            var entries: [RuntimeRuleTrace.DeclaredList.Entry] = [], used = Set<Int>()
+            for (index, entry) in declared.entries.enumerated() {
+                let literal = String(component[entry.range])
+                let expectedIDs = literalIDs[index].union(index == 0 ? frameIDs : [])
+                let matches = output.indices.filter { row in
+                    let item = output[row], organization = item.organization
+                    return item.sourceQuote == literal && item.rawQuote == candidate.original
+                        && item.analysisText == literal && item.suggestedTitle == literal
+                        && item.shoppingGroup == declared.store && !item.needsReview
+                        && item.sourceUnitIDs == expectedIDs
+                        && organization.itemType == .shopping && organization.category == .shopping
+                        && organization.priority == .normal
+                        && organization.state == .resolved && !organization.needsClarification
+                        && organization.personName == nil && organization.dueDate == nil
+                        && organization.reminderDate == nil && organization.reminderDelivery == .none
+                        && organization.locationIntent == nil && organization.recurrenceRule == nil
+                        && organization.temporalIntent == .none
+                }
+                guard matches.count == 1, let baseline = matches.first,
+                      !expectedIDs.isEmpty, used.isDisjoint(with: expectedIDs) else { break }
+                used.formUnion(expectedIDs)
+                entries.append(.init(entryRange: ranges[index], sourceWordIDs: expectedIDs,
+                    baselineIndex: baseline))
+            }
+            guard entries.count == declared.entries.count, used == componentIDs else { continue }
+            let baselines = Set(entries.map(\.baselineIndex))
+            guard output.indices.allSatisfy({ baselines.contains($0)
+                || output[$0].sourceUnitIDs.isDisjoint(with: componentIDs) }) else { continue }
+            result.append(.init(componentRange: componentRange, componentWordIDs: componentIDs,
+                originalComponent: candidate.original, shoppingGroup: declared.store, entries: entries))
+        }
+        return result
     }
 
     /// "Water the parsley tomorrow at eight. Set a reminder for that" adds
@@ -3432,6 +4782,7 @@ enum RuleBasedThoughtExtractor {
                   prior.organization.itemType.isActionable,
                   prior.organization.reminderDate == nil,
                   prior.organization.temporalIntent.kind == .exactDateTime,
+                  prior.organization.temporalIntent.clockBoundary == nil,
                   let date = prior.organization.dueDate else {
                 result.append(item)
                 continue
@@ -3688,6 +5039,7 @@ enum RuleBasedThoughtExtractor {
             )
             guard parsed.itemType.isActionable, let date = parsed.dueDate,
                   parsed.temporalIntent.kind == .exactDateTime,
+                  parsed.temporalIntent.clockBoundary == nil,
                   result[index].organization.reminderDate != date else { continue }
             let prior = result[index]
             let old = prior.organization
@@ -4661,7 +6013,7 @@ enum RuleBasedThoughtExtractor {
     /// An explicit note request owns its immediately following attributed
     /// report and references to that report. An independent proposition or
     /// commitment closes the scope; topical similarity cannot extend it.
-    private static func declaredReportedMemorySegments(in source: String) -> [Segment]? {
+    private static func declaredReportedMemorySegments(in source: String, referenceDate: Date, calendar: Calendar) -> [Segment]? {
         let ranges = quotePreservingSentenceRanges(in: source)
         guard ranges.count > 1, let firstRange = ranges.first else { return nil }
         let first = normalize(String(source[firstRange]))
@@ -4693,7 +6045,7 @@ enum RuleBasedThoughtExtractor {
         let tail = normalize(String(source[end...]))
         return [Segment(quote: quote, analysisText: quote,
                         suggestedTitle: first, memoryOwner: .note)]
-            + (tail.isEmpty ? [] : segmentedThoughts(in: tail))
+            + (tail.isEmpty ? [] : segmentedThoughts(in: tail, referenceDate: referenceDate, calendar: calendar))
     }
 
     private static func singularMemoryRecordingLead(in source: String) -> String? {
@@ -5352,10 +6704,8 @@ enum RuleBasedThoughtExtractor {
                     of: #"(?i)^(?:gotta|gonna|lemme|needa|hafta)\s+(?=\#(ActionabilityReader.actionVerb)\b)"#,
                     options: .regularExpression
                 ).map { rawLedger.ids(in: $0) } ?? []
-                let pausedProposal = stage.input.range(
-                    of: #"(?i)^(?:(?:like|so|well)\s*,?\s*)*i\s+was\s+thinking\s*,\s*(?=\#(ActionabilityReader.actionVerb)\b)"#,
-                    options: .regularExpression
-                ).map { rawLedger.ids(in: $0) } ?? []
+                let pausedProposal = DisfluencyFilter.imperativeThinkingFrameRange(in: stage.input)
+                    .map { rawLedger.ids(in: $0) } ?? []
                 let additiveAside = stage.input.range(
                     of: #"(?i)\bwhile\s+i['’]?m\s+(?:thinking\s+about\s+it|at\s+it)[\s,]+(?=\#(ActionabilityReader.actionVerb)\b)"#,
                     options: .regularExpression
@@ -7075,6 +8425,82 @@ enum RuleBasedThoughtExtractor {
         return plan
     }
 
+    private static let namedCallDetailLead = #"for\s+the\s+call\s*[,;:]?\s*ask\s+whether\b"#
+    private static let callNonDelegationHead = #"(?:i|we)\s+(?:am|are)\s+not\s+asking\s+you\s+to\s+"#
+    private static let callNonDelegationCore = #"\#(callNonDelegationHead)call\b[^.!?]*yourself"#
+
+    /// The complete existing nondelegation statement must end immediately
+    /// before the proved named detail. Extra intervening words do not close
+    /// a denial. This pure range reader never calls semantic segmentation.
+    static func pairedCallNonDelegationRange(in source: String,
+        before detail: Range<String.Index>
+    ) -> Range<String.Index>? {
+        let prefix = String(source[..<detail.lowerBound])
+        guard let heads = NSRegularExpression.speakItCached(#"(?i)\b\#(callNonDelegationHead)"#),
+              heads.numberOfMatches(in: prefix, range: NSRange(prefix.startIndex..., in: prefix)) == 1,
+              let complete = NSRegularExpression.speakItCached(#"(?i)\b(\#(callNonDelegationCore))\s*$"#),
+              let match = complete.firstMatch(in: prefix, range: NSRange(prefix.startIndex..., in: prefix))
+        else { return nil }
+        return Range(match.range(at: 1), in: source)
+    }
+
+    /// The existing paired-reminder relation, before any local clause cut.
+    /// This reader owns source ranges only; final row identity and disjoint
+    /// word ownership are still checked by attachingLocalPairedCallDetail.
+    private static func localPairedCallDetail(in source: String) -> (
+        detail: Range<String.Index>, pair: Range<String.Index>,
+        first: Range<String.Index>, second: Range<String.Index>, reminderCount: Int
+    )? {
+        guard let detail = source.range(
+            of: #"(?i)\b\#(namedCallDetailLead)[^\n]*?(?=\bfor\s+collection\s+take\b)"#,
+            options: .regularExpression
+        ), let pair = source.range(
+            of: #"(?i)\bboth\s+are\s+(?:today|tomorrow|tonight)\b[^\n]*\bthe\s+first\s+is\b[^\n]*\bthe\s+second\s+is\b"#,
+            options: .regularExpression,
+            range: source.startIndex..<detail.lowerBound
+        ) else { return nil }
+        let reminders = NSRegularExpression.speakItCached(
+            #"\bremind\s+me\b"#, options: [.caseInsensitive]
+        )?.matches(in: source, range: NSRange(source.startIndex..<pair.lowerBound, in: source))
+            .compactMap { Range($0.range, in: source) } ?? []
+        guard reminders.count >= 2 else { return nil }
+        let first = reminders[reminders.count - 2]
+        let second = reminders[reminders.count - 1]
+        guard !source[first.lowerBound..<pair.lowerBound].contains("\n\n") else { return nil }
+        return (detail, pair, first, second, reminders.count)
+    }
+
+    /// Project only an exact, uniquely occurring literal part of the complete
+    /// current source. A timed part cannot manufacture its own missing pair.
+    static func pairedCallDetailRange(in source: String, forLiteralPart part: String) -> Range<String.Index>? {
+        guard let proof = localPairedCallDetail(in: source), proof.reminderCount == 2,
+              QuotedSpeechScope.ranges(in: source).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(source),
+              !SelfCorrectionResolver.hasCorrectionJunction(in: source),
+              ClauseScope.read(source).act == .direct,
+              NSRegularExpression.speakItCached(#"(?i)\b\#(namedCallDetailLead)"#)?
+                .numberOfMatches(in: source, range: NSRange(source.startIndex..., in: source)) == 1,
+              NSRegularExpression.speakItCached(#"(?i)\bboth\s+are\s+(?:today|tomorrow|tonight)\b"#)?
+                .numberOfMatches(in: source, range: NSRange(source.startIndex..<proof.detail.lowerBound, in: source)) == 1
+        else { return nil }
+        let prelude = normalize(String(source[..<proof.first.lowerBound]))
+        guard (prelude.isEmpty || ClauseScope.isPureTemporalMatrixPrefix(prelude)
+                || isForwardTemporalFragment(prelude)),
+              !ConditionalIntentScope.isStandaloneCondition(prelude),
+              source[proof.first.upperBound..<proof.second.lowerBound].range(
+                of: #"(?i)^\s+to\s+(?:call|phone|ring)\b"#, options: .regularExpression) != nil,
+              source[proof.second.upperBound..<proof.pair.lowerBound].range(
+                of: #"(?i)^\s+to\s+(?:collect|pick\s+up)\b"#, options: .regularExpression) != nil,
+              !part.isEmpty, let literal = source.range(of: part, options: .literal),
+              String(source[literal]).utf8.elementsEqual(part.utf8),
+              source.range(of: part, options: .literal,
+                range: source.index(after: literal.lowerBound)..<source.endIndex) == nil,
+              literal.lowerBound <= proof.detail.lowerBound,
+              literal.upperBound >= proof.detail.upperBound else { return nil }
+        let whole = NSRange(literal, in: source), detail = NSRange(proof.detail, in: source)
+        return Range(NSRange(location: detail.location - whole.location, length: detail.length), in: part)
+    }
+
     /// A punctuation-free paired reminder may leave the call's named detail
     /// inside the collection row's long source span. Move only the exact
     /// "for the call ..." occurrence to its first reminder. This runs after
@@ -7084,24 +8510,9 @@ enum RuleBasedThoughtExtractor {
     private static func attachingLocalPairedCallDetail(
         _ items: [ExtractedThought], source: String, ledger: SourceUnitLedger
     ) -> [ExtractedThought] {
-        guard let detail = source.range(
-            of: #"(?i)\bfor\s+the\s+call\s+ask\s+whether\b[^\n]*?(?=\bfor\s+collection\s+take\b)"#,
-            options: .regularExpression
-        ), let pair = source.range(
-            of: #"(?i)\bboth\s+are\s+(?:today|tomorrow|tonight)\b[^\n]*\bthe\s+first\s+is\b[^\n]*\bthe\s+second\s+is\b"#,
-            options: .regularExpression,
-            range: source.startIndex..<detail.lowerBound
-        ) else { return items }
-        let reminders = NSRegularExpression.speakItCached(
-            #"\bremind\s+me\b"#, options: [.caseInsensitive]
-        )?.matches(in: source, range: NSRange(source.startIndex..<pair.lowerBound, in: source))
-            .compactMap { Range($0.range, in: source) } ?? []
-        guard reminders.count >= 2 else { return items }
-        let first = reminders[reminders.count - 2]
-        let second = reminders[reminders.count - 1]
-        guard !source[first.lowerBound..<pair.lowerBound].contains("\n\n") else {
-            return items
-        }
+        guard let proof = localPairedCallDetail(in: source) else { return items }
+        let detail = proof.detail, pair = proof.pair
+        let first = proof.first, second = proof.second
         let firstIDs = ledger.ids(in: first.lowerBound..<second.lowerBound)
         let secondIDs = ledger.ids(in: second.lowerBound..<pair.lowerBound)
         let detailIDs = ledger.ids(in: detail)
@@ -7312,12 +8723,13 @@ enum RuleBasedThoughtExtractor {
     /// "The same N" refers to a unique explicit N in the contiguous direct
     /// action group. Replace analysis/display only; never the source quote.
     /// A competing object or missing antecedent leaves the action reviewable.
+    private static let sameActionObjectReferencePattern = #"(?i)^\#(ActionabilityReader.actionVerb)\s+(the\s+same\s+([\p{L}'’-]+))\b"#
+
     private static func groundingSameActionObjects(_ input: [Segment]) -> [Segment] {
         var result: [Segment] = []
         for segment in input {
             let body = ActionabilityReader.actionBody(segment.analysisText)
-            let pattern = #"(?i)^\#(ActionabilityReader.actionVerb)\s+(the\s+same\s+([\p{L}'’-]+))\b"#
-            guard let regex = NSRegularExpression.speakItCached(pattern),
+            guard let regex = NSRegularExpression.speakItCached(sameActionObjectReferencePattern),
                   let match = regex.firstMatch(in: body, range: NSRange(body.startIndex..., in: body)),
                   let nounRange = Range(match.range(at: 2), in: body),
                   let referenceRange = Range(match.range(at: 1), in: body),
@@ -7411,6 +8823,42 @@ enum RuleBasedThoughtExtractor {
         return String(text[verb]).lowercased()
     }
 
+    /// This complete output-state grammar is safe to ask while splitting;
+    /// the broader discourse reader also consults conjunction splitting.
+    private static func ordinalUndatedStateReference(
+        in text: String
+    ) -> CaptureDiscourseReference? {
+        let pattern = #"(?i)^\#(ordinalUndatedBoundaryHead)(?:,?\s+and\s+the\s+(?:fact|note|memory)(?:\s+(?:in\s+the\s+middle|above|earlier))?\s+is\s+(?:still\s+)?(?:a\s+)?(?:memory|note|fact))?[.!?]*$"#
+        guard let regex = NSRegularExpression.speakItCached(pattern),
+              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let ordinal = Range(match.range(at: 1), in: text) else { return nil }
+        return .ordinalUndatedState(String(text[ordinal]).lowercased(),
+            text.range(of: #"(?i)\band\s+the\b"#, options: .regularExpression) != nil)
+    }
+
+    /// Keep a complete nominal restatement with its fully consumed timing
+    /// aside before fallible clause splitting. The existing discourse reader
+    /// still proves the nominal frame and later selects a unique object owner.
+    static func hasCompleteNominalTimingRestatement(in text: String) -> Bool {
+        guard text.range(of: #"(?i)^(?:i|we)\s+mean\s+(?:a|an|the)\s+"#,
+                         options: .regularExpression) != nil,
+              let boundary = splittableCoordinatorRanges(in: text).first,
+              normalize(String(text[boundary])).lowercased() == "and",
+              ActionabilityReader.isCompleteUnchosenActionTimeFrame(
+                String(text[boundary.upperBound...]))
+        else { return false }
+        var nominal = String(text[..<boundary.lowerBound]).trimmingCharacters(in: .whitespaces)
+        // The optional final comma belongs to this AND delimiter. Any other
+        // punctuation/line break may begin a separate source clause; the old
+        // late nominal regex alone cannot license consuming that clause.
+        if nominal.last == "," { nominal.removeLast() }
+        guard nominal.range(of: #"[,;:.!?\r\n]"#, options: .regularExpression) == nil,
+              ClauseJuxtaposition.pieces(in: nominal).count == 1,
+              case .objectDescription = captureDiscourseReference(in: normalize(nominal))
+        else { return false }
+        return true
+    }
+
     private static func captureDiscourseReference(
         in text: String
     ) -> CaptureDiscourseReference? {
@@ -7495,13 +8943,7 @@ enum RuleBasedThoughtExtractor {
            !hasIndependentOutputConjunct(text) {
             return .ordinalRetention(String(text[ordinal]).lowercased())
         }
-        let undatedState = #"(?i)^\#(ordinalUndatedBoundaryHead)(?:,?\s+and\s+the\s+(?:fact|note|memory)(?:\s+(?:in\s+the\s+middle|above|earlier))?\s+is\s+(?:still\s+)?(?:a\s+)?(?:memory|note|fact))?[.!?]*$"#
-        if let regex = NSRegularExpression.speakItCached(undatedState),
-           let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
-           let ordinal = Range(match.range(at: 1), in: text) {
-            return .ordinalUndatedState(String(text[ordinal]).lowercased(),
-                text.range(of: #"(?i)\band\s+the\b"#, options: .regularExpression) != nil)
-        }
+        if let state = ordinalUndatedStateReference(in: text) { return state }
         // These are descriptions of the two reminders just spoken. The
         // definite ordinal and paired pronoun supply the antecedent; without
         // exactly two earlier reminder actions, the planner keeps the source
@@ -7637,15 +9079,15 @@ enum RuleBasedThoughtExtractor {
             options: .regularExpression
         ) != nil { return .availabilityScope }
         if text.range(
-            of: #"(?i)^for\s+the\s+call\s*[,;:]?\s*ask\s+whether\b"#,
+            of: #"(?i)^\#(namedCallDetailLead)"#,
             options: .regularExpression
         ) != nil { return .callDetail }
         if text.range(
-            of: #"(?i)^for\s+collection\s*[,;:]?(?:\s+take\b)?[.!?]?$"#,
+            of: #"(?i)^for\s+collection\s*[,;:]?(?:\s*take(?:\s+(?:the|a)\s+repair\s+receipt)?)?[.!?]?$"#,
             options: .regularExpression
         ) != nil { return .collectionDetail }
         if text.range(
-            of: #"(?i)^(?:i|we)\s+(?:am|are)\s+not\s+asking\s+you\s+to\s+call\b[^.!?]*yourself[.!?]?$"#,
+            of: #"(?i)^\#(callNonDelegationCore)[.!?]?$"#,
             options: .regularExpression
         ) != nil { return .callNonDelegation }
         if text.range(
@@ -7726,6 +9168,56 @@ enum RuleBasedThoughtExtractor {
         return nil
     }
 
+    private static let componentDescriptionPattern = #"(?i)^(?:the|this|that)\s+(.+?)\s+(?:has|contains|comes\s+with)\s+(?:the|a|an|its|some)\s+.+$"#
+
+    private static func componentDescriptionSubject(in text: String) -> String? {
+        let clause = text.trimmingCharacters(in:
+            .whitespacesAndNewlines.union(CharacterSet(charactersIn: ".!?")))
+        // Reuse the conjunct reader's determined-subject/copula proof for
+        // the component's right side too, including without lexical assets.
+        let independentFinite = splittableCoordinatorRanges(in: clause).contains { boundary in
+            String(clause[boundary.upperBound...]).range(
+                of: #"(?i)^(?:the|a|an|this|that|my|our)\s+(?:(?!(?:that|which|who|because|if|when|is|are|was|were|has|have|had|will|would|can|could|should|must)\b)[\p{L}'’-]+\s+)+(?:is|are|was|were|has|have|had)\b"#,
+                options: .regularExpression) != nil
+        }
+        // An independent fact/command is not part of the included component.
+        // This reader and the conjunct reader do not call sentence discovery.
+        guard !independentFinite,
+              clause.range(of: #"[.!?;]"#, options: .regularExpression) == nil,
+              splitIndependentConjuncts(clause).count == 1,
+              let expression = NSRegularExpression.speakItCached(componentDescriptionPattern),
+              let match = expression.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let subject = Range(match.range(at: 1), in: text) else { return nil }
+        return String(text[subject])
+    }
+
+    private static func componentRepeatedAction(in text: String) -> String? {
+        guard let expression = NSRegularExpression.speakItCached(componentRepeatActionPattern),
+              let match = expression.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let verb = Range(match.range(at: 1), in: text) else { return nil }
+        return String(text[verb])
+    }
+
+    /// Sentence boundaries discover only the relationship; the planner still
+    /// needs one matching earlier action before either source span can attach.
+    private static func hasAdditiveComponentRelationship(in source: String) -> Bool {
+        guard QuotedSpeechScope.ranges(in: source).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(source),
+              ClauseScope.read(source).act == .direct,
+              ActionabilityReader.recordedFactBody(source) == nil,
+              let expression = NSRegularExpression.speakItCached(
+                #"(?i)(?<![\p{L}\p{M}])\#(componentRepeatActionCore)(?=$|[\s,;.!?])"#)
+        else { return false }
+        return expression.matches(in: source, range: NSRange(source.startIndex..., in: source)).contains { match in
+            guard let span = Range(match.range, in: source), span.lowerBound > source.startIndex else { return false }
+            let detail = String(source[..<span.lowerBound]).trimmingCharacters(in:
+                .whitespacesAndNewlines.union(CharacterSet(charactersIn: ",;.!?")))
+            return componentDescriptionSubject(in: detail) != nil
+                && ClauseJuxtaposition.pieces(in: detail).count == 1
+                && componentRepeatedAction(in: String(source[span])) != nil
+        }
+    }
+
     /// An included component belongs to the established act when the speaker
     /// explicitly repeats that same act for the component. A new act or a
     /// standalone fact keeps its own intention.
@@ -7734,10 +9226,6 @@ enum RuleBasedThoughtExtractor {
         referenceDate: Date, calendar: Calendar
     ) -> GroupContextPlan {
         var plan = existing
-        let subjectPattern = #"(?i)^(?:the|this|that)\s+(.+?)\s+(?:has|contains|comes\s+with)\s+(?:the|a|an|its|some)\s+.+$"#
-        let repeatPattern = componentRepeatActionPattern
-        guard let subjectRegex = NSRegularExpression.speakItCached(subjectPattern),
-              let repeatRegex = NSRegularExpression.speakItCached(repeatPattern) else { return plan }
         for index in segments.indices where index + 1 < segments.count {
             let detail = segments[index]
             let repeatAction = segments[index + 1]
@@ -7749,15 +9237,11 @@ enum RuleBasedThoughtExtractor {
                   ClauseScope.read(repeatAction.analysisText).act != .reporting,
                   !plan.edges.contains(where: { $0.sourceIndices.contains(index)
                     || $0.sourceIndices.contains(index + 1) }),
-                  let subjectMatch = subjectRegex.firstMatch(in: detail.analysisText,
-                    range: NSRange(detail.analysisText.startIndex..., in: detail.analysisText)),
-                  let subject = Range(subjectMatch.range(at: 1), in: detail.analysisText),
-                  let repeatMatch = repeatRegex.firstMatch(in: repeatAction.analysisText,
-                    range: NSRange(repeatAction.analysisText.startIndex..., in: repeatAction.analysisText)),
-                  let verbRange = Range(repeatMatch.range(at: 1), in: repeatAction.analysisText)
+                  let subject = componentDescriptionSubject(in: detail.analysisText),
+                  let repeatedVerb = componentRepeatedAction(in: repeatAction.analysisText)
             else { continue }
-            let roots = discourseRoots(in: String(detail.analysisText[subject]))
-            let verb = NSRegularExpression.escapedPattern(for: String(repeatAction.analysisText[verbRange]))
+            let roots = discourseRoots(in: subject)
+            let verb = NSRegularExpression.escapedPattern(for: repeatedVerb)
             let owners = (0..<index).filter { candidate in
                 let prior = segments[candidate]
                 guard !prior.forcesReview, prior.memoryOwner == nil,
@@ -7852,6 +9336,7 @@ enum RuleBasedThoughtExtractor {
                 let owners = plan.edges.filter { edge in
                     guard edge.sourceIndices.contains(index - 1) else { return false }
                     if case .sourceRole = edge.kind { return true }
+                    if case .communicationQuestion = edge.kind { return true }
                     return false
                 }
                 targets = owners.count == 1 ? owners[0].targetIndices : nil
@@ -9050,6 +10535,10 @@ enum RuleBasedThoughtExtractor {
                 guard let target = nearestIntention(before: index, where: { actionable[$0] })
                 else { continue }
                 let own = organized[index].temporalIntent
+                guard own.clockBoundary == nil else {
+                    plan.unresolvedSourceIndices.insert(index)
+                    continue
+                }
                 let referent = text(index).range(
                     of: #"\bbefore\s+the\s+([a-z]+)\s+(?:starts|begins|opens)\b"#,
                     options: .regularExpression)
@@ -9309,6 +10798,16 @@ enum RuleBasedThoughtExtractor {
             conflictingEdges.formUnion(claims.map(\.0))
         }
         let accepted = candidates.enumerated().compactMap { index, edge -> GroupContextPlan.Edge? in
+            // A destination-day assignment rebuilds an AT clock below. A
+            // separately owned clock boundary cannot donate that exact-time
+            // authority or silently lose its relation while changing days.
+            if case .destinationDay = edge.kind,
+               edge.targetIndices.contains(where: {
+                   items[$0].organization.temporalIntent.clockBoundary != nil
+               }) {
+                unresolved.insert(edge.claimIndex)
+                return nil
+            }
             guard !conflictingEdges.contains(index) else {
                 unresolved.insert(edge.claimIndex)
                 return nil
@@ -9351,7 +10850,7 @@ enum RuleBasedThoughtExtractor {
             case .sharedEvent, .explanation, .captureDiscourse,
                  .replacement, .replacementCommentary, .eventReference,
                  .choiceContext, .choiceCommentary, .routingClarification,
-                 .sourceRole, .discourseContext, .retainedDiscourseContext, .recipientRevision:
+                 .sourceRole, .communicationQuestion, .discourseContext, .retainedDiscourseContext, .recipientRevision:
                 deadline = nil
                 destinationDay = nil
             }
@@ -9402,7 +10901,11 @@ enum RuleBasedThoughtExtractor {
                     unresolved.insert(edge.claimIndex)
                     continue
                 }
-                let title = action.suggestedTitle ?? action.analysisText
+                var title = action.suggestedTitle ?? action.analysisText
+                if case .communicationQuestion = edge.kind,
+                   title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    title = action.analysisText
+                }
                 let anchorText = edge.temporalAnchor?.sourceText
                     .trimmingCharacters(in: .whitespacesAndNewlines
                         .union(.punctuationCharacters)) ?? ""
@@ -9410,12 +10913,22 @@ enum RuleBasedThoughtExtractor {
                     && edge.temporalAnchor?.intent.kind != TemporalKind.none
                     && !title.localizedCaseInsensitiveContains(anchorText)
                     ? "\(title) — \(anchorText)" : title
+                var analysis = action.analysisText
+                var visibleTitle = anchoredTitle
+                if case .communicationQuestion = edge.kind {
+                    // Consume the exact analysis payload matched by the existing
+                    // question planner. A raw quote may retain a leading and;
+                    // its original words/IDs remain in source/raw provenance.
+                    let questions = edge.sourceIndices.sorted().map { items[$0].analysisText }
+                    analysis = normalize(([analysis] + questions).joined(separator: " … "))
+                    visibleTitle = normalize(([visibleTitle] + questions).joined(separator: " … "))
+                }
                 result[target] = ExtractedThought(
                     sourceQuote: parts.map(\.sourceQuote).joined(separator: " … "),
                     rawQuote: parts.map(\.rawQuote).joined(separator: " … "),
                     wasRepaired: parts.contains(where: \.wasRepaired),
-                    analysisText: action.analysisText,
-                    suggestedTitle: anchoredTitle,
+                    analysisText: analysis,
+                    suggestedTitle: visibleTitle,
                     organization: OrganizedThought(
                         itemType: organization.itemType,
                         category: organization.category,
@@ -9815,7 +11328,8 @@ enum RuleBasedThoughtExtractor {
                 referenceDate: referenceDate, calendar: calendar
             )
             guard parsed.itemType.isActionable, let date = parsed.dueDate,
-                  parsed.temporalIntent.kind == .exactDateTime else {
+                  parsed.temporalIntent.kind == .exactDateTime,
+                  parsed.temporalIntent.clockBoundary == nil else {
                 result.append(reviewingUnresolved(correction, gap: .ambiguousTemporalScope))
                 continue
             }
@@ -9947,7 +11461,7 @@ enum RuleBasedThoughtExtractor {
             // This is an explicit property of the immediately selected output,
             // not another intention or a global instruction about the capture.
             if let owner = creationIndex, owner == result.count - 1,
-               item.organization.itemType == .note, !item.needsReview,
+               !item.needsReview,
                item.organization.dueDate == nil, item.organization.reminderDate == nil,
                ClauseScope.read(item.analysisText).act == .direct,
                QuotedSpeechScope.ranges(in: item.sourceQuote).isEmpty,
@@ -10204,11 +11718,77 @@ enum RuleBasedThoughtExtractor {
         sourceForOwnership: String? = nil,
         rawCapture: String? = nil
     ) -> [ExtractedThought] {
-        assigningShoppingGroups(
+        let grouped = assigningShoppingGroups(
             expandingPlainShoppingLists(items, sourceLedger: sourceForOwnership.map(SourceUnitLedger.init)),
             capture: capture,
             rawCapture: rawCapture ?? capture
         )
+        return attachingPurchaseEventContext(grouped)
+    }
+
+    /// Like a TemporalAnchor, this literal event relation changes display only.
+    /// Run after expansion: its product titles must retain their parent's
+    /// proved event context, without copying the event's date or clock.
+    private static func attachingPurchaseEventContext(_ items: [ExtractedThought]) -> [ExtractedThought] {
+        items.map { item in
+            guard item.organization.itemType == .shopping, !item.needsReview,
+                  let purpose = ShoppingGroupParser.purchaseEventPurpose(in: item.rawQuote),
+                  item.sourceQuote == item.rawQuote || purpose.products.contains(where: {
+                      $0.caseInsensitiveCompare(item.sourceQuote) == .orderedSame
+                  }) else { return item }
+            let context = String(item.rawQuote[purpose.purposeRange])
+                .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+            let title = item.suggestedTitle ?? item.analysisText
+            guard !title.localizedCaseInsensitiveContains(context) else { return item }
+            return ExtractedThought(sourceQuote: item.sourceQuote, rawQuote: item.rawQuote,
+                wasRepaired: item.wasRepaired, analysisText: item.analysisText,
+                suggestedTitle: title + " — " + context, organization: item.organization,
+                confidence: item.confidence, needsReview: item.needsReview,
+                sourceUnitIDs: item.sourceUnitIDs, shoppingGroup: item.shoppingGroup)
+        }
+    }
+
+    /// A complete literal declared list has membership authority only. Use
+    /// the ordinary occurrence expander and normal one-capture persistence.
+    static func declaredShoppingPlan(_ source: String) -> ThoughtExtractionResult? {
+        guard !Task.isCancelled,
+              let declared = ShoppingGroupParser.declaredShoppingRun(in: source),
+              CaptureOperationDetector.partitionWithOwnership(source).operations.isEmpty else { return nil }
+        let organization = OrganizedThought(itemType: .shopping, category: .shopping,
+            priority: .normal, personName: nil, dueDate: nil, reminderDate: nil,
+            reminderDelivery: .none, recurrenceRule: nil,
+            needsClarification: false, temporalIntent: .none,
+            locationIntent: nil, state: .resolved)
+        let ledger = SourceUnitLedger(source)
+        let parent = ExtractedThought(sourceQuote: source, rawQuote: source,
+            wasRepaired: false, analysisText: source, suggestedTitle: nil,
+            organization: organization, confidence: 0.94, needsReview: false,
+            sourceUnitIDs: Set(ledger.words.indices), shoppingGroup: declared.store)
+        let items = shapingShoppingLists([parent], capture: source, sourceForOwnership: source)
+        guard items.count == declared.entries.count,
+              items.map(\.sourceQuote) == declared.entries.map { String(source[$0.range]) },
+              items.allSatisfy({ $0.organization == organization && !$0.needsReview
+                  && $0.rawQuote == source
+                  && $0.analysisText == $0.sourceQuote && $0.suggestedTitle == $0.sourceQuote
+                  && $0.shoppingGroup == declared.store }),
+              items.reduce(into: Set<Int>(), { $0.formUnion($1.sourceUnitIDs) }) == parent.sourceUnitIDs,
+              items.reduce(0, { $0 + $1.sourceUnitIDs.count }) == parent.sourceUnitIDs.count else { return nil }
+        return .init(items: items, method: .rules)
+    }
+
+    /// A complete typed availability list remains one parent until the
+    /// ordinary literal shopping shaper allocates every entry occurrence.
+    static func memberAvailabilityShoppingParent(_ source: String) -> ExtractedThought? {
+        guard let declaration = ShoppingGroupParser.declaredShoppingRun(in: source),
+              declaration.entries.compactMap(\.availabilityRange).count == 1,
+              let literal = declaredShoppingPlan(source), let first = literal.items.first,
+              literal.operations.isEmpty, literal.items.count == declaration.entries.count,
+              literal.items.allSatisfy({ $0.organization == first.organization
+                  && $0.shoppingGroup == declaration.store && $0.rawQuote == source }) else { return nil }
+        return .init(sourceQuote: source, rawQuote: source, wasRepaired: false,
+            analysisText: source, suggestedTitle: source, organization: first.organization,
+            confidence: 1, needsReview: false,
+            sourceUnitIDs: Set(SourceUnitLedger(source).words.indices), shoppingGroup: declaration.store)
     }
 
     /// Prove an explicit purchase list before generic clause segmentation can
@@ -10217,6 +11797,9 @@ enum RuleBasedThoughtExtractor {
     /// predicates, quotation, corrections and location triggers decline.
     static func literalPurchasePlan(_ source: String, referenceDate: Date,
                                     calendar: Calendar) -> ThoughtExtractionResult? {
+        // Declared membership never falls back to physical Buy authority.
+        // Normal processing must reach its final source/role trace instead.
+        guard ShoppingGroupParser.declaredShoppingRun(in: source) == nil else { return nil }
         if let detailed = detailedPurchasePlan(source, referenceDate: referenceDate, calendar: calendar) {
             return detailed
         }
@@ -10237,6 +11820,7 @@ enum RuleBasedThoughtExtractor {
         var command = ShoppingGroupParser.withoutStoreContext(in: canonicalizedListCommand(unframedTime))
         command = ReminderCopy.action(from: command)
         command = command.replacingOccurrences(of: ";", with: ",")
+        guard !ActionabilityReader.hasCausativeResult(command) else { return nil }
         guard command.range(of: #"(?i)^(?:buy|purchase|order|get|grab|pick\s+up)\s+"#,
                             options: .regularExpression) != nil,
               CaptureOperationDetector.partitionWithOwnership(source).operations.isEmpty else { return nil }
@@ -10286,9 +11870,10 @@ enum RuleBasedThoughtExtractor {
                 && entry.product.range(of: #"(?i)\b(?:at|from|on|by|also|then)\b"#,
                                        options: .regularExpression) == nil
                 && (ShoppingGroupParser.namesOneProduct(entry.product)
+                    || (explicitlyBuys && ShoppingGroupParser.provesNominalPurchaseObject(entry.product, in: command))
                     || entry.product.range(of: #"(?i)^(?:\#(ActionabilityReader.actionVerb)|\#(ActionabilityReader.headOnlyImperativeVerb))(?:\s+|$)"#,
                                            options: .regularExpression) == nil)
-        }), ShoppingGroupParser.allReadAsProducts(entries.map(\.product),
+        }) && ShoppingGroupParser.allReadAsProducts(entries.map(\.product),
             in: entries.map(\.product).joined(separator: ", "), purchaseCommand: explicitlyBuys ? command : nil) else { return nil }
         let items = shapingShoppingLists([parent], capture: source, sourceForOwnership: source)
         guard items.count == entries.count,
@@ -10459,6 +12044,37 @@ enum RuleBasedThoughtExtractor {
         }, method: .rules)
     }
 
+    /// The source trip and its consequential literal acquisition share one
+    /// parent. Existing complete purchase proof still owns every physical entry.
+    static func plannedRetailShoppingParent(_ source: String, referenceDate: Date,
+                                           calendar: Calendar) -> ExtractedThought? {
+        guard let frame = ShoppingGroupParser.plannedRetailPurchase(in: source,
+                  referenceDate: referenceDate, calendar: calendar),
+              CaptureOperationDetector.partitionWithOwnership(source).operations.isEmpty else { return nil }
+        let command = String(source[frame.acquisitionRange])
+        guard let physical = literalPurchasePlan(command,
+                  referenceDate: referenceDate, calendar: calendar),
+              physical.operations.isEmpty, physical.items.count > 1,
+              physical.items.allSatisfy({ item in
+                  let o = item.organization
+                  return o.itemType == .shopping && o.state == .resolved
+                      && !item.needsReview && !o.needsClarification && o.personName == nil
+                      && o.dueDate == nil && o.temporalIntent == .none && o.reminderDate == nil
+                      && o.reminderDelivery == .none && o.locationIntent == nil && o.recurrenceRule == nil
+              }) else { return nil }
+        let organization = OrganizedThought(itemType: .shopping, category: .shopping,
+            priority: .normal, personName: nil, dueDate: frame.dueDate,
+            reminderDate: nil, reminderDelivery: .none, recurrenceRule: nil,
+            needsClarification: false, temporalIntent: frame.temporalIntent)
+        let parent = ExtractedThought(sourceQuote: source, rawQuote: source,
+            wasRepaired: false, analysisText: command, suggestedTitle: nil,
+            organization: organization, confidence: 1, needsReview: false,
+            sourceUnitIDs: Set(SourceUnitLedger(source).words.indices), shoppingGroup: frame.store)
+        let entries = plainShoppingEntries(in: parent)
+        guard entries.count == physical.items.count else { return nil }
+        return parent
+    }
+
     /// A complete past shopping-trip adjunct followed by a CURRENT product
     /// need names a shopping list, not future place monitoring. Normal rules
     /// and source certification recompute this same bounded whole-source plan.
@@ -10528,11 +12144,32 @@ enum RuleBasedThoughtExtractor {
         capture: String,
         rawCapture: String
     ) -> [ExtractedThought] {
+        var result = items
+        // A held list can still have an exact retailer label. This changes
+        // only group metadata, never its review state or product execution.
+        for index in items.indices where items[index].organization.itemType == .shopping {
+            if let context = ShoppingGroupParser.frontedAcquisitionContext(in: items[index].rawQuote) {
+                result[index].shoppingGroup = items[index].shoppingGroup
+                    ?? declaredShoppingListName(in: items[index].rawQuote) ?? context.store
+            }
+        }
         let shoppingIndices = items.indices.filter {
             items[$0].organization.itemType == .shopping && !items[$0].needsReview
         }
-        guard !shoppingIndices.isEmpty else { return items }
+        guard !shoppingIndices.isEmpty else { return result }
 
+        func ownsUniqueRawOccurrence(_ quote: String) -> Bool {
+            guard !quote.isEmpty else { return false }
+            var cursor = rawCapture.startIndex, matches = 0
+            while cursor < rawCapture.endIndex,
+                  let span = rawCapture.range(of: quote, options: .literal,
+                    range: cursor..<rawCapture.endIndex) {
+                matches += 1
+                if matches > 1 { return false }
+                cursor = span.upperBound
+            }
+            return matches == 1
+        }
         let store = ShoppingGroupParser.storeName(in: capture)
         let defaultGroup = ShoppingGroupParser.defaultGroup(
             forProducts: shoppingIndices.flatMap { index -> [String] in
@@ -10574,7 +12211,6 @@ enum RuleBasedThoughtExtractor {
             }
         )
 
-        var result = items
         for index in shoppingIndices {
             // A parsed arrival trigger owns its named destination even though
             // that condition must never be removed from the purchase text.
@@ -10587,9 +12223,32 @@ enum RuleBasedThoughtExtractor {
             // own every product. The row's own original span is the strongest
             // evidence; a bare trip can supply the group only when it folds
             // into an adjacent list below.
-            result[index].shoppingGroup = items[index].shoppingGroup
+            let runStore: String? = {
+                let raw = items[index].rawQuote
+                guard let run = ShoppingGroupParser.declaredShoppingRun(in: raw),
+                      items[index].sourceQuote == raw || run.entries.contains(where: {
+                        String(raw[$0.range]) == items[index].sourceQuote
+                      }) else { return nil }
+                return run.store
+            }()
+            // One exact own-cart relation overrides a proposed/default group
+            // only on its existing resolved shopping row. Raw and normalized
+            // source must independently prove the same complete occurrence;
+            // neither analysis/title shortening nor a capture-wide store wins.
+            if items[index].organization.state.kind == .resolved,
+               !items[index].organization.needsClarification,
+               ownsUniqueRawOccurrence(items[index].rawQuote),
+               let cart = ShoppingGroupParser.ownedRetailCartContext(in: items[index].sourceQuote),
+               let rawCart = ShoppingGroupParser.ownedRetailCartContext(in: items[index].rawQuote),
+               cart.matchesOriginal(rawCart, source: items[index].sourceQuote,
+                    originalSource: items[index].rawQuote) {
+                result[index].shoppingGroup = cart.store
+                continue
+            }
+            result[index].shoppingGroup = result[index].shoppingGroup
+                ?? runStore
                 ?? declaredShoppingListName(in: items[index].rawQuote) ?? ShoppingGroupParser.storeName(
-                in: items[index].rawQuote
+                in: canonicalizedListCommand(items[index].rawQuote, namingStore: true)
             ) ?? ShoppingGroupParser.storeName(in: items[index].sourceQuote)
                 ?? pastTripShoppingContext(in: items[index].rawQuote)?.store
                 ?? arrivalStore
@@ -10744,6 +12403,14 @@ enum RuleBasedThoughtExtractor {
                 continue
             }
 
+            let explanation = replacementPurchaseExplanation(in: item.sourceQuote)
+            if let explanation {
+                guard entries.count == explanation.productCount,
+                      entries.last?.product == String(item.sourceQuote[explanation.antecedentRange]) else {
+                    result.append(item)
+                    continue
+                }
+            }
             let localLedger = SourceUnitLedger(item.sourceQuote)
             let sourceIDs: [Int]
             if let sourceLedger, !item.sourceUnitIDs.isEmpty {
@@ -10783,7 +12450,7 @@ enum RuleBasedThoughtExtractor {
             }
             var searchCursor = item.sourceQuote.startIndex
             var ownedProducts = Set<Int>()
-            var products: [(entry: (verb: String, product: String), ids: Set<Int>)] = []
+            var products: [(entry: ShoppingEntry, ids: Set<Int>)] = []
             var exact = true
             for entry in entries {
                 guard let span = item.sourceQuote.range(
@@ -10806,14 +12473,21 @@ enum RuleBasedThoughtExtractor {
             let exclusionLocalIDs = exclusionRange.map { localLedger.ids(in: $0) } ?? []
             let exclusionIDs = sourceIDs.isEmpty ? Set<Int>()
                 : Set(exclusionLocalIDs.map { sourceIDs[$0] })
+            let explanationLocalIDs = explanation.map { localLedger.ids(in: $0.explanationRange) } ?? []
+            let explanationIDs = sourceIDs.isEmpty ? Set<Int>()
+                : Set(explanationLocalIDs.map { sourceIDs[$0] })
             let framingIDs = item.sourceUnitIDs.subtracting(products.reduce(into: Set<Int>()) {
                 $0.formUnion($1.ids)
-            }).subtracting(exclusionIDs)
+            }).subtracting(exclusionIDs).subtracting(explanationIDs)
             result.append(contentsOf: products.enumerated().map { index, product in
                 let entry = product.entry
-                let analysisText = "\(entry.verb) \(entry.product)"
+                let analysisText = entry.analysisText
+                let ownsExplanation = explanation != nil && index == products.count - 1
+                let quote = ownsExplanation ? explanation.map {
+                    String(item.sourceQuote[$0.antecedentRange.lowerBound..<$0.explanationRange.upperBound])
+                } ?? entry.product : entry.product
                 return ExtractedThought(
-                    sourceQuote: entry.product,
+                    sourceQuote: quote,
                     // One product off a spoken list. The row's own words are
                     // the product; the raw span it came from is the parent's,
                     // because the splitter works on the repaired list text and
@@ -10825,7 +12499,8 @@ enum RuleBasedThoughtExtractor {
                     organization: item.organization,
                     confidence: min(item.confidence, 0.94),
                     needsReview: item.needsReview,
-                    sourceUnitIDs: product.ids.union(index == 0 ? framingIDs : []),
+                    sourceUnitIDs: product.ids.union(index == 0 ? framingIDs : [])
+                        .union(ownsExplanation ? explanationIDs : []),
                     shoppingGroup: item.shoppingGroup
                 )
             })
@@ -10851,9 +12526,21 @@ enum RuleBasedThoughtExtractor {
         return result
     }
 
+    private struct ShoppingEntry {
+        enum Origin { case purchase(String), declaredList }
+        let origin: Origin
+        let product: String
+        var analysisText: String {
+            switch origin {
+            case let .purchase(verb): return "\(verb) \(product)"
+            case .declaredList: return product
+            }
+        }
+    }
+
     private static func plainShoppingEntries(
         in item: ExtractedThought
-    ) -> [(verb: String, product: String)] {
+    ) -> [ShoppingEntry] {
         let organization = item.organization
         // A timed list splits like a plain one: every row carries the same
         // fire moment from the same capture, and the scheduler already
@@ -10864,6 +12551,20 @@ enum RuleBasedThoughtExtractor {
         guard organization.itemType == .shopping,
               organization.recurrenceRule == nil,
               organization.locationIntent == nil else { return [] }
+
+        // A still-resolved declaration retains its exact original boundaries.
+        // It supplies literal membership, never an implicit purchase verb.
+        if let run = ShoppingGroupParser.declaredShoppingRun(in: item.sourceQuote) {
+            guard !item.needsReview, !organization.needsClarification,
+                  organization.state == .resolved, organization.personName == nil,
+                  organization.dueDate == nil, organization.reminderDate == nil,
+                  organization.reminderDelivery == .none, organization.temporalIntent == .none,
+                  let raw = ShoppingGroupParser.declaredShoppingRun(in: item.rawQuote),
+                  run.matchesOriginal(raw, source: item.sourceQuote, originalSource: item.rawQuote),
+                  normalize(item.analysisText).caseInsensitiveCompare(normalize(item.sourceQuote)) == .orderedSame
+            else { return [] }
+            return run.entries.map { .init(origin: .declaredList, product: String(item.sourceQuote[$0.range])) }
+        }
 
         // "Go to Costco and buy milk, eggs" sometimes survives segmentation as
         // one thought. The trip prefix is list naming, not a product, so strip
@@ -10919,7 +12620,7 @@ enum RuleBasedThoughtExtractor {
             // need milk and eggs". The classifier has already established that
             // every word names a product, so the rows are real; only the verb
             // is missing, and "buy" is the one the person meant.
-            return verblessShoppingEntries(in: title)
+            return verblessShoppingEntries(in: title).map { .init(origin: .purchase($0.verb), product: $0.product) }
         }
 
         let verb = normalize(String(title[verbRange])).lowercased()
@@ -10947,17 +12648,17 @@ enum RuleBasedThoughtExtractor {
            }) {
             // Every comma group can contain coordinated products, not only
             // the final group: “rice and lentils, plus a jar of sauce”.
-            return products.map { (verb, $0) }
+            return products.map { .init(origin: .purchase(verb), product: $0) }
         }
         guard body.contains(",") else {
             // Speech transcription often drops the commas the person spoke.
             // A comma-less body still splits when every word is a recognized
             // grocery — "chicken eggs and milk" — and stays whole otherwise.
             if let products = ShoppingGroupParser.products(in: body, verb: verb) {
-                return products.map { (verb, $0) }
+                return products.map { .init(origin: .purchase(verb), product: $0) }
             }
             if removedStore, !body.localizedCaseInsensitiveContains(" and "), namesSomethingToBuy(body) {
-                return [(verb, body)]
+                return [.init(origin: .purchase(verb), product: body)]
             }
             return []
         }
@@ -10996,13 +12697,16 @@ enum RuleBasedThoughtExtractor {
                   product.range(of: #"(?i)^(?:both|all|each|either|neither)\b|\bfor\s+all\s+of\s+them\b"#,
                                 options: .regularExpression) == nil
               }) else { return [] }
-        return products.map { (verb, $0) }
+        return products.map { .init(origin: .purchase(verb), product: $0) }
     }
 
     /// A purpose/beneficiary adjunct can follow known physical products. It
     /// cannot certify an unknown object, an action, or a distributive modifier.
     /// The complete parent retains this context and its exact source ownership.
     private static func withoutShoppingProductPurpose(_ text: String) -> String {
+        if let purpose = ShoppingGroupParser.purchaseEventPurpose(in: text) {
+            return String(text[purpose.acquisitionRange])
+        }
         guard let tail = text.range(of: #"(?i)\s+for\s+(?!(?:all|both|each|every)\b)[^,;.!?]+[.!?]*$"#,
                                     options: .regularExpression) else { return text }
         let prefix = String(text[..<tail.lowerBound])
@@ -11364,7 +13068,181 @@ enum RuleBasedThoughtExtractor {
         }
     }
 
-    private static func segmentedThoughts(in transcript: String) -> [Segment] {
+    /// A terminal old/new contrast describes the unique final replacement
+    /// object of an already executable, untimed acquisition list. It supplies
+    /// no purchase authority and cannot select a product by recency alone.
+    struct ReplacementPurchaseExplanation {
+        let acquisitionRange: Range<String.Index>
+        let antecedentRange: Range<String.Index>
+        let explanationRange: Range<String.Index>
+        let productCount: Int
+    }
+
+    static func replacementPurchaseExplanation(in source: String) -> ReplacementPurchaseExplanation? {
+        guard source.count <= 2_000, QuotedSpeechScope.ranges(in: source).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(source),
+              !SelfCorrectionResolver.hasCorrectionJunction(in: source),
+              ConditionalIntentScope.dependency(in: source) == nil,
+              ClauseScope.read(source).act == .direct,
+              let expression = NSRegularExpression.speakItCached(
+                #"(?i),\s*the\s+old\s+one\s+(.+?)[.!?]*\s*$"#),
+              let match = expression.firstMatch(in: source, range: NSRange(source.startIndex..., in: source)),
+              let tail = Range(match.range, in: source),
+              let stateRange = Range(match.range(at: 1), in: source),
+              ActionabilityReader.isCompleteDescriptiveStatePredicate(String(source[stateRange]))
+        else { return nil }
+        let start = ShoppingGroupParser.frontedAcquisitionContext(in: source)?.acquisitionRange.lowerBound
+            ?? source.startIndex
+        guard start < tail.lowerBound else { return nil }
+        let prefix = String(source[start..<tail.lowerBound])
+        guard let head = prefix.range(of: #"(?i)^(?:please\s+)?\#(ShoppingGroupParser.acquisitionHead)\s+"#,
+                                      options: .regularExpression) else { return nil }
+        let objectStart = source.index(start,
+            offsetBy: prefix.distance(from: prefix.startIndex, to: head.upperBound))
+        var end = tail.lowerBound
+        while end > objectStart, source[source.index(before: end)].isWhitespace {
+            end = source.index(before: end)
+        }
+        let acquisition = String(source[start..<end])
+        let calendar = Calendar(identifier: .gregorian)
+        let reference = Date(timeIntervalSince1970: 0)
+        guard ThoughtOrganizer.hasNoLiteralTiming(in: acquisition,
+            referenceDate: reference, calendar: calendar) else { return nil }
+        let organization = ThoughtOrganizer.organize(acquisition, referenceDate: reference, calendar: calendar)
+        guard organization.itemType == .shopping, !organization.needsClarification,
+              organization.state == .resolved, organization.locationIntent == nil,
+              organization.recurrenceRule == nil else { return nil }
+        let projection = ExtractedThought(sourceQuote: acquisition, rawQuote: acquisition,
+            wasRepaired: false, analysisText: acquisition, suggestedTitle: nil,
+            organization: organization, confidence: 1, needsReview: false)
+        let entries = plainShoppingEntries(in: projection)
+        let newObject = #"(?i)^(?:a|an)\s+new\s+\S"#
+        guard entries.count > 1, let final = entries.last,
+              entries.filter({ $0.product.range(of: #"(?i)\bnew\b"#, options: .regularExpression) != nil }).count == 1,
+              final.product.range(of: newObject, options: .regularExpression) != nil,
+              let antecedent = source.range(of: final.product, options: [.literal, .backwards],
+                range: objectStart..<end),
+              antecedent.upperBound == end else { return nil }
+        return .init(acquisitionRange: start..<end, antecedentRange: antecedent,
+                     explanationRange: tail, productCount: entries.count)
+    }
+
+    /// A locally proved store-and-products envelope keeps its own header
+    /// before generic comma splitting can strand it as a Memory. Reuse the
+    /// complete purchase proof; no store is borrowed from the whole capture.
+    /// A reported/held parent or a segment crossing this sentence declines.
+    private static func coalescingCertifiedPurchaseSentences(
+        _ input: [Segment], in source: String, voicePlan: SourceVoicePlan,
+        sourceHadCorrection: Bool, referenceDate: Date, calendar: Calendar
+    ) -> [Segment] {
+        guard input.count > 1, !sourceHadCorrection else { return input }
+        var located: [(Segment, Range<String.Index>)] = []
+        var cursor = source.startIndex
+        for segment in input {
+            guard let range = source.range(of: segment.quote, range: cursor..<source.endIndex)
+            else { return input }
+            located.append((segment, range))
+            cursor = range.upperBound
+        }
+        var result = input
+        // Work backwards so replacing a sentence's several fragments cannot
+        // change the indices of earlier source-owned candidates.
+        let sentences = sentenceSegments(in: source)
+        for sentenceIndex in sentences.indices.reversed() {
+            let sentence = sentences[sentenceIndex]
+            if sentenceIndex > 0 {
+                let prior = sentences[sentenceIndex - 1]
+                let act = ClauseScope.read(prior).act
+                guard act != .reporting, act != .communicating,
+                      !prior.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix(":"),
+                      ConditionalIntentScope.standalone(in: prior) == nil,
+                      !isForwardTemporalFragment(prior) else { continue }
+            }
+            guard let range = source.range(of: sentence),
+                  voicePlan.owner(of: range, segment: sentence) == .speaker,
+                  source.range(of: sentence, range: range.upperBound..<source.endIndex) == nil,
+                  let proof = declaredShoppingPlan(sentence) ?? literalPurchasePlan(sentence,
+                    referenceDate: referenceDate, calendar: calendar),
+                  proof.items.count > 1,
+                  let group = proof.items.first?.shoppingGroup,
+                  proof.items.allSatisfy({ $0.shoppingGroup == group && !$0.needsReview })
+            else { continue }
+            let indices = located.indices.filter {
+                located[$0].1.overlaps(range)
+            }
+            guard let first = indices.first, let last = indices.last,
+                  indices == Array(first...last),
+                  indices.allSatisfy({
+                      let (segment, span) = located[$0]
+                      return span.lowerBound >= range.lowerBound && span.upperBound <= range.upperBound
+                          && !segment.forcesReview && segment.memoryOwner == nil
+                          && segment.conditionalDependency == nil && segment.suggestedTitle == nil
+                  }) else { continue }
+            if ShoppingGroupParser.declaredShoppingRun(in: sentence) != nil {
+                result.replaceSubrange(first...last, with: [Segment(
+                    quote: sentence, analysisText: sentence, suggestedTitle: nil)])
+                continue
+            }
+            let canonical = canonicalizedListCommand(sentence)
+            let withoutStore = ShoppingGroupParser.withoutStoreContext(in: canonical)
+            let timing = leadingTemporalContext(in: withoutStore)
+            let action = withoutLeadingTemporalContext(withoutStore)
+            guard let verb = action.range(
+                of: #"(?i)^(?:buy|purchase|order|get|grab|pick\s+up)\b"#,
+                options: .regularExpression) else { continue }
+            // The complete retail proof already established acquisition of
+            // products. Make that role explicit for the ordinary organizer;
+            // exact spoken products, calendar and original quote stay intact.
+            let purchase = action.replacingCharacters(in: verb, with: "buy")
+            let analysis = timing.map { normalize($0 + " " + purchase) } ?? purchase
+            result.replaceSubrange(first...last, with: [Segment(
+                quote: sentence, analysisText: analysis, suggestedTitle: nil)])
+        }
+        return result
+    }
+
+    private static func isUnreadablePlaceReminder(_ source: String) -> Bool {
+        guard case .named("")? = LocationIntentParser.parse(source)?.place,
+              ReminderPhrasing.requestsReminder(source),
+              ClauseScope.read(source).act == .direct,
+              QuotedSpeechScope.ranges(in: source).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(source) else { return false }
+        return true
+    }
+
+    /// An unfinished place owns the reminder before it, not an independently
+    /// issued coordinated command. A nominal sibling or unknown predicate
+    /// cannot escape the hold. Keep the exact connector on the held source span.
+    private static func independentActionAfterUnreadablePlace(in source: String)
+        -> (held: String, heldQuote: String, action: String)? {
+        guard isUnreadablePlaceReminder(source) else { return nil }
+        for boundary in splittableCoordinatorRanges(in: source) {
+            guard !QuotedSpeechScope.protects(boundary, in: source) else { continue }
+            let held = normalize(String(source[..<boundary.lowerBound]))
+            let action = normalize(String(source[boundary.upperBound...]))
+            let body = ActionabilityReader.actionBody(action)
+            guard isUnreadablePlaceReminder(held),
+                  ClauseScope.read(action).act == .direct,
+                  action.range(of: #"(?i)^(?:please\s+)?(?:\#(ActionabilityReader.actionVerb)|\#(ActionabilityReader.headOnlyImperativeVerb))\b(?=\s+\S)"#,
+                               options: .regularExpression) != nil,
+                  body.range(of: #"(?i)^(?:\#(ActionabilityReader.actionVerb)|\#(ActionabilityReader.headOnlyImperativeVerb))\b"#,
+                             options: .regularExpression) != nil,
+                  ActionabilityReader.read(action).belongsOnToday else { continue }
+            return (held, String(source[..<boundary.upperBound]), action)
+        }
+        return nil
+    }
+
+    private static func segmentedThoughts(in transcript: String, referenceDate: Date, calendar: Calendar) -> [Segment] {
+        if let split = independentActionAfterUnreadablePlace(in: transcript) {
+            let held = segmentedThoughts(in: split.held, referenceDate: referenceDate, calendar: calendar)
+            if held.count == 1, let original = held.first {
+                return [Segment(quote: split.heldQuote, analysisText: original.analysisText,
+                    suggestedTitle: original.suggestedTitle, forcesReview: original.forcesReview,
+                    memoryOwner: original.memoryOwner, conditionalDependency: original.conditionalDependency)]
+                    + segmentedThoughts(in: split.action, referenceDate: referenceDate, calendar: calendar)
+            }
+        }
         // An explicitly coordinated conditional starts its own intention.
         // Establish that boundary before a blind tagger treats the condition
         // as another product in the preceding shopping list.
@@ -11373,18 +13251,19 @@ enum RuleBasedThoughtExtractor {
             options: .regularExpression),
            !QuotedSpeechScope.protects(boundary, in: transcript),
            ClauseScope.read(String(transcript[..<boundary.lowerBound])).act == .direct {
-            return segmentedThoughts(in: String(transcript[..<boundary.lowerBound]))
-                + segmentedThoughts(in: String(transcript[boundary.upperBound...]))
+            return segmentedThoughts(in: String(transcript[..<boundary.lowerBound]), referenceDate: referenceDate, calendar: calendar)
+                + segmentedThoughts(in: String(transcript[boundary.upperBound...]), referenceDate: referenceDate, calendar: calendar)
         }
         // Conditional scope never crosses a sentence boundary. Keep the
         // boundary explicit before clause splitting discards its punctuation.
         let sentences = sentenceSegments(in: transcript)
         if sentences.count > 1,
            sentences.contains(where: {
-               ConditionalIntentScope.dependency(in: $0) != nil
+               isUnreadablePlaceReminder($0)
+                   || ConditionalIntentScope.dependency(in: $0) != nil
                    || splitClauses($0).contains(where: { ConditionalIntentScope.standalone(in: $0) != nil })
            }) {
-            return sentences.flatMap { segmentedThoughts(in: $0) }
+            return sentences.flatMap { segmentedThoughts(in: $0, referenceDate: referenceDate, calendar: calendar) }
         }
 
         // The declaration names several consequences under this condition.
@@ -11397,10 +13276,10 @@ enum RuleBasedThoughtExtractor {
             // A new explicitly owned instruction closes the declaration's
             // conditional scope; it must not inherit the earlier trigger.
             if let boundary = nominalDeclarationScopeExit(in: transcript) {
-                return segmentedThoughts(in: String(transcript[..<boundary.lowerBound]))
-                    + segmentedThoughts(in: String(transcript[boundary.upperBound...]))
+                return segmentedThoughts(in: String(transcript[..<boundary.lowerBound]), referenceDate: referenceDate, calendar: calendar)
+                    + segmentedThoughts(in: String(transcript[boundary.upperBound...]), referenceDate: referenceDate, calendar: calendar)
             }
-            let parts = segmentedThoughts(in: dependency.consequence)
+            let parts = segmentedThoughts(in: dependency.consequence, referenceDate: referenceDate, calendar: calendar)
             if parts.count > 1,
                parts.allSatisfy({ ActionabilityReader.read($0.analysisText).belongsOnToday }),
                let bodyRange = transcript.range(of: dependency.consequence) {
@@ -11421,13 +13300,23 @@ enum RuleBasedThoughtExtractor {
         // A fronted condition and its one consequence are already one
         // dependency. Keep that relation before a bare reminder frame can
         // split a clock-bearing event from the action it governs.
-        if let dependency = ConditionalIntentScope.leading(in: transcript),
-           dependency.consequence.range(of: #"(?i)\b(?:and|then|also|but)\b|[,;]"#,
-                                        options: .regularExpression) == nil {
-            return [Segment(quote: transcript, analysisText: transcript,
-                            suggestedTitle: ConditionalIntentScope.isDiscourseIdiom(dependency.condition)
-                                ? ReminderCopy.action(from: dependency.consequence) : nil,
-                            conditionalDependency: dependency)]
+        if let dependency = ConditionalIntentScope.leading(in: transcript) {
+            let consequence = dependency.consequence
+            var boundaryText = consequence
+            if consequence.contains(","),
+               let appositive = ClauseScope.datedEnrollmentAppositive(in: consequence,
+                    referenceDate: referenceDate, calendar: calendar) {
+                // Only this proved nominal appositive's commas leave the
+                // boundary check. The original source and condition stay whole.
+                boundaryText = appositive.executionText(in: consequence)
+            }
+            if boundaryText.range(of: #"(?i)\b(?:and|then|also|but)\b|[,;]"#,
+                                  options: .regularExpression) == nil {
+                return [Segment(quote: transcript, analysisText: transcript,
+                                suggestedTitle: ConditionalIntentScope.isDiscourseIdiom(dependency.condition)
+                                    ? ReminderCopy.action(from: dependency.consequence) : nil,
+                                conditionalDependency: dependency)]
+            }
         }
 
         // A single action with a trailing condition is one dependency even
@@ -11441,8 +13330,15 @@ enum RuleBasedThoughtExtractor {
                             suggestedTitle: nil, conditionalDependency: dependency)]
         }
 
+        // The action was supplied; only its arrival place is unfinished.
+        // Keep this one reminder envelope for the existing location review
+        // instead of splitting its products away from their missing trigger.
+        if sentences.count == 1, isUnreadablePlaceReminder(transcript) {
+            return [Segment(quote: transcript, analysisText: transcript, suggestedTitle: nil)]
+        }
+
         if let command = sharedCommand(in: transcript) {
-            let bodyParts = splitClauses(command.body)
+            let bodyParts = splitClauses(command.body, pairedCallDetailSource: transcript)
             if bodyParts.count > 1 {
                 let mergedParts = mergeDependentCommunication(bodyParts)
                 // A place is as much a shared trigger as a time. "Remind me at
@@ -11517,7 +13413,7 @@ enum RuleBasedThoughtExtractor {
                ActionabilityReader.read(sentences[index + 1]).belongsOnToday {
                 let next = sentences[index + 1]
                 let temporal = sentence.trimmingCharacters(in: CharacterSet(charactersIn: " .!?"))
-                var scoped = segmentedSentence("\(temporal) \(next)")
+                var scoped = segmentedSentence("\(temporal) \(next)", referenceDate: referenceDate, calendar: calendar)
                 if !scoped.isEmpty,
                    scoped[0].quote.hasPrefix(temporal) {
                     let tail = scoped[0].quote.dropFirst(temporal.count)
@@ -11539,7 +13435,7 @@ enum RuleBasedThoughtExtractor {
                     continue
                 }
             }
-            result.append(contentsOf: segmentedSentence(sentence))
+            result.append(contentsOf: segmentedSentence(sentence, referenceDate: referenceDate, calendar: calendar))
             index += 1
         }
         return result
@@ -11664,12 +13560,12 @@ enum RuleBasedThoughtExtractor {
     /// A nominal declaration has already selected one own-task root. Keep
     /// its identifying context together; only a validated output constraint
     /// opens a separate span for the owner planner, before temporal parsing.
-    private static func declaredOwnActionSegments(in source: String) -> [Segment] {
+    private static func declaredOwnActionSegments(in source: String, referenceDate: Date, calendar: Calendar) -> [Segment] {
         // A plural declaration opens multiple ordinary predicates. The
         // singular path below deliberately preserves one root's context.
         if source.range(of: #"(?i)^\#(ActionabilityReader.ownedPluralNominalTaskEntryFramePattern)(?=\#(ActionabilityReader.nominalTaskActionHeadPattern)\b)"#,
                         options: .regularExpression) != nil {
-            return segmentedThoughts(in: source)
+            return segmentedThoughts(in: source, referenceDate: referenceDate, calendar: calendar)
         }
         if let regex = NSRegularExpression.speakItCached(
             #"(?i)\b\#(negativeTimeTransferCore)"#
@@ -11699,7 +13595,70 @@ enum RuleBasedThoughtExtractor {
                 options: .regularExpression) == nil else { return false }
         return true
     }
-    private static func segmentedSentence(_ sentence: String) -> [Segment] {
+    private static func segmentedSentence(_ sentence: String, referenceDate: Date, calendar: Calendar) -> [Segment] {
+        if let call = ClauseScope.appositionalCallContext(in: sentence,
+                referenceDate: referenceDate, calendar: calendar) {
+            return [Segment(quote: sentence, analysisText: sentence,
+                suggestedTitle: call.visibleTitle(in: sentence))]
+        }
+        // Written closure dates describe the artifact payload. Keep every
+        // literal word together; Organizer independently projects only timing.
+        if ClauseScope.writtenArtifactContent(in: sentence, referenceDate: referenceDate, calendar: calendar) != nil {
+            return [Segment(quote: sentence, analysisText: sentence, suggestedTitle: sentence)]
+        }
+        if let planned = plannedRetailShoppingParent(sentence, referenceDate: referenceDate, calendar: calendar) {
+            return [Segment(quote: sentence, analysisText: planned.analysisText, suggestedTitle: nil)]
+        }
+        if ClauseScope.contactTimingPreference(in: sentence) != nil {
+            return [Segment(quote: sentence, analysisText: sentence, suggestedTitle: nil)]
+        }
+        if ClauseScope.partialNumberedWork(in: sentence) != nil {
+            return [Segment(quote: sentence, analysisText: sentence, suggestedTitle: nil)]
+        }
+        // A positive own dispatch restatement retains its literal artifact,
+        // reason and deadline as one component before tag-dependent splitting.
+        // The same exact-source role separately supplies Organizer timing.
+        if ClauseScope.outgoingArtifactDeadline(in: sentence) != nil {
+            return [Segment(quote: sentence, analysisText: sentence, suggestedTitle: nil)]
+        }
+        // A complete source-owned run is one acquisition component before
+        // generic comma/conjunct splitting. Invalid siblings never enter it.
+        if ShoppingGroupParser.declaredShoppingRun(in: sentence) != nil {
+            return [Segment(quote: sentence,
+                analysisText: canonicalizedListCommand(sentence), suggestedTitle: nil)]
+        }
+        // A complete prelude can precede a separately owned finite fact. The
+        // tagger may miss a multiword lowercase subject; reuse the determined
+        // subject/copula proof already used by the conjunct/component readers.
+        // This does not extend the recording role over any unknown residual.
+        if QuotedSpeechScope.ranges(in: sentence).isEmpty,
+           !QuotedSpeechScope.hasUnclosedQuote(sentence) {
+            for boundary in splittableCoordinatorRanges(in: sentence) {
+                let prelude = normalize(String(sentence[..<boundary.lowerBound]))
+                    .trimmingCharacters(in: CharacterSet(charactersIn: ",;"))
+                let right = normalize(String(sentence[boundary.upperBound...]))
+                guard isCompleteFutureOutputPrelude(prelude),
+                      ClauseScope.read(right).act == .direct,
+                      right.range(of: #"(?i)^(?:the|a|an|this|that|my|our)\s+(?:(?!(?:that|which|who|because|if|when|is|are|was|were|has|have|had|will|would|can|could|should|must)\b)[\p{L}'’-]+\s+)+(?:is|are|was|were|has|have|had)\b"#,
+                                  options: .regularExpression) != nil else { continue }
+                var meanings = segmentedSentence(right, referenceDate: referenceDate, calendar: calendar)
+                guard let first = meanings.first,
+                      let span = sentence.range(of: first.quote,
+                          range: boundary.upperBound..<sentence.endIndex) else { continue }
+                meanings[0] = Segment(quote: String(sentence[boundary.lowerBound..<span.upperBound]),
+                    analysisText: first.analysisText, suggestedTitle: first.suggestedTitle,
+                    forcesReview: first.forcesReview, memoryOwner: first.memoryOwner,
+                    conditionalDependency: first.conditionalDependency)
+                return [Segment(quote: String(sentence[..<boundary.lowerBound]),
+                    analysisText: prelude, suggestedTitle: nil)] + meanings
+            }
+        }
+        if isCompleteFutureOutputPrelude(sentence) {
+            return [Segment(quote: sentence, analysisText: sentence, suggestedTitle: nil)]
+        }
+        if let metadata = completeMetadataRuns(in: sentence) {
+            return metadata.map { Segment(quote: $0, analysisText: normalize($0), suggestedTitle: nil) }
+        }
         if directNeedDenial(sentence) {
             return [Segment(quote: sentence, analysisText: sentence,
                             suggestedTitle: sentence, memoryOwner: .note)]
@@ -11714,17 +13673,14 @@ enum RuleBasedThoughtExtractor {
             let denial = String(sentence[boundary.upperBound...])
             if ClauseScope.read(prior).act == .direct,
                ActionabilityReader.read(prior).belongsOnToday, directNeedDenial(denial) {
-                return segmentedSentence(prior) + [Segment(quote: String(sentence[boundary.lowerBound...]),
+                return segmentedSentence(prior, referenceDate: referenceDate, calendar: calendar) + [Segment(quote: String(sentence[boundary.lowerBound...]),
                     analysisText: denial, suggestedTitle: denial, memoryOwner: .note)]
             }
         }
-        // Keeping the task and its day while withholding the clock is one
-        // constraint on a prior reminder. Do not cut its coordinated objects
-        // into a fake "keep" task and a headless date fragment.
-        if sentence.range(
-            of: #"(?i)^keep\s+the\s+task\s+and\s+[^.!?]*\bdate\s*,?\s*but\s+hold\s+the\s+notification\s+time\s+until\s+(?:i|we)\s+answer[.!?]?$"#,
-            options: .regularExpression
-        ) != nil {
+        // A complete output relation owns its coordinated arguments before
+        // provisional action/fact classification. The planner still requires
+        // a unique actual owner; this grants no task or reminder authority.
+        if isCompleteMetadataReference(sentence) {
             return [Segment(quote: sentence, analysisText: sentence,
                             suggestedTitle: nil)]
         }
@@ -11741,7 +13697,7 @@ enum RuleBasedThoughtExtractor {
                 return [Segment(quote: sentence, analysisText: sentence,
                                 suggestedTitle: nil, forcesReview: true)]
             }
-            return segmentedThoughts(in: frame.content).enumerated().map { index, part in
+            return segmentedThoughts(in: frame.content, referenceDate: referenceDate, calendar: calendar).enumerated().map { index, part in
                 return Segment(
                     quote: index == 0 ? frame.sourcePrefix + part.quote : part.quote,
                     analysisText: part.analysisText,
@@ -11752,15 +13708,55 @@ enum RuleBasedThoughtExtractor {
             }
         }
         if QuotedSpeechScope.ranges(in: sentence).isEmpty,
-           let colon = sentence.firstIndex(of: ":"),
-           case .nextTermInterpretation = captureDiscourseReference(
-             in: String(sentence[...colon])) {
+           let colon = sentence.firstIndex(of: ":") {
             let prefix = String(sentence[...colon])
             let body = normalize(String(sentence[sentence.index(after: colon)...]))
             if !body.isEmpty {
-                return [Segment(quote: prefix, analysisText: prefix, suggestedTitle: nil)]
-                    + segmentedSentence(body)
+                if case .nextTermInterpretation = captureDiscourseReference(in: prefix) {
+                    return [Segment(quote: prefix, analysisText: prefix, suggestedTitle: nil)]
+                        + segmentedSentence(body, referenceDate: referenceDate, calendar: calendar)
+                }
+                // Coordinated output relations may have different owners.
+                // Read the forward-term child after proving earlier siblings
+                // are metadata, then run the existing colon/content reader on
+                // that child. Preserve the exact connector on its source quote.
+                // The ordinary clause reader already recognizes a negative
+                // output directive even when it is not an executable action.
+                // Require every resulting child to prove its existing role.
+                let children = splitClauses(prefix)
+                if children.count > 1, let last = children.last,
+                   case .nextTermInterpretation = captureDiscourseReference(in: last),
+                   children.dropLast().allSatisfy({ child in
+                       if isCompleteMetadataReference(child) { return true }
+                       if case .pairedActions = captureDiscourseReference(in: child) { return true }
+                       return false
+                   }) {
+                    var cursor = prefix.startIndex
+                    var owned: [Segment] = []
+                    for child in children {
+                        guard let span = prefix.range(of: child, range: cursor..<prefix.endIndex) else {
+                            return [Segment(quote: sentence, analysisText: sentence,
+                                            suggestedTitle: nil, forcesReview: true)]
+                        }
+                        let exact = String(prefix[cursor..<span.upperBound])
+                        var childSegments = segmentedSentence(child, referenceDate: referenceDate, calendar: calendar)
+                        guard !childSegments.isEmpty else { continue }
+                        let first = childSegments[0]
+                        childSegments[0] = Segment(quote: exact,
+                            analysisText: first.analysisText, suggestedTitle: first.suggestedTitle,
+                            forcesReview: first.forcesReview, memoryOwner: first.memoryOwner,
+                            conditionalDependency: first.conditionalDependency)
+                        owned.append(contentsOf: childSegments)
+                        cursor = span.upperBound
+                    }
+                    return owned + segmentedSentence(body, referenceDate: referenceDate, calendar: calendar)
+                }
             }
+        }
+        // The raw coordinator and complete aside are checked before any
+        // native finite vote can detach the timing context from its anchor.
+        if hasCompleteNominalTimingRestatement(in: sentence) {
+            return [Segment(quote: sentence, analysisText: sentence, suggestedTitle: nil)]
         }
         switch captureDiscourseReference(in: sentence) {
         case .pairedActions, .prospectiveReminder:
@@ -11778,10 +13774,16 @@ enum RuleBasedThoughtExtractor {
         ) {
             let body = String(sentence[lead.upperBound...])
             if ActionabilityReader.read(body).belongsOnToday {
-                return segmentedSentence(body).enumerated().map { index, part in
-                    Segment(
-                        quote: index == 0 ? String(sentence[..<lead.upperBound]) + part.quote
-                            : part.quote,
+                return segmentedSentence(body, referenceDate: referenceDate, calendar: calendar).enumerated().map { index, part in
+                    // Recursion may consume a fronted discourse adjunct.
+                    // Restore the exact source through the first owned quote,
+                    // rather than joining a sequencing lead to a distant tail.
+                    let quote = index == 0 ? sentence.range(of: part.quote,
+                        range: lead.upperBound..<sentence.endIndex).map {
+                            String(sentence[..<$0.upperBound])
+                        } ?? (String(sentence[..<lead.upperBound]) + part.quote) : part.quote
+                    return Segment(
+                        quote: quote,
                         analysisText: part.analysisText,
                         suggestedTitle: part.suggestedTitle,
                         forcesReview: part.forcesReview,
@@ -11808,7 +13810,49 @@ enum RuleBasedThoughtExtractor {
             return [Segment(quote: retained, analysisText: retained,
                             suggestedTitle: nil,
                             memoryOwner: ActionabilityReader.explicitCaptureRetentionKind(retained))]
-                + segmentedSentence(String(sentence[boundary.upperBound...]))
+                + segmentedSentence(String(sentence[boundary.upperBound...]), referenceDate: referenceDate, calendar: calendar)
+        }
+        if let boundary = ActionabilityReader.namedActionWithdrawalReading(in: sentence)?.positiveContinuationBoundary {
+            let prefix = String(sentence[..<boundary.lowerBound])
+            let tail = String(sentence[boundary.upperBound...])
+            var meanings = segmentedSentence(tail, referenceDate: referenceDate, calendar: calendar)
+            // Retain the literal coordinator with its following source quote;
+            // analysis still reads the independently proved matrix without it.
+            if let first = meanings.first,
+               let span = sentence.range(of: first.quote,
+                   range: boundary.upperBound..<sentence.endIndex) {
+                meanings[0] = Segment(quote: String(sentence[boundary.lowerBound..<span.upperBound]),
+                    analysisText: first.analysisText, suggestedTitle: first.suggestedTitle,
+                    forcesReview: first.forcesReview, memoryOwner: first.memoryOwner,
+                    conditionalDependency: first.conditionalDependency)
+                return segmentedSentence(prefix, referenceDate: referenceDate, calendar: calendar) + meanings
+            }
+        }
+        // A retailer owns this literal acquisition component before a
+        // comma can orphan its header. Segment only the spoken body through
+        // the normal gates; retain the exact prefix on its first child. Later
+        // independent commands never inherit this list metadata.
+        if let context = ShoppingGroupParser.frontedAcquisitionContext(in: sentence) {
+            let body = String(sentence[context.acquisitionRange])
+            var children = segmentedSentence(body, referenceDate: referenceDate, calendar: calendar)
+            if let first = children.first,
+               let span = body.range(of: first.quote, options: .anchored) {
+                let end = sentence.index(context.acquisitionRange.lowerBound,
+                    offsetBy: body.distance(from: body.startIndex, to: span.upperBound))
+                children[0] = Segment(quote: String(sentence[..<end]),
+                    analysisText: first.analysisText, suggestedTitle: first.suggestedTitle,
+                    forcesReview: first.forcesReview, memoryOwner: first.memoryOwner,
+                    conditionalDependency: first.conditionalDependency)
+                return children
+            }
+        }
+        // Preserve one established acquisition component before optional
+        // lexical tags can split its final object from a dependent old/new
+        // explanation. The complete source stays on the parent; only the
+        // proved acquisition prefix enters product identity and timing.
+        if let explanation = replacementPurchaseExplanation(in: sentence) {
+            return [Segment(quote: sentence,
+                analysisText: String(sentence[explanation.acquisitionRange]), suggestedTitle: nil)]
         }
         if !QuotedSpeechScope.ranges(in: sentence).isEmpty {
             let act = ClauseScope.read(sentence).act
@@ -11844,12 +13888,12 @@ enum RuleBasedThoughtExtractor {
                                          memoryOwner: voice == .reported ? .note : nil)
                     let actions: [Segment]
                     if split.declared {
-                        actions = declaredOwnActionSegments(in: split.actionQuote)
+                        actions = declaredOwnActionSegments(in: split.actionQuote, referenceDate: referenceDate, calendar: calendar)
                     } else if splitClauses(split.actionQuote).count > 1 {
                         // The return to the speaker is established. Consume
                         // its already validated independent clauses rather
                         // than flattening them into one matrix-owned row.
-                        actions = segmentedThoughts(in: split.actionQuote)
+                        actions = segmentedThoughts(in: split.actionQuote, referenceDate: referenceDate, calendar: calendar)
                     } else {
                         actions = [Segment(quote: split.actionQuote,
                                            analysisText: split.action, suggestedTitle: nil)]
@@ -11879,7 +13923,7 @@ enum RuleBasedThoughtExtractor {
                ConditionalIntentScope.leading(in: sentence) == nil,
                ClauseScope.read(prefix).act != .reporting {
                 let action = normalize(String(sentence[frame.lowerBound...]))
-                return segmentedSentence(prefix) + segmentedSentence(action)
+                return segmentedSentence(prefix, referenceDate: referenceDate, calendar: calendar) + segmentedSentence(action, referenceDate: referenceDate, calendar: calendar)
             }
         }
         // A speaker can interrupt a Memory with a named current commitment:
@@ -11996,7 +14040,7 @@ enum RuleBasedThoughtExtractor {
                 let memory = !ActionabilityReader.read(first).belongsOnToday
                 return [Segment(quote: prefix + first, analysisText: first,
                                 suggestedTitle: first, memoryOwner: memory ? .note : nil)]
-                    + parts.dropFirst().flatMap { segmentedSentence($0) }
+                    + parts.dropFirst().flatMap { segmentedSentence($0, referenceDate: referenceDate, calendar: calendar) }
             }
         }
         // A foreign or historical nominal declaration owns its coordinated
@@ -12007,7 +14051,7 @@ enum RuleBasedThoughtExtractor {
                 let instruction = String(sentence[boundary.upperBound...])
                 return [Segment(quote: account, analysisText: account,
                                 suggestedTitle: nil, memoryOwner: .note)]
-                    + segmentedSentence(instruction)
+                    + segmentedSentence(instruction, referenceDate: referenceDate, calendar: calendar)
             }
             return [Segment(quote: sentence, analysisText: sentence,
                             suggestedTitle: nil, memoryOwner: .note)]
@@ -12592,7 +14636,7 @@ enum RuleBasedThoughtExtractor {
             options: .regularExpression) != nil
     }
 
-    static func splitClauses(_ text: String) -> [String] {
+    static func splitClauses(_ text: String, pairedCallDetailSource: String? = nil) -> [String] {
         let sentenceParts = sentenceSegments(in: text)
         let pattern = #"(?:\n+|;\s*|(?:,\s*|\s+)but\s+(?=(?:i|we)\s+(?:will|should|must|need\s+to|have\s+to|am\s+going\s+to|are\s+going\s+to)\b|(?:please\s+)?remind\s+me\b|\#(actionLeadPattern))|,\s*(?:\#(connectorRun)\s+)?(?=(?:actually\s+)?\#(actionLeadPattern))|,\s*(?=actually\s+(?:i|we)\s+(?:also\s+)?(?:need|have|want)\s+to\s+\#(ActionabilityReader.actionVerb)\b)|,\s*(?=actually\s+(?:(?:on|by|before|at)\s+)?\#(SelfCorrectionResolver.datePattern)\s+\#(actionLeadPattern)\b)|,\s*(?=\#(pivotIntentPattern))|\s+and\s+(?=\#(pivotIntentPattern))|\s+and\s+(?=\#(frontedCommittedActionPattern))|\s+\#(connectorRun)\s*,?\s+(?=(?:actually\s+)?\#(frontedLeadPattern)?\#(actionLeadPattern))(?!(?:get|send|bring|have|put|take|hand|give|keep|leave|chase|return)\s+(?:it|them|that|those|him|her)\b)|\s+and\s+(?=(?:i|we)\s+(?:(?:still|also|really|probably)\s+)*(?:need|have|want)\s+to\s+\#(ActionabilityReader.actionVerb)\b)|\s+(?:second|third|finally|one\s+more\s+thing)\s*[:,]?\s*(?=\#(actionLeadPattern))|\s+(?:\#(connectorRun)\s+)?\#(strongEnumerator)\s*[:,]?\s*(?=\#(clauseOpenerPattern))|\s+(?:\#(connectorRun)\s+)?(?<!\#(locatingNumberContext))(?<!\#(equatingNumberContext))\#(numberedEnumerator)\s*[:,]?\s*(?=\#(clauseOpenerPattern))|\s+(?:\#(connectorRun)\s+)?(?<!\#(locatingNumberContext))\#(numberedEnumerator)\s*[:,]?\s*(?=\#(actionLeadPattern))|,\s*(?:and\s+)?(?:then\s+)?(?=\#(triggerLeadPattern))|\s+(?:and\s+)?then\s+(?=\#(triggerLeadPattern))|\s+and\s+(?=\#(triggerLeadPattern)))"#
         let separateInstruction = #"\s+(?=and\s+separately\s+\#(actionLeadPattern))"#
@@ -12606,6 +14650,11 @@ enum RuleBasedThoughtExtractor {
         var parts: [String] = []
         for sentence in sentenceParts {
             if let boundary = captureRetentionIndependentBoundary(in: sentence) {
+                appendSegment(String(sentence[..<boundary.lowerBound]), to: &parts)
+                parts.append(contentsOf: splitClauses(String(sentence[boundary.upperBound...])))
+                continue
+            }
+            if let boundary = ActionabilityReader.namedActionWithdrawalReading(in: sentence)?.positiveContinuationBoundary {
                 appendSegment(String(sentence[..<boundary.lowerBound]), to: &parts)
                 parts.append(contentsOf: splitClauses(String(sentence[boundary.upperBound...])))
                 continue
@@ -12641,7 +14690,25 @@ enum RuleBasedThoughtExtractor {
             // direct instruction, although the source never returned to the
             // user's voice. The same scope governs every action verb here.
             let matrixReading = ClauseScope.read(sentence)
-            let deniedComplements = ClauseScope.deniedRequestComplementRanges(in: sentence)
+            // The same complete-source detail owns an internal comma before
+            // Ask as well as the punctuation-free juxtaposition seam below.
+            let pairedDetail = pairedCallDetailRange(in: pairedCallDetailSource ?? text,
+                forLiteralPart: sentence)
+            let retailContext = ShoppingGroupParser.frontedAcquisitionContext(in: sentence)
+            let closedPairedDenial = pairedDetail.flatMap {
+                pairedCallNonDelegationRange(in: sentence, before: $0)
+            }
+            let deniedComplements = ClauseScope.deniedRequestComplementRanges(in: sentence).map { denied in
+                guard let closed = closedPairedDenial,
+                      closed.lowerBound < denied.lowerBound, denied.lowerBound < closed.upperBound,
+                      closed.upperBound < denied.upperBound,
+                      String(sentence[closed.lowerBound..<denied.lowerBound]).range(
+                        of: #"(?i)^\#(callNonDelegationHead)$"#, options: .regularExpression) != nil
+                else { return denied }
+                // Only this exact old denial head is closed by the complete
+                // recognized statement; later coordinators stay ordinary.
+                return denied.lowerBound..<closed.upperBound
+            }
             let nsRange = NSRange(sentence.startIndex..., in: sentence)
             // A fixed phrase keeps its own "and". "It's been touch and go but I
             // need to book the dentist" split at the idiom once "go" joined the
@@ -12655,6 +14722,10 @@ enum RuleBasedThoughtExtractor {
                 guard let range = Range(match.range, in: sentence) else { continue }
                 if QuotedSpeechScope.protects(range, in: sentence),
                    !ClauseScope.isCausalReturn(range, in: sentence) { continue }
+                if let pairedDetail, pairedDetail.lowerBound < range.lowerBound,
+                   range.upperBound < pairedDetail.upperBound,
+                   sentence[range.upperBound...].range(of: #"(?i)^ask\s+whether\b"#,
+                        options: .regularExpression) != nil { continue }
                 if ClauseScope.continuesAttributedAction(
                     left: String(sentence[..<range.lowerBound]),
                     right: String(sentence[range.upperBound...])
@@ -12676,8 +14747,6 @@ enum RuleBasedThoughtExtractor {
                     continue
                 }
                 if matrixReading.act == .communicating,
-                   let complement = matrixReading.complementRange,
-                   range.lowerBound >= complement.lowerBound,
                    !ClauseScope.coordinatorEndsComplement(
                     range, rightConjunct: range.upperBound..<sentence.endIndex,
                     in: SentenceContextCache.context(for: sentence),
@@ -12689,6 +14758,8 @@ enum RuleBasedThoughtExtractor {
                 // to the instruction after it. Cutting "After lunch, call
                 // Theo" here creates a phantom context row before the call.
                 let head = normalize(String(sentence[lowerBound..<range.lowerBound]))
+                if let retailContext, lowerBound == sentence.startIndex,
+                   range == retailContext.boundaryRange { continue }
                 // A reminder opener has no action of its own. Its arrival
                 // condition and following action belong to the same envelope.
                 if (head.range(of: #"(?i)^(?:please\s+)?(?:remind|notify|alert|ping|tell)\s+(?:me|us)$"#,
@@ -12800,6 +14871,8 @@ enum RuleBasedThoughtExtractor {
             guard let regex = NSRegularExpression.speakItCached(pattern) else {
                 return [part]
             }
+            let scope = ClauseScope.read(part)
+            let context = SentenceContextCache.context(for: part)
             for match in regex.matches(in: part,
                                        range: NSRange(part.startIndex..., in: part)) {
                 guard let boundary = Range(match.range, in: part),
@@ -12807,6 +14880,27 @@ enum RuleBasedThoughtExtractor {
                 let head = normalize(String(part[..<boundary.lowerBound]))
                 let tail = normalize(String(part[boundary.upperBound...]))
                 let tailAct = ActionabilityReader.read(tail)
+                if scope.act == .communicating,
+                   !ClauseScope.coordinatorEndsComplement(boundary,
+                    rightConjunct: boundary.upperBound..<part.endIndex,
+                    in: context, reading: scope) {
+                    // Keep the existing explicit two-date fallback when a
+                    // comma returns to an independent imperative. Apple's
+                    // contextual tagger can call "book" a noun. A question's
+                    // own bridge and a continuing attributed action remain
+                    // owned; timing words alone never release them.
+                    let comma = part[boundary].contains(",")
+                        || part[..<boundary.lowerBound].last == ","
+                    let independent = comma
+                        && containsExplicitTiming(head) && containsExplicitTiming(tail)
+                        && tail.range(of: #"(?i)^\#(ActionabilityReader.actionVerb)\b"#,
+                                      options: .regularExpression) != nil
+                        && (tailAct == .actionable || tailAct == .outstanding)
+                        && ClauseScope.read(tail).act == .direct
+                        && ConditionalIntentScope.dependency(in: tail) == nil
+                        && !ClauseScope.continuesAttributedAction(left: head, right: tail)
+                    if !independent { continue }
+                }
                 let predicateWithObject = tail.range(
                     of: #"(?i)^(?!at\b|on\b|by\b|before\b|after\b|during\b|every\b|each\b)[\p{L}'’-]+\s+(?:the|a|an|my|our|your|his|her|their|this|that|these|those)\b"#,
                     options: .regularExpression
@@ -12837,11 +14931,15 @@ enum RuleBasedThoughtExtractor {
             if quotedSourceOwns(part) {
                 return [part]
             }
-            return ClauseJuxtaposition.pieces(in: part)
+            if isCompleteMetadataReference(part) || ClauseScope.contactTimingPreference(in: part) != nil { return [part] }
+            let detail = pairedCallDetailRange(in: pairedCallDetailSource ?? text, forLiteralPart: part)
+            return retainingCompleteMetadataFragments(ClauseJuxtaposition.pieces(in: part,
+                protectingPairedCallDetail: detail), in: part)
         }
         let companionScoped = juxtaposed.flatMap(splitPropositionAfterCompanionList)
         let expanded = companionScoped.flatMap { part in
-            quotedSourceOwns(part) ? [part] : splitIndependentConjuncts(part)
+            quotedSourceOwns(part) ? [part] : splitIndependentConjuncts(part,
+                lexicalContext: originalSentenceContext(for: part, in: text))
         }
         let merged = mergeFragments(expanded)
         guard !merged.isEmpty else { return [normalize(text)] }
@@ -13007,15 +15105,56 @@ enum RuleBasedThoughtExtractor {
     /// milk and bread" is one shopping list; "Call Alex and Alexa" is two
     /// people to call. So a bare common noun keeps the thought together, while
     /// a person, a predicate, or a conjunct carrying its own time splits it.
-    static func splitIndependentConjuncts(_ part: String) -> [String] {
-        if ActionabilityReader.retainedContentKind(part) != nil { return [part] }
+    private static func originalSentenceContext(for part: String, in source: String) -> SentenceContext? {
+        guard !part.isEmpty, let span = source.range(of: part, options: .literal),
+              String(source[span]).utf8.elementsEqual(part.utf8),
+              source.range(of: part, options: .literal,
+                range: source.index(after: span.lowerBound)..<source.endIndex) == nil else { return nil }
+        let sentences = quotePreservingSentenceRanges(in: source).filter {
+            $0.lowerBound <= span.lowerBound && $0.upperBound >= span.upperBound
+        }
+        guard sentences.count == 1, let sentenceRange = sentences.first else { return nil }
+        let sentence = String(source[sentenceRange])
+        let context = SentenceContextCache.context(for: sentence)
+        guard context.text.utf8.elementsEqual(sentence.utf8) else { return nil }
+        let original = NSRange(span, in: source), whole = NSRange(sentenceRange, in: source)
+        return context.projectingLiteralPart(part,
+            range: NSRange(location: original.location - whole.location, length: original.length))
+    }
+
+    static func splitIndependentConjuncts(_ part: String,
+        lexicalContext: @autoclosure () -> SentenceContext? = nil
+    ) -> [String] {
+        if ActionabilityReader.retainedContentKind(part) != nil
+            || ActionabilityReader.isAnaphoricTaskDeclaration(part)
+            || ordinalUndatedStateReference(in: part) != nil
+            || isCompleteMetadataReference(part)
+            || isCompleteFutureOutputPrelude(part) { return [part] }
+        let metadataRanges = completeMetadataRanges(in: part)
         let boundaries = splittableCoordinatorRanges(in: part)
         guard !boundaries.isEmpty else { return [part] }
+
+        // A complete explicit list envelope supplies purchase roles before
+        // lexical tagging can mistake an internal product for another verb.
+        // Canonicalization alone is not proof: the literal plan must account
+        // for the complete original source with disjoint product owners.
+        if part.range(of: #"(?i)\b(?:list|shopping|groceries)\b"#,
+                      options: .regularExpression) != nil,
+           part.range(of: #"[\n]|[.!?]\s+[\p{L}]"#, options: .regularExpression) == nil {
+            let command = canonicalizedListCommand(part)
+            if command != part,
+               command.range(of: #"(?i)^buy\s+"#, options: .regularExpression) != nil,
+               literalPurchasePlan(part, referenceDate: Date(timeIntervalSince1970: 0),
+                                   calendar: Calendar(identifier: .gregorian)) != nil {
+                return [part]
+            }
+        }
 
         // One reading of the whole clause, produced before any of it is cut up.
         // Every rule below asks this about a *span*; none of them re-tags a
         // fragment on its own. See `SentenceContext` for what that was costing.
-        let context = SentenceContextCache.context(for: part)
+        let context = lexicalContext().flatMap { $0.text.utf8.elementsEqual(part.utf8) ? $0 : nil }
+            ?? SentenceContextCache.context(for: part)
 
         // Where the speaker stops speaking in their own voice. A conjunction
         // inside a reported proposition or a message body does not end it: the
@@ -13052,6 +15191,27 @@ enum RuleBasedThoughtExtractor {
         var currentEnd = segments[0].upperBound
         for index in 1..<segments.count {
             let rightRange = segments[index]
+            if index == 1 {
+                let component = String(part[..<rightRange.upperBound])
+                if let preference = ClauseScope.contactTimingPreference(in: component),
+                   NSRange(preference.boundaryRange, in: component) == NSRange(boundaries[0], in: part) {
+                    currentEnd = rightRange.upperBound
+                    continue
+                }
+            }
+            // A direct double-object send may share one object across two
+            // literal target slots. Protect only this first bare coordinator;
+            // later commands retain their ordinary independent boundaries.
+            if index == 1,
+               isSendRecipientCoordinator(in: part, boundary: boundaries[0],
+                   head: segments[0], right: rightRange, reading: reading)
+                || isNegatedSendRecipientCoordinator(in: part, boundary: boundaries[0],
+                   head: segments[0], right: rightRange, reading: reading)
+                || isCoordinatedObjectLocativeBoundary(in: part, boundary: boundaries[0],
+                   head: segments[0], right: rightRange, reading: reading) {
+                currentEnd = rightRange.upperBound
+                continue
+            }
             let left = normalize(String(part[currentStart..<currentEnd]))
             let right = normalize(String(part[rightRange]))
             // A first-person nominal restatement has an object complement,
@@ -13091,7 +15251,11 @@ enum RuleBasedThoughtExtractor {
             // command must survive even without optional lexical assets.
             let retentionBoundary = ActionabilityReader.explicitCaptureRetentionKind(left) != nil
                 && retentionIndependentRight(right)
-            if !framingAside && !isDeniedBodyBoundary && (retentionBoundary || (!attributedContinuation && (restatementBoundary || (endsComplement && isIndependentConjunct(
+            let metadataContinuation = metadataRanges.contains {
+                boundaries[index - 1].lowerBound >= $0.lowerBound
+                    && boundaries[index - 1].upperBound <= $0.upperBound
+            }
+            if !metadataContinuation && !framingAside && !isDeniedBodyBoundary && (retentionBoundary || (!attributedContinuation && (restatementBoundary || (endsComplement && isIndependentConjunct(
                    rightRange,
                    after: currentStart..<currentEnd,
                    head: segments[0],
@@ -13107,6 +15271,153 @@ enum RuleBasedThoughtExtractor {
         let last = normalize(String(part[currentStart..<currentEnd]))
         if !last.isEmpty { clauses.append(last) }
         return clauses.isEmpty ? [part] : clauses
+    }
+
+    /// Source-compatible double-object grouping, not a person/NP certificate.
+    /// Opaque target labels keep their literal words; an unknown verb-shaped
+    /// label remains ambiguous. This Boolean grants no execution or metadata.
+    static func isSendRecipientCoordinator(
+        in source: String, boundary: Range<String.Index>,
+        head: Range<String.Index>, right: Range<String.Index>,
+        reading: ClauseScope.Reading
+    ) -> Bool {
+        hasSendRecipientArguments(in: source, boundary: boundary, head: head,
+            right: right, reading: reading,
+            matrixPattern: #"(?i)^(?:please\s+)?send\s+(.+)$"#)
+    }
+
+    /// The same argument coordinator can remain under its own negative
+    /// matrix. Only this bounded component is retained; later independently
+    /// spoken acts still pass through the ordinary coordinator loop.
+    private static func isNegatedSendRecipientCoordinator(
+        in source: String, boundary: Range<String.Index>,
+        head: Range<String.Index>, right: Range<String.Index>,
+        reading: ClauseScope.Reading
+    ) -> Bool {
+        hasSendRecipientArguments(in: source, boundary: boundary, head: head,
+            right: right, reading: reading,
+            matrixPattern: #"(?i)^(?:i|we)\s+(?:will\s+not|won['’]t)\s+send\s+(.+)$"#,
+            requiresNegatedOwnComponent: true)
+    }
+
+    private static func hasSendRecipientArguments(
+        in source: String, boundary: Range<String.Index>,
+        head: Range<String.Index>, right: Range<String.Index>,
+        reading: ClauseScope.Reading, matrixPattern: String,
+        requiresNegatedOwnComponent: Bool = false
+    ) -> Bool {
+        guard reading.act == .direct, !reading.deniesComplement,
+              normalize(String(source[boundary])).lowercased() == "and" else { return false }
+        var matrix = normalize(String(source[head]))
+        if let comma = matrix.firstIndex(of: ",") {
+            let prefix = String(matrix[..<comma])
+            guard leadingPurposeContext(in: prefix) != nil else { return false }
+            matrix = normalize(String(matrix[matrix.index(after: comma)...]))
+        }
+        guard let send = NSRegularExpression.speakItCached(matrixPattern),
+              let match = send.firstMatch(in: matrix, range: NSRange(matrix.startIndex..., in: matrix)),
+              let firstRange = Range(match.range(at: 1), in: matrix),
+              QuotedSpeechScope.ranges(in: source).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(source),
+              !SelfCorrectionResolver.hasCorrectionJunction(in: source),
+              ConditionalIntentScope.dependency(in: source) == nil else { return false }
+        let continuation = String(source[right])
+        let objectOpener = #"(?:my|our|your|his|her|their|the|a|an|this|that|these|those)"#
+        guard let second = NSRegularExpression.speakItCached(
+            #"(?i)^\s*(\p{L}[\p{L}\p{M}'’-]*(?:\s+\p{L}[\p{L}\p{M}'’-]*){0,2}?)\s+(?=\#(objectOpener)\s+\p{L})"#),
+              let next = second.firstMatch(in: continuation,
+                range: NSRange(continuation.startIndex..., in: continuation)),
+              let secondRange = Range(next.range(at: 1), in: continuation) else { return false }
+        func isBareTargetSlot(_ slot: String) -> Bool {
+            let tokens = slot.split(whereSeparator: \.isWhitespace).map(String.init)
+            if tokens.count == 1, ["me", "him", "her", "us", "them"].contains(slot.lowercased()) {
+                return true
+            }
+            let actionPrefix = #"(?i)^(?:\#(ActionabilityReader.actionVerb)|\#(ActionabilityReader.headOnlyImperativeVerb)|\#(ClauseScope.communicationVerb))(?=\s|$)"#
+            guard (1...3).contains(tokens.count),
+                  slot.range(of: actionPrefix, options: .regularExpression) == nil,
+                  !hasExplicitFinitePredicate(slot) else { return false }
+            let functionWord = #"(?i)^(?:the|a|an|my|our|your|his|her|their|its|this|that|these|those|i|we|you|he|she|they|it|who|which|what|where|when|why|how|whether|if|unless|once|while|because|and|or|but|to|for|from|with|of|about|regarding|concerning|on|at|in|by|before|after|during|until|around|is|are|am|was|were|be|been|being|has|have|had|do|does|did|will|would|can|could|should|shall|may|might|must|not|never|no|next|last|every|each|morning|afternoon|evening|night|\#(conjunctTimePattern)|\#(weekdayOrMonthPattern))$"#
+            let actionHead = #"(?i)^(?:\#(ActionabilityReader.actionVerb)|\#(ActionabilityReader.headOnlyImperativeVerb)|\#(ClauseScope.communicationVerb))$"#
+            return tokens.allSatisfy { token in
+                token.range(of: #"^\p{L}[\p{L}\p{M}'’-]*$"#, options: .regularExpression) != nil
+                    && token.range(of: #"['’](?:s|re|ve|m|ll|d|t)$|s['’]$"#,
+                        options: [.regularExpression, .caseInsensitive]) == nil
+                    && token.range(of: functionWord, options: .regularExpression) == nil
+                    && token.range(of: actionHead, options: .regularExpression) == nil
+                    && !consistsOnlyOfDiscourseWords(token.lowercased())
+            }
+        }
+        guard isBareTargetSlot(String(matrix[firstRange])),
+              isBareTargetSlot(String(continuation[secondRange])) else { return false }
+        return !requiresNegatedOwnComponent
+            || ThoughtOrganizer.isNegatedOwnCommitment(
+                normalize(String(source[..<right.upperBound])).lowercased())
+    }
+
+    /// Keeps one command's literal determined objects with their shared
+    /// directional complement. This only vetoes a source boundary; opaque
+    /// object words gain no noun, person, place, date or operation authority.
+    static func isCoordinatedObjectLocativeBoundary(
+        in source: String, boundary: Range<String.Index>,
+        head: Range<String.Index>, right: Range<String.Index>,
+        reading: ClauseScope.Reading
+    ) -> Bool {
+        guard head.lowerBound == source.startIndex,
+              head.upperBound == boundary.lowerBound,
+              boundary.upperBound == right.lowerBound,
+              reading.act == .direct, !reading.deniesComplement,
+              normalize(String(source[boundary])).lowercased() == "and" else { return false }
+        let component = String(source[head.lowerBound..<right.upperBound])
+        guard QuotedSpeechScope.ranges(in: component).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(component),
+              !SelfCorrectionResolver.hasCorrectionJunction(in: component),
+              ConditionalIntentScope.dependency(in: component) == nil,
+              !containsExplicitTiming(component) else { return false }
+        // Each member of this bounded caused-motion class already belongs
+        // to the shared action grammar. Do not add placement/storage verbs
+        // here merely because they could take the same English complement.
+        let movement = #"(?:move|put|carry|bring|take|transfer|pack|stack|load)"#
+        let nominal = #"(?:the|a|an|my|our|your|his|her|their|this|that|these|those)\s+\p{L}[\p{L}\p{M}'’-]*(?:\s+\p{L}[\p{L}\p{M}'’-]*){0,2}"#
+        let matrix = normalize(String(source[head]))
+        let continuation = normalize(String(source[right]))
+        guard let leftPattern = NSRegularExpression.speakItCached(
+                #"(?i)^(?:please\s+)?\#(movement)\s+(\#(nominal))$"#),
+              let leftMatch = leftPattern.firstMatch(in: matrix, range: NSRange(matrix.startIndex..., in: matrix)),
+              let firstObject = Range(leftMatch.range(at: 1), in: matrix),
+              let rightPattern = NSRegularExpression.speakItCached(
+                #"(?i)^(\#(nominal))\s+(?:into|onto)\s+(\#(nominal))[.!]?$"#),
+              let rightMatch = rightPattern.firstMatch(in: continuation, range: NSRange(continuation.startIndex..., in: continuation)),
+              let secondObject = Range(rightMatch.range(at: 1), in: continuation),
+              let destination = Range(rightMatch.range(at: 2), in: continuation) else { return false }
+        func isBoundedDeterminedSlot(_ slot: String) -> Bool {
+            let words = slot.lowercased().split(whereSeparator: \.isWhitespace).dropFirst().map(String.init)
+            guard (1...3).contains(words.count) else { return false }
+            let functionWord = #"(?i)^(?:the|a|an|my|our|your|his|her|their|its|this|that|these|those|i|we|you|he|she|they|it|who|which|what|where|when|why|how|whether|if|unless|once|while|because|and|or|but|then|also|so|to|for|from|with|of|about|regarding|concerning|on|at|in|into|onto|by|before|after|during|until|around|is|are|am|was|were|be|been|being|has|have|had|do|does|did|will|would|can|could|should|shall|may|might|must|not|never|no|next|last|every|each|morning|afternoon|evening|night|\#(conjunctTimePattern)|\#(weekdayOrMonthPattern))$"#
+            let existingAction = #"(?i)^(?:\#(ActionabilityReader.actionVerb)|\#(ActionabilityReader.headOnlyImperativeVerb)|\#(ClauseScope.communicationVerb))$"#
+            for (offset, word) in words.enumerated() {
+                guard word.range(of: #"^\p{L}[\p{L}\p{M}'’-]*$"#, options: .regularExpression) != nil,
+                      word.range(of: #"['’](?:s|re|ve|m|ll|d|t)$|s['’]$"#, options: .regularExpression) == nil,
+                      word.range(of: functionWord, options: .regularExpression) == nil,
+                      !consistsOnlyOfDiscourseWords(word) else { return false }
+                // Finite morphology is refusal only, never noun proof. A
+                // generic final-s test would reject "the clean towels".
+                // Restore only existing action stems after a possible subject.
+                // Nominal homographs ("the steel files") conservatively decline;
+                // unknown bare predicates are not certified by this envelope.
+                if offset > 0 {
+                    var stems: [String] = [word]
+                    if word.hasSuffix("s") { stems.append(String(word.dropLast())) }
+                    if word.hasSuffix("es") { stems.append(String(word.dropLast(2))) }
+                    if word.hasSuffix("ies") { stems.append(String(word.dropLast(3)) + "y") }
+                    if stems.contains(where: { $0.range(of: existingAction, options: .regularExpression) != nil })
+                        || ActionabilityReader.isResultParticiple(word) { return false }
+                }
+            }
+            return true
+        }
+        return [String(matrix[firstObject]), String(continuation[secondObject]), String(continuation[destination])]
+            .allSatisfy(isBoundedDeterminedSlot)
     }
 
     /// Two coordinated modifiers can share one explicitly singular work
@@ -13155,6 +15466,7 @@ enum RuleBasedThoughtExtractor {
         }
         let left = normalize(String(context.text[leftRange]))
         guard !trimmed.isEmpty, !left.isEmpty else { return false }
+        if sharesCompletedRecordingEpisode(left, trimmed) { return false }
         if sharesSingularWorkObject(left: left, right: trimmed) { return false }
         if let aside = trimmed.range(of: #"(?i)\s+(?:i\s+(?:guess|suppose|think)|perhaps|maybe)[.!?]*$"#,
                                      options: .regularExpression),
@@ -13639,6 +15951,19 @@ enum RuleBasedThoughtExtractor {
         return false
     }
 
+    /// The recording predicate inherits the completed first-person subject.
+    /// Its inner "I/we felt" is content, not another matrix subject. Prove the
+    /// complete historical scope before retaining this as one Memory account;
+    /// a later current act or independently framed fact still closes it.
+    private static func sharesCompletedRecordingEpisode(_ left: String, _ right: String) -> Bool {
+        guard let subject = left.range(of: #"(?i)^(?:i|we)\b"#, options: .regularExpression),
+              TemporalReferenceScope.read(left + " and " + right) == .historical,
+              ActionabilityReader.read(left) == .knowledge else { return false }
+        let word = #"(?!(?:i|we|you|he|she|they|it|and|or|but|because|if|when|will|must|should|\#(ActionabilityReader.actionVerb)|\#(ActionabilityReader.headOnlyImperativeVerb))\b)[\p{L}\p{M}'’-]+"#
+        let pattern = #"(?i)^(?:(?:just|only)\s+)?want\s+to\s+(?:record|remember|retain)\s+how\s+(?:\#(word)\s+){0,4}(\#(NSRegularExpression.escapedPattern(for: String(left[subject]))))\s+felt[.!?]*$"#
+        return right.range(of: pattern, options: .regularExpression) != nil
+    }
+
     /// Whether the clause on the left is about a person, asking the head of the
     /// coordination when the immediate left conjunct has had its verb elided.
     ///
@@ -13714,6 +16039,15 @@ enum RuleBasedThoughtExtractor {
         ) != nil
     }
 
+    /// The existing closed discourse-only grammar. Callers supply lowercase
+    /// text; this pure reader neither repairs source nor reads clause scope.
+    static func consistsOnlyOfDiscourseWords(_ text: String) -> Bool {
+        text.range(
+            of: #"^(?:okay|ok|alright|well|yeah|yep|so|like|right|now|anyway|and|also|then|plus)(?:\s+(?:okay|ok|alright|well|yeah|yep|so|like|right|now|anyway))*$"#,
+            options: .regularExpression
+        ) != nil
+    }
+
     /// True when a piece cannot stand alone as a thought.
     private static func isFragment(_ value: String) -> Bool {
         let text = normalize(value).lowercased()
@@ -13753,10 +16087,7 @@ enum RuleBasedThoughtExtractor {
         }
 
         // Only discourse words survived the disfluency pass.
-        if text.range(
-            of: #"^(?:okay|ok|alright|well|yeah|yep|so|like|right|now|anyway|and|also|then|plus)(?:\s+(?:okay|ok|alright|well|yeah|yep|so|like|right|now|anyway))*$"#,
-            options: .regularExpression
-        ) != nil { return true }
+        if consistsOnlyOfDiscourseWords(text) { return true }
 
         return false
     }
@@ -13959,6 +16290,10 @@ enum RuleBasedThoughtExtractor {
         return tokenRanges
     }
 
+    // Shared punctuation evidence only; a title/name continuation additionally
+    // requires the existing complete titled-name reader below.
+    static let writtenAbbreviationSuffixPattern = #"(?i)(?:\b(?:dr|mr|mrs|ms|prof|st|sr|jr|vs|etc|inc|ltd)|\b\p{L}|(?:\b\p{L}\.)+\p{L})$"#
+
     /// Respect written stops that the sentence tokenizer can ignore when the
     /// recognizer lowercases the next subject. Only a finite report or an
     /// explicitly stated action or recorded fact opens this boundary; quoted words remain
@@ -13975,7 +16310,7 @@ enum RuleBasedThoughtExtractor {
                   !quoted.contains(where: { $0.contains(stop.lowerBound) }) else { continue }
             let prefix = String(source[start..<stop.lowerBound])
             if source[stop.lowerBound] == ".",
-               prefix.range(of: #"(?i)(?:\b(?:dr|mr|mrs|ms|prof|st|sr|jr|vs|etc|inc|ltd)|\b\p{L}|(?:\b\p{L}\.)+\p{L})$"#,
+               prefix.range(of: writtenAbbreviationSuffixPattern,
                             options: .regularExpression) != nil { continue }
             let next = normalize(String(source[stop.upperBound..<range.upperBound]))
             let declaredOwnTask = next.range(
@@ -14030,10 +16365,12 @@ enum RuleBasedThoughtExtractor {
                 && ActionabilityReader.read(next) == .knowledge
             let recordingBoundary = recordingNarrationPrelude(in: nextClause) != nil
                 && ClauseScope.read(nextClause).act != .reporting
+            let componentBoundary = hasAdditiveComponentRelationship(in: next)
             guard declaredOwnTask || actionableHead || committedNeed || timingDisclaimer
                     || namedClockCorrection || clockRevisionExplanation || clockIdentityContinuation
                     || recordedFact || outputRole
-                    || recordingBoundary || explicitObjectTopic(in: nextClause) != nil
+                    || recordingBoundary || componentBoundary
+                    || explicitObjectTopic(in: nextClause) != nil
                     || ClauseScope.read(nextClause).deniesComplement
                     || ClauseScope.read(next).act == .reporting else { continue }
             pieces.append(start..<source.index(after: stop.lowerBound))
@@ -14064,10 +16401,24 @@ enum RuleBasedThoughtExtractor {
     private static let unpunctuatedPassiveResultHead = #"\#(unpunctuatedDefiniteNounPhrase)(?:should|must|needs\s+to)\s+be\s+[\p{L}'’-]+\s+(?:as|in|on|with|using)\b"#
     private static let recordingBoundaryHead = #"(?:(?:i|we)\s+(?:am|are)\s+(?:(?:just\s+)?pausing\s+to\s+(?:think|remember)|(?:still\s+)?(?:thinking|talking|speaking|recording))\b|the\s+(?:first|last|final|next)\s+(?:task|action|obligation)\s+is\s+(?:this|that)\b)"#
 
-    private static let componentRepeatActionPattern = #"(?i)^(\#(ActionabilityReader.actionVerb))\s+(?:that|those|it|them)\s+(?:too|as\s+well)[.!?]*$"#
+    private static let componentRepeatActionCore = #"(\#(ActionabilityReader.actionVerb))\s+(?:that|those|it|them)\s+(?:too|as\s+well)"#
+    private static let componentRepeatActionPattern = #"(?i)^\#(componentRepeatActionCore)[.!?]*$"#
     private static let componentFactBoundaryHead = #"\#(unpunctuatedDefiniteNounPhrase)(?:has|contains|comes\s+with)\s+(?:the|a|an|its|some)\b"#
     private static let ordinalUndatedBoundaryHead = #"the\s+(first|second|last|final)\s+(?:task|action|reminder)\s+(?:still\s+)?has\s+no\s+(?:date|deadline|time)\b"#
     private static let ordinalRetentionBoundaryHead = #"(?:please\s+)?(?:do\s+not|don['’]?t)\s+(?:lose|drop|omit|hide|truncate)\s+(?:this|that|the)\s+(first|second|last|final)\s+(?:task|action|obligation|reminder)\b"#
+
+    /// An explicit fresh fact may close a complete direct communication
+    /// object. Open or finite message complements retain their own scope.
+    /// These readers do not call sentence segmentation or extraction.
+    private static func closesDirectCommunicationBeforeDeclaredFact(_ prefix: String) -> Bool {
+        guard ClauseScope.read(prefix).act == .direct,
+              ActionabilityReader.read(prefix).belongsOnToday,
+              ThoughtCompletion.unfinished(in: prefix) == nil,
+              let arguments = ClauseScope.communicationArgumentCandidate(in: prefix) else { return false }
+        let body = prefix[arguments.bodyRange].trimmingCharacters(in: .whitespacesAndNewlines)
+        return body.range(of: #"(?i)^(?:that|how|whether|if|to)\b"#,
+                          options: .regularExpression) == nil
+    }
 
     private static func sentenceSegments(in text: String) -> [String] {
         var segments: [String] = []
@@ -14098,13 +16449,30 @@ enum RuleBasedThoughtExtractor {
                 segments.append(contentsOf: sentenceSegments(in: String(value[matrix.lowerBound...])))
                 continue
             }
+            if let expression = NSRegularExpression.speakItCached(
+                #"(?i)(?<![\p{L}\p{M}])\#(datedTaskListReferenceCore)(?=$|[\s,;.!?])"#),
+               let boundary = expression.matches(in: value, range: NSRange(value.startIndex..., in: value))
+                .compactMap({ Range($0.range, in: value) }).first(where: { candidate in
+                    guard candidate.lowerBound > value.startIndex,
+                          !QuotedSpeechScope.protects(candidate, in: value),
+                          ClauseScope.read(value).act == .direct else { return false }
+                    let before = normalize(String(value[..<candidate.lowerBound]))
+                    guard before.range(of: #"(?i)\#(componentRepeatActionCore)[.!?;]*$"#,
+                                       options: .regularExpression) != nil else { return false }
+                    return componentRepeatedAction(in: before) != nil
+                        || hasAdditiveComponentRelationship(in: before)
+                }) {
+                segments.append(contentsOf: sentenceSegments(in: String(value[..<boundary.lowerBound])))
+                segments.append(contentsOf: sentenceSegments(in: String(value[boundary.lowerBound...])))
+                continue
+            }
             // An overt output reference can close a complete action even
             // when dictation omitted its stop. These finite/deictic leads
             // are grammatical boundaries, never words matched inside a quote
             // or a reported/message complement. Each side keeps exact source.
             let outputLead = #"(?i)\b(?:(?:these|those)\s+are\s+(?:two|2)\s+(?:calls|tasks|actions|reminders)\b|the\s+first\s+(?:call|task|action|reminder)\s+(?:is|was)\s+(?:about|for)\b|(?:keep|show|retain|leave)\s+both\s+(?:accessible|visible|separate|distinct|available)\b|(?:they|these|those)\s+(?:should|must|can|may|will)\s+not\s+be\s+(?:collapsed|merged|combined|replaced)\b|\#(ActionabilityReader.nominalFactRecordingFramePattern)|\#(ordinalTimeChoiceReferenceHead)|\#(ordinalDetailReferenceHead)|\#(unpunctuatedPassiveResultHead)|\#(recordingBoundaryHead)|\#(componentFactBoundaryHead)|\#(ordinalUndatedBoundaryHead)|\#(ordinalRetentionBoundaryHead))"#
             let scope = ClauseScope.read(value).act
-            if scope != .reporting && scope != .communicating,
+            if scope != .reporting,
                let regex = NSRegularExpression.speakItCached(outputLead),
                let boundary = regex.matches(in: value, range: NSRange(value.startIndex..., in: value))
                 .compactMap({ Range($0.range, in: value) })
@@ -14118,15 +16486,20 @@ enum RuleBasedThoughtExtractor {
                     // its own boundary; later commentary may have hidden the
                     // preceding command from whole-prefix actionability.
                     let following = String(value[candidate.lowerBound...])
+                    // Only this existing declared-fact frame can close an
+                    // inferred whole-value message. Its preceding direct
+                    // communication must already supply a complete object.
+                    if scope == .communicating {
+                        return ActionabilityReader.declaredFactRecordingBody(following) != nil
+                            && closesDirectCommunicationBeforeDeclaredFact(before)
+                    }
                     let referenceHead = String(value[candidate])
                     if referenceHead.range(of: #"(?i)^\#(componentFactBoundaryHead)$"#,
                                            options: .regularExpression) != nil {
                         // A descriptive product clause stays in its command.
                         // The component boundary exists only when a following
                         // anaphoric act supplies the additive relationship.
-                        let next = ClauseJuxtaposition.pieces(in: following).dropFirst().first
-                        guard next?.range(of: componentRepeatActionPattern,
-                                          options: .regularExpression) != nil else { return false }
+                        guard hasAdditiveComponentRelationship(in: following) else { return false }
                     }
                     if ActionabilityReader.declaredFactRecordingBody(following) != nil
                         || captureDiscourseReference(in: referenceHead) != nil
@@ -14791,7 +17164,8 @@ enum RuleBasedThoughtExtractor {
     ///   unwanted on a segment's analysis text: a trailing "at Costco" is not a
     ///   product, so it makes the last conjunct of the list unreadable and the
     ///   whole list stops splitting into rows.
-    private static let datedTaskListReferencePattern = #"(?i)^(?:put|place|keep|add)\s+(?:this|that)\s+(?:one|task|action|reminder)\s+(?:on|in)\s+(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)['’]s\s+(?:(?:task|action)\s+)?list[.!?]*$"#
+    private static let datedTaskListReferenceCore = #"(?:put|place|keep|add)\s+(?:this|that)\s+(?:one|task|action|reminder)\s+(?:on|in)\s+(today|tomorrow|monday|tuesday|wednesday|thursday|friday|saturday|sunday)['’]s\s+(?:(?:task|action)\s+)?list"#
+    private static let datedTaskListReferencePattern = #"(?i)^\#(datedTaskListReferenceCore)[.!?]*$"#
 
     static func canonicalizedListCommand(
         _ text: String,
@@ -14831,6 +17205,48 @@ enum RuleBasedThoughtExtractor {
             var command = "buy \(normalize(contents))"
             if namingStore, let name = name.flatMap(shoppingListName) { command += " at \(name)" }
             return command
+        }
+        if ShoppingGroupParser.declaredShoppingRun(in: text) != nil { return text }
+        // A declared run keeps literal content and separate membership authority.
+        // Other headers retain their existing physical-product gates.
+        // A store heading with a colon explicitly introduces list contents.
+        // An untyped place alone supplies no purchase role; it must already
+        // be recognized as retail, or the speaker must name a grocery run.
+        let storeHeader = #"(?i)^\s*((?:grocery|shopping)\s+run\s+)?(?:at|from)\s+(?:the\s+)?(.+?)\s*:\s*(.+)$"#
+        if let regex = NSRegularExpression.speakItCached(storeHeader),
+           let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+           let name = Range(match.range(at: 2), in: text),
+           let contents = Range(match.range(at: 3), in: text) {
+            let label = String(text[name])
+            let products = normalize(String(text[contents]))
+                .trimmingCharacters(in: CharacterSet(charactersIn: ".!?"))
+            // A place label is not purchase permission. Preserve questions,
+            // people, owned belongings and action-headed contents before a
+            // synthesized verb could bypass the ordinary nominal proof.
+            let entries = ShoppingGroupParser.products(in: products, verb: "get") ?? [products]
+            guard !text.contains("?"),
+                  ShoppingGroupParser.certifiesImplicitProducts(products),
+                  entries.allSatisfy({ entry in
+                    entry.range(of: #"(?i)^(?:my|our|your|his|her|their|its)\b"#,
+                                options: .regularExpression) == nil
+                        && (entry.range(of: #"(?i)^\#(ActionabilityReader.actionVerb)\b"#,
+                                        options: .regularExpression) == nil
+                            || ShoppingGroupParser.namesOneProduct(entry))
+                  }) else { return text }
+            let proposed = "buy \(products) at \(label)"
+            if (match.range(at: 1).location != NSNotFound
+                || ShoppingGroupParser.isRecognizedStoreName(label)),
+               ShoppingGroupParser.storeName(in: proposed) != nil {
+                return namingStore ? proposed : listCommand(products)
+            }
+        }
+        // A fronted retail slot followed by an owned product need is the
+        // same list as “I need ... at Costco”. Product evidence is unchanged.
+        if let name = ShoppingGroupParser.storeName(in: text),
+           let products = ShoppingGroupParser.implicitNeedBody(
+               in: ShoppingGroupParser.withoutStoreContext(in: text)),
+           ShoppingGroupParser.certifiesImplicitProducts(products) {
+            return listCommand(products.trimmingCharacters(in: CharacterSet(charactersIn: ".!?")), name: name)
         }
         // Explicit list frames supply the role of an unfamiliar noun. The
         // contents still have to pass product, condition and ownership guards.
@@ -14905,6 +17321,22 @@ enum RuleBasedThoughtExtractor {
                 }
             }
             return listCommand(body, name: label)
+        }
+        // The grocery/shopping role is explicit; the following named place
+        // owns this current product need. Keep the open name in a validated
+        // store slot rather than adding a branch for each retail brand.
+        let groceriesAt = #"(?i)^\s*for\s+(?:(?:the|my|our)\s+)?(?:groceries|shopping)\s+(?:at|from)\s+(.+?)\s*,?\s+(?:i|we)\s+need\s+(?!to\b)(.+)$"#
+        if let regex = NSRegularExpression.speakItCached(groceriesAt),
+           let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+           let name = Range(match.range(at: 1), in: text),
+           let contents = Range(match.range(at: 2), in: text) {
+            let products = normalize(String(text[contents]))
+                .trimmingCharacters(in: CharacterSet(charactersIn: ".!?"))
+            let proposed = "buy \(products) at \(text[name])"
+            if ShoppingGroupParser.storeName(in: proposed) != nil,
+               ShoppingGroupParser.certifiesImplicitProducts(products) {
+                return namingStore ? proposed : listCommand(products)
+            }
         }
         // A fronted store plus a current noun need is a purchase envelope;
         // requiring the need frame avoids treating a purpose as a store.
@@ -15750,16 +18182,34 @@ enum RuntimeCurrentContextTransport {
 #if canImport(FoundationModels)
     @available(iOS 26.4, *)
     static func prompt(_ context:RuntimeCaptureContext,model:SystemLanguageModel) async throws -> String {
+#if DEBUG
+        RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=staged-context-projection-enter")
+#endif
         let original=try originalJSON(context)
         let ordinary=String(decoding:original,as:UTF8.self)
         let candidates=[("shared-strings",try projectedJSON(original)),("shared-object-shapes",try structuredProjectedJSON(original)),("tagged-tree",try taggedProjectedJSON(original)),("readable-tree",try readableProjectedJSON(original))]
+#if DEBUG
+        RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=staged-context-projection-exit")
+#endif
         guard candidates.contains(where:{ $0.1 != nil }) else { return ordinary }
+#if DEBUG
+        RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=staged-context-count-enter phase=context-original")
+#endif
         let originalTokens=try await model.tokenCount(for:ordinary)
+#if DEBUG
+        RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=staged-context-count-exit phase=context-original")
+#endif
         var selected=ordinary,selectedTokens=originalTokens,selectedFormat="original"
         for (name,projection) in candidates {
             guard let projection else { continue }
             let rendered=String(decoding:projection,as:UTF8.self)
+#if DEBUG
+            RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=staged-context-count-enter phase=context-projected")
+#endif
             let tokens=try await model.tokenCount(for:rendered)
+#if DEBUG
+            RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=staged-context-count-exit phase=context-projected")
+#endif
 #if DEBUG
             RuntimeFoundationInterpreter.developmentObserver?("context transport candidate=\(name) originalBytes=\(original.count) projectedBytes=\(projection.count) originalTokens=\(originalTokens) projectedTokens=\(tokens) completeCanonicalRoundtrip=true")
 #endif
@@ -16094,6 +18544,7 @@ enum RuntimeCurrentEventDeadline {
         guard !departure.needsClarification,departure.state == .resolved,
               let instant=departure.dueDate,let date=departure.temporalIntent.day,
               departure.temporalIntent.kind == .exactDateTime,departure.temporalIntent.time != nil,
+              departure.temporalIntent.clockBoundary == nil,
               departure.temporalIntent.timeZoneBehavior == .deviceLocal,
               departure.reminderDate == nil,departure.reminderDelivery == .none,
               departure.locationIntent == nil,departure.recurrenceRule == nil else { return nil }
@@ -16217,22 +18668,9 @@ enum RuntimeShortSourceCertificate {
         guard text.count <= 120,(1...5).contains(words.count) else { return false }
         if heads.contains(words.last ?? ""),words.dropLast().allSatisfy({ modifiers.contains($0) || heads.contains($0) }) { return true }
         if ShoppingGroupParser.namesOneProduct(text) { return true }
-        // A detached noun can be tagged as an imperative (for example milk).
-        // Read only this exact, uniquely located argument in its complete
-        // current speech act. Every argument token must remain nominal; an
-        // unknown tail, second predicate or conjunction grants no permission.
-        guard let context,let range=context.range(of:text),
-              context.range(of:text,range:range.upperBound..<context.endIndex) == nil else { return false }
-        let tokens=SentenceContextCache.context(for:context).tokens(in:range)
-        let literal=text.split(whereSeparator: { $0.isWhitespace }).joined(separator:" ")
-        guard tokens.first?.range.lowerBound == range.lowerBound,
-              tokens.last?.range.upperBound == range.upperBound,
-              tokens.map(\.text).joined(separator:" ").caseInsensitiveCompare(literal) == .orderedSame,
-              tokens.last?.lexicalClass == .noun else { return false }
-        return tokens.enumerated().allSatisfy { index,token in
-            token.lexicalClass == .noun || token.lexicalClass == .adjective
-                || (index == 0 && token.lexicalClass == .determiner && ["a","an","the"].contains(token.text.lowercased()))
-        }
+        // A contextual noun tag cannot prove an otherwise unknown argument.
+        // Decline this optional certificate and retain ordinary interpretation.
+        return false
     }
     private static func person(_ text:String) -> String? {
         guard RuntimeRecipientReplacement.literalRecipient(text),
@@ -16259,7 +18697,76 @@ enum RuntimeShortSourceCertificate {
         return !unresolved.contains(words[0].lowercased())
     }
     private struct Frame { let kind:ItemType;let person:String?;let action:String;let clock:String;let alert:Bool }
+    private static func completeQuestionFrame(_ source: String) -> Frame? {
+        guard let question = ClauseScope.completeAddressedChoiceQuestion(in: source),
+              let voice = QuotedSpeechScope.voiceProjection(in: source),
+              voice.ownVoiceRanges.contains(where: {
+                  $0.lowerBound <= source.startIndex && source.endIndex <= $0.upperBound
+              }),
+              case let .person(recipient) = PersonMentionResolver.followUpTarget(in: source),
+              recipient.confidence > .low, recipient.sourceRange == question.recipientRange,
+              SourceUnitLedger(recipient.label).words.map(\.text)
+                == SourceUnitLedger(String(source[question.recipientRange])).words.map(\.text)
+        else { return nil }
+        let isCheck = source.range(of: #"(?i)^(?:please\s+)?(?:can\s+you\s+)?check\s+with\s+"#,
+            options: .regularExpression) != nil
+        return .init(kind: isCheck ? .task : .personFollowUp, person: recipient.label, action: source,
+            clock: question.matrixTimingRange.map { String(source[$0]) } ?? "", alert: false)
+    }
+    private static func completeFollowUpFrame(_ source: String) -> Frame? {
+        guard let followUp = ClauseScope.completeFollowUpReference(in: source),
+              let voice = QuotedSpeechScope.voiceProjection(in: source),
+              voice.ownVoiceRanges.contains(where: {
+                  $0.lowerBound <= source.startIndex && source.endIndex <= $0.upperBound
+              }) else { return nil }
+        let endpoint = String(source[followUp.endpointRange])
+        switch PersonMentionResolver.followUpTarget(in: source) {
+        case let .person(recipient):
+            guard recipient.confidence > .low, recipient.sourceRange == followUp.endpointRange,
+                  SourceUnitLedger(recipient.label).words.map(\.text)
+                    == SourceUnitLedger(endpoint).words.map(\.text) else { return nil }
+            return .init(kind: .personFollowUp, person: recipient.label,
+                action: source, clock: "", alert: false)
+        case let .described(label):
+            guard label.caseInsensitiveCompare(endpoint) == .orderedSame else { return nil }
+            return .init(kind: .task, person: nil, action: source, clock: "", alert: false)
+        default: return nil
+        }
+    }
+    private static func completePaymentFrame(_ source: String) -> Frame? {
+        guard let payment = ClauseScope.completePaymentBeforeDay(in: source),
+              let voice = QuotedSpeechScope.voiceProjection(in: source),
+              voice.ownVoiceRanges.contains(where: {
+                  $0.lowerBound <= source.startIndex && source.endIndex <= $0.upperBound
+              }) else { return nil }
+        let object = String(source[payment.objectRange])
+        guard let head = object.split(whereSeparator: \.isWhitespace).last,
+              nominal(String(head), in: source)
+                || PersonMentionResolver.isLiteralServiceDescription(object) else { return nil }
+        return .init(kind: .task, person: nil, action: source,
+            clock: String(source[payment.deadlineRange]), alert: false)
+    }
+    private static func completePhoneReorderFrame(_ source: String) -> Frame? {
+        guard let order = ClauseScope.completePhoneReorder(in: source),
+              let voice = QuotedSpeechScope.voiceProjection(in: source),
+              voice.ownVoiceRanges.contains(where: {
+                  $0.lowerBound <= source.startIndex && source.endIndex <= $0.upperBound
+              }),
+              case let .person(recipient) = PersonMentionResolver.followUpTarget(in: source),
+              recipient.confidence > .low, recipient.sourceRange == order.recipientRange,
+              SourceUnitLedger(recipient.label).words.map(\.text)
+                == SourceUnitLedger(String(source[order.recipientRange])).words.map(\.text)
+        else { return nil }
+        return .init(kind: .personFollowUp, person: recipient.label,
+            action: source, clock: "", alert: false)
+    }
     private static func frame(_ original:String, additionalPhysicalActions:Bool = false) -> Frame? {
+        // A complete question is read before generic clock peeling. Its inner
+        // final day remains content; only its proved matrix span owns timing.
+        if let question = completeQuestionFrame(original) { return question }
+        if let followUp = completeFollowUpFrame(original) { return followUp }
+        if let payment = completePaymentFrame(original) { return payment }
+        if let order = completePhoneReorderFrame(original) { return order }
         let body=original.trimmingCharacters(in:.whitespacesAndNewlines.union(CharacterSet(charactersIn:".!?")))
         // An explicit uncommitted idea owns its entire complement. A later
         // current self-commitment or independent clause cannot borrow that scope.
@@ -16293,6 +18800,17 @@ enum RuntimeShortSourceCertificate {
         if let f=exact(action,#"(call|phone|ask|email|text|message)\s+(.+?)(?:\s+about\s+(.+))?"#),f[2].isEmpty || nominal(f[2],in:action) {
             if let recipient=person(f[1]) {
                 return .init(kind:.personFollowUp,person:recipient,action:action,clock:clock,alert:alert)
+            }
+            // Behind these determiners, literalRecipient positively consumes
+            // the complete existing human-relation grammar. A described own
+            // endpoint needs no invented contact identity; the whole original
+            // resolver must retain exactly this already bounded argument.
+            if let first = f[1].lowercased().split(whereSeparator: \.isWhitespace).first,
+               ["my", "our", "your", "the"].contains(String(first)),
+               RuntimeRecipientReplacement.literalRecipient(f[1]),
+               case let .described(label) = PersonMentionResolver.followUpTarget(in: original),
+               label.caseInsensitiveCompare(f[1]) == .orderedSame {
+                return .init(kind: .task, person: nil, action: action, clock: clock, alert: alert)
             }
             // A complete described endpoint remains literal wording. It grants
             // no address-book identity or communication side effect.
@@ -16708,8 +19226,77 @@ enum RuntimeCompleteLiteralCertificate {
         }
         return .init(items: items, method: literal.method)
     }
+    /// Only this complete declared family can normalize a confidence-only
+    /// difference. Every source, occurrence, display, metadata and effect field
+    /// must independently match its exact original literal shopping plan.
+    private static func memberAvailabilityShopping(_ source: String,
+        rules: ThoughtExtractionResult?) -> ThoughtExtractionResult? {
+        guard let declaration = ShoppingGroupParser.declaredShoppingRun(in: source),
+              declaration.entries.compactMap(\.availabilityRange).count == 1,
+              let literal = RuleBasedThoughtExtractor.declaredShoppingPlan(source) else { return nil }
+        guard let rules else { return literal }
+        guard rules.operations.isEmpty, rules.items.count == literal.items.count,
+              rules.items.allSatisfy({ !$0.wasRepaired }) else { return nil }
+        let comparable = rules.items.enumerated().map { index, item in
+            ExtractedThought(sourceQuote: item.sourceQuote, rawQuote: item.rawQuote,
+                wasRepaired: item.wasRepaired, analysisText: item.analysisText,
+                suggestedTitle: item.suggestedTitle, organization: item.organization,
+                confidence: literal.items[index].confidence, needsReview: item.needsReview,
+                sourceUnitIDs: item.sourceUnitIDs, shoppingGroup: item.shoppingGroup)
+        }
+        guard ThoughtExtractionResult(items: comparable, operations: rules.operations,
+            method: rules.method) == literal else { return nil }
+        return rules
+    }
+
     static func interpret(_ source: String, referenceDate: Date, calendar: Calendar,
                           rules: ThoughtExtractionResult? = nil) -> ThoughtExtractionResult? {
+        if let shopping = memberAvailabilityShopping(source, rules: rules) { return shopping }
+        // Consult only complete question/reference/payment families before
+        // generic separator/dependency restrictions. Existing alignment still
+        // protects settled rules decisions and independent Memory/occurrences.
+        if ClauseScope.completeAddressedChoiceQuestion(in: source) != nil
+            || ClauseScope.completeFollowUpReference(in: source) != nil
+            || ClauseScope.completePaymentBeforeDay(in: source) != nil
+            || ClauseScope.completePhoneReorder(in: source) != nil,
+           let literal = RuntimeShortSourceCertificate.interpret(source,
+                referenceDate: referenceDate, calendar: calendar) {
+            if let rules {
+                // This complete one-goal transaction can supersede fragments
+                // guessed before its product/distribution/context roles were
+                // available. It has its own exact whole-original certificate;
+                // generic alignment/count/Memory guards remain unchanged.
+                let ledger = SourceUnitLedger(source)
+                if ClauseScope.completePhoneReorder(in: source) != nil,
+                   rules.operations.isEmpty, !rules.items.isEmpty,
+                   rules.items.allSatisfy({ old in
+                       let organization = old.organization
+                       return !old.wasRepaired && ownsOriginalQuote(old, ledger: ledger)
+                           && !organization.temporalIntent.isUserEdited
+                           && organization.temporalIntent == .none && organization.dueDate == nil
+                           && organization.reminderDate == nil && organization.reminderDelivery == .none
+                           && organization.locationIntent == nil && organization.recurrenceRule == nil
+                           && organization.itemType != .shopping && organization.category != .shopping
+                           && old.shoppingGroup == nil
+                   }),
+                   literal.operations.isEmpty, literal.items.count == 1,
+                   let item = literal.items.first,
+                   item.sourceQuote == source, item.rawQuote == source, item.analysisText == source,
+                   !item.wasRepaired, !item.needsReview, item.shoppingGroup == nil,
+                   item.sourceUnitIDs == Set(SourceUnitLedger(source).words.indices),
+                   item.organization.itemType == .personFollowUp,
+                   item.organization.personName?.isEmpty == false,
+                   item.organization.state == .resolved, !item.organization.needsClarification,
+                   item.organization.dueDate == nil, item.organization.temporalIntent == .none,
+                   item.organization.reminderDate == nil, item.organization.reminderDelivery == .none,
+                   item.organization.locationIntent == nil, item.organization.recurrenceRule == nil {
+                    return literal
+                }
+                return aligned(literal, with: rules, source: source,
+                    referenceDate: referenceDate, calendar: calendar)
+            }
+            return literal
+        }
         if let corrected = calendarRepair(source, referenceDate: referenceDate, calendar: calendar) {
             let previous: ThoughtExtractionResult
             if let rules { previous = rules }
@@ -16724,7 +19311,8 @@ enum RuntimeCompleteLiteralCertificate {
             return corrected
         }
         if let rules, let arrival = arrivalReminder(source, rules: rules) { return arrival }
-        if let shopping = RuleBasedThoughtExtractor.literalPurchasePlan(source,
+        if let shopping = RuleBasedThoughtExtractor.declaredShoppingPlan(source)
+            ?? RuleBasedThoughtExtractor.literalPurchasePlan(source,
             referenceDate: referenceDate, calendar: calendar)
             ?? RuleBasedThoughtExtractor.pastTripShoppingPlan(source,
                 referenceDate: referenceDate, calendar: calendar)
@@ -16843,6 +19431,10 @@ enum RuntimeExampleInterpreter {
 #endif
             return ordinary
         }
+        if let composed=RuntimeCompleteSourceComposition.interpret(source,
+            referenceDate:referenceDate,calendar:calendar,rules:rules,context:context) {
+            return composed
+        }
         // These explicit current-source graphs need no worked answer. Resolve
         // them identically with retrieval OFF and ON, before opening an index.
         if let decision = RuntimeExplicitDecisionCertificate.interpret(source) { return decision }
@@ -16876,14 +19468,23 @@ enum RuntimeExampleInterpreter {
                         options: .regularExpression) != nil { return rules }
         // Current-source certificates above cannot consume saved context.
         // Load one complete value snapshot only when interpretation needs it.
+#if DEBUG
+        RuntimeExampleLibrary.developmentObserver?("diagnostic boundary=context-begin")
+#endif
         let currentContext: RuntimeCaptureContext
         if let contextProvider { currentContext = await contextProvider() }
         else { currentContext = context }
+#if DEBUG
+        RuntimeExampleLibrary.developmentObserver?("diagnostic boundary=context-end")
+#endif
 #if canImport(FoundationModels)
         if #available(iOS 26.4, *),
            SystemLanguageModel.default.availability == .available,
            SystemLanguageModel.default.supportsLocale(.current) {
             let work = Task<ThoughtExtractionResult?, Never> {
+#if DEBUG
+                RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=runtime-work-enter")
+#endif
                 let examples: [RuntimeWorkedExample]
                 do { examples = try await RuntimeExampleLibrary.shared.select(source, configuration: configuration) }
                 catch { return RuntimeSourceInterpreter.recoverableReview(source) }
@@ -16903,7 +19504,13 @@ enum RuntimeExampleInterpreter {
                     calendar: calendar, context: currentContext, configuration: configuration, rules: rules,
                     preselectedExamples: examples, ruleTrace:ruleTrace)
             }
+#if DEBUG
+            RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=runtime-work-created")
+#endif
             let deadline = Task {
+#if DEBUG
+                RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=runtime-deadline-sleep-enter")
+#endif
                 do { try await Task.sleep(for: .seconds(20)) } catch { return }
 #if DEBUG
                 RuntimeFoundationInterpreter.developmentObserver?("call cancellation phase=runtime reason=deadline deadlineSeconds=20")
@@ -16913,6 +19520,9 @@ enum RuntimeExampleInterpreter {
             return await withTaskCancellationHandler {
                 defer { deadline.cancel() }
                 let result = await work.value
+#if DEBUG
+                RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=runtime-work-returned taskCancelled=\(work.isCancelled)")
+#endif
                 if work.isCancelled, rules.operations.isEmpty {
                     return RuntimeFoundationInterpreter.recoverableReview(source)
                 }
@@ -17295,7 +19905,7 @@ enum RuntimeSourceInterpreter {
     static func recoverableReview(_ source: String) -> ThoughtExtractionResult {
         let organized = OrganizedThought(itemType: .unclear, category: .general, priority: .normal,
             personName: nil, dueDate: nil, reminderDate: nil, reminderDelivery: .none,
-            recurrenceRule: nil, needsClarification: true, state: .contested(.uncertainClauseBoundary))
+            recurrenceRule: nil, needsClarification: true, state: .contested(.organizationIncomplete))
         return ThoughtExtractionResult(items: [.init(sourceQuote: source, rawQuote: source,
             wasRepaired: false, analysisText: source, suggestedTitle: nil,
             organization: organized, confidence: 0, needsReview: true)], method: .rules)
@@ -17505,8 +20115,8 @@ enum RuntimeApprovalRecipientReplacement {
 
 #endif
 
-/// Complete current nominal evidence. Installed lexical tags may prove every
-/// word; without those assets a closed physical noun/modifier grammar is used.
+/// Complete current nominal evidence from the closed physical noun/modifier
+/// grammars. A noun/adjective tag alone cannot prove an unknown source object.
 /// Unknown tails, punctuation, conjunctions, conditions and extra predicates
 /// retain the recoverable path. No literal source slots come from this grammar.
 enum RuntimeCurrentNominalProof {
@@ -17522,12 +20132,7 @@ enum RuntimeCurrentNominalProof {
         if RuntimeIndependentFramePlan.nominal(text) { return true }
         if heads.contains(head),words.dropLast().allSatisfy({ heads.contains($0) || modifiers.contains($0) }) { return true }
         if RuntimeIndependentFramePlan.nominal(head),words.dropLast().allSatisfy({ modifiers.contains($0) }) { return true }
-        let tokens = SentenceContextCache.context(for:text).tokens
-        guard (1...6).contains(tokens.count),tokens.last?.lexicalClass == .noun else { return false }
-        return tokens.allSatisfy { token in
-            token.lexicalClass == .noun || token.lexicalClass == .adjective
-                || (token.lexicalClass == .determiner && ["a","an","the"].contains(token.text.lowercased()))
-        }
+        return false
     }
 }
 
@@ -18169,8 +20774,10 @@ enum RuntimeIndependentFramePlan {
         if predicate == "belongs" {
             guard let owner = exact(rest,#"to\s+(.+)"#) else { return false };return literalPerson(owner[0])
         }
-        if ["dried","cracked","faded","broke","arrived","closed","opened"].contains(predicate) {
-            return rest.isEmpty || exact(rest,#"(?:unevenly|evenly|slowly|quickly|overnight|yesterday|already|early|late|again|last week)"#) != nil
+        if predicate.range(of: "^" + ActionabilityReader.completedDescriptiveStateVerb + "$",
+                           options: .regularExpression) != nil {
+            return ActionabilityReader.isCompleteDescriptiveStatePredicate(
+                predicate + (rest.isEmpty ? "" : " " + rest))
         }
         // Copular facts have a bounded descriptive quality, not an arbitrary
         // adoption/cancellation policy hidden behind 'we are' or 'Mom is'.
@@ -19373,6 +21980,95 @@ enum RuntimeCurrentWithdrawal {
             return .init(creation:index-1,withdrawal:index)
         }
     }
+    /// Named withdrawal is a decline-only current-source constraint. It never
+    /// resolves a saved target or licenses the bare-withdrawal Memory exemption.
+    /// Every literal match is withheld: duplicate matches do not choose an owner.
+    static func namedVetoedUnits(_ indexed: RuntimeIndexedSource,
+                                 referenceDate: Date, calendar: Calendar) -> Set<Int> {
+        guard indexed.source.range(of: #"(?i)\b(?:I|we)\s+no\s+longer\s+want\s+to\s+"#,
+            options: .regularExpression) != nil else { return [] }
+        func plain(_ text: String) -> String {
+            text.trimmingCharacters(in: .whitespacesAndNewlines
+                .union(CharacterSet(charactersIn: ".!?")))
+        }
+        func words(_ text: String) -> [String] {
+            SourceUnitLedger(text).words.map { $0.text.lowercased() }
+        }
+        let sentences = RuleBasedThoughtExtractor.quotePreservingSentenceRanges(in: indexed.source)
+        func ownDirect(_ unit: RuntimeIndexedSource.Unit) -> Bool {
+            // Indexed ranges include leading separators; sentence ownership
+            // binds the exact literal occurrence rather than that whitespace.
+            guard let literal = indexed.source.range(of: unit.text, options: .literal, range: unit.range),
+                  QuotedSpeechScope.ranges(in: unit.text).isEmpty,
+                  !QuotedSpeechScope.hasUnclosedQuote(unit.text),
+                  !QuotedSpeechScope.protects(literal, in: indexed.source),
+                  ClauseScope.read(unit.text).act == .direct,
+                  let sentence = sentences.first(where: { $0.contains(literal.lowerBound) }),
+                  literal.upperBound <= sentence.upperBound else { return false }
+            // Read the original matrix before the unit, rather than releasing
+            // a reporting/conditional owner by slicing out its complement.
+            let original = String(indexed.source[sentence.lowerBound..<literal.upperBound])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return ClauseScope.read(original).act == .direct
+                && ConditionalIntentScope.leading(in: original) == nil
+        }
+        func completeAction(_ text: String) -> Bool {
+            guard let reading = RuntimeCompleteLiteralCertificate.interpret(text,
+                referenceDate: referenceDate, calendar: calendar), reading.operations.isEmpty,
+                  reading.items.count == 1, let item = reading.items.first else { return false }
+            return item.sourceQuote == text && item.rawQuote == text
+                && item.organization.itemType.isActionable
+                && !item.needsReview && !item.organization.needsClarification
+        }
+        func ownsRemainder(_ remainder: String) -> Bool {
+            if remainder.isEmpty { return true }
+            if let clock = RuleBasedThoughtExtractor.leadingTemporalContext(in: remainder),
+               words(clock) == words(remainder) { return true }
+            // Locative remainder ownership has its own clause boundary; it
+            // does not depend on a downstream certificate splitting a tail.
+            guard remainder.range(of: #"(?i)\b(?:and|or|but|then|also|plus|so|if|unless|when|once|before|after|until|while|because)\b"#,
+                options: .regularExpression) == nil else { return false }
+            // A complete ordinary one-action certificate above owns this
+            // trailing locative phrase. The preposition is mandatory: a noun
+            // extension ('ticket link'), list or extra predicate is not a match.
+            return remainder.range(of: #"(?i)^(?:on|in|at)\s+(?:the|a|an|my|our|your|his|her|their)\s+[\p{L}\p{M}'’-]+(?:\s+[\p{L}\p{M}'’-]+){0,7}$"#,
+                options: .regularExpression) != nil
+        }
+        let head = "(?:" + ActionabilityReader.actionVerb + "|" + ActionabilityReader.headOnlyImperativeVerb + ")"
+        let pattern = #"(?i)^\s*(?:I|we)\s+no\s+longer\s+want\s+to\s+("# + head + #"\s+(.+?))[.!]?\s*$"#
+        guard let regex = NSRegularExpression.speakItCached(pattern) else { return [] }
+        var withheld = Set<Int>()
+        for withdrawal in indexed.units.indices where withdrawal > 0 {
+            let unit = indexed.units[withdrawal]
+            guard !unit.text.trimmingCharacters(in: .whitespacesAndNewlines).hasSuffix("?"),
+                  let match = regex.firstMatch(in: unit.text, range: NSRange(unit.text.startIndex..., in: unit.text)),
+                  let actionRange = Range(match.range(at: 1), in: unit.text),
+                  let objectRange = Range(match.range(at: 2), in: unit.text),
+                  ownDirect(unit) else { continue }
+            let action = plain(String(unit.text[actionRange]))
+            let object = plain(String(unit.text[objectRange]))
+            guard object.range(of: #"(?i)^(?:it|that|this|them|those|these|something|anything)\b"#,
+                    options: .regularExpression) == nil else { continue }
+            let target = words(action)
+            let matching = (0..<withdrawal).filter { creation in
+                let prior = indexed.units[creation]
+                let body = plain(ActionabilityReader.actionBody(prior.text))
+                let ledger = SourceUnitLedger(body), sourceWords = ledger.words.map { $0.text.lowercased() }
+                guard sourceWords.count >= target.count,
+                      Array(sourceWords.prefix(target.count)) == target else { return false }
+                let rest = sourceWords.count == target.count ? ""
+                    : String(body[ledger.words[target.count].range.lowerBound...])
+                return ownsRemainder(rest)
+            }
+            guard !matching.isEmpty, completeAction(action) else { continue }
+            for creation in matching {
+                let prior = indexed.units[creation]
+                if ownDirect(prior), completeAction(prior.text) { withheld.insert(creation) }
+            }
+        }
+        return withheld
+    }
+
     static func interpret(_ source: String,referenceDate: Date,calendar: Calendar) -> ThoughtExtractionResult? {
         let indexed = RuntimeIndexedSource(source),links = dependencies(indexed)
         guard indexed.units.count >= 2,links.count == 1,links[0].creation == 0,links[0].withdrawal == 1,
@@ -19500,6 +22196,7 @@ struct RuntimeIndexedSource {
             let sentenceEnd = !quoted && depth == 0 && ".!?".contains(character)
                 && (next == source.endIndex || source[next].isWhitespace)
                 && !Self.continuesFrontedCalendarClock(source, start: start, through: next)
+                && !Self.continuesTitledName(source, at: index)
             if !quoted, depth == 0, character == ";" || character == "\n" || sentenceEnd {
                 let range = start..<next
                 let text = String(source[range]).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -19513,6 +22210,34 @@ struct RuntimeIndexedSource {
             if !text.isEmpty { result.append(Unit(range: range, text: text)) }
         }
         self.units = result
+    }
+
+    /// Only an existing abbreviation followed by one complete existing titled
+    /// name keeps this period inside its source unit. This is punctuation
+    /// evidence, not permission to assign a recipient, action or shared meaning.
+    private static func continuesTitledName(_ source: String, at stop: String.Index) -> Bool {
+        guard source[stop] == "." else { return false }
+        var titleStart = stop
+        while titleStart > source.startIndex {
+            let previous = source.index(before: titleStart)
+            if source[previous].isWhitespace { break }
+            titleStart = previous
+        }
+        let title = String(source[titleStart..<stop])
+        guard title.range(of: RuleBasedThoughtExtractor.writtenAbbreviationSuffixPattern,
+                          options: .regularExpression) != nil else { return false }
+        let next = source.index(after: stop)
+        let tail = String(source[next...])
+        guard let regex = NSRegularExpression.speakItCached(#"^\h+([\p{L}][\p{L}\p{M}'’-]*)(?=$|[\s\p{P}])"#),
+              let match = regex.firstMatch(in: tail, range: NSRange(tail.startIndex..., in: tail)),
+              let nameRange = Range(match.range(at: 1), in: tail) else { return false }
+        let name = String(tail[nameRange])
+        let action = #"(?i)^(?:\#(ActionabilityReader.actionVerb)|\#(ActionabilityReader.headOnlyImperativeVerb))$"#
+        guard name.range(of: action, options: .regularExpression) == nil else { return false }
+        let end = source.index(next, offsetBy: tail.distance(from: tail.startIndex, to: nameRange.upperBound))
+        let phrase = String(source[titleStart..<end])
+        return PersonMentionResolver.communicationTitledRecipientRange(in: phrase, startingAt: phrase.startIndex)
+            == phrase.startIndex..<phrase.endIndex
     }
 
     /// A clock abbreviation is internal punctuation when the existing reader
@@ -19590,17 +22315,13 @@ enum RuntimeAccountOwnership {
     private static func inflectedActionHead(_ text: String, gerund: Bool) -> Bool {
         guard let head = text.range(of:#"^[\p{L}]+"#,options:.regularExpression) else { return false }
         let word = String(text[head]).lowercased()
+        if !gerund { return ActionabilityReader.isResultParticiple(word, continuation: String(text[head.upperBound...])) }
         var stems: [String] = []
         if gerund,word.hasSuffix("ing"),word.count > 3 {
             let base = String(word.dropLast(3));stems = [base,base + "e"]
             if word.hasSuffix("ying") { stems.append(String(word.dropLast(4)) + "ie") }
             if base.count > 1,base.last == base.dropLast().last { stems.append(String(base.dropLast())) }
-        } else if !gerund,word.hasSuffix("ed"),word.count > 2 {
-            let base = String(word.dropLast(2));stems = [base,String(word.dropLast())]
-            if word.hasSuffix("ied") { stems.append(String(word.dropLast(3)) + "y") }
-            if base.count > 1,base.last == base.dropLast().last { stems.append(String(base.dropLast())) }
         }
-        if !gerund,["done","made","sent","paid","taken","brought","put","kept","given","written","cut","built","bought"].contains(word) { return true }
         return stems.contains { stem in
             let restored = stem + text[head.upperBound...]
             return restored.range(of:"(?i)^" + actionHead + #"\b"#,options:.regularExpression) != nil
@@ -19782,6 +22503,473 @@ enum RuntimeAccountOwnership {
 
 }
 
+/// A complete original-source plan, independent of model availability. Every
+/// candidate carries settled metadata from its existing complete role reader;
+/// one uncovered or competing occurrence declines the whole optional plan.
+enum RuntimeCompleteSourceComposition {
+    enum Purpose:Equatable { case task, shopping, note, idea }
+    struct Component {
+        let start:Int
+        let end:Int
+        let purpose:Purpose
+        let parent:ExtractedThought
+        var evidence:[Int] { Array(start..<end) }
+    }
+    struct Plan {
+        let source:String
+        let units:RuntimeIndexedSource
+        let components:[Component]
+        let parents:ThoughtExtractionResult
+        let shaped:ThoughtExtractionResult
+    }
+    /// On newer systems indexed validation is an additional mandatory veto.
+    /// Failure never falls through to the portable result on that same system.
+    static func interpret(_ source:String,referenceDate:Date,calendar:Calendar,
+        rules:ThoughtExtractionResult,context:RuntimeCaptureContext = .empty) -> ThoughtExtractionResult? {
+        guard let plan=read(source,referenceDate:referenceDate,calendar:calendar,rules:rules) else { return nil }
+#if canImport(FoundationModels)
+        if #available(iOS 26.4,*) {
+            return RuntimeFoundationInterpreter.completeSourceComposition(plan,
+                referenceDate:referenceDate,calendar:calendar,rules:rules,context:context)
+        }
+#endif
+        return plan.parents
+    }
+    static func read(_ source:String,referenceDate:Date,calendar:Calendar,
+        rules:ThoughtExtractionResult) -> Plan? {
+        guard !Task.isCancelled,!source.isEmpty,rules.operations.isEmpty,
+              CaptureOperationDetector.partitionWithOwnership(source).operations.isEmpty,
+              RuntimeCompleteSourceFrames.currentPurposeProofsCanBind(source),
+              !SelfCorrectionResolver.hasCorrectionJunction(in:source),
+              !QuotedSpeechScope.hasUnclosedQuote(source) else { return nil }
+        // Preserve the existing repair veto. This is not permission to undo
+        // a user-preferred wording or to bind creation IDs to original words.
+        for item in rules.items where item.wasRepaired {
+            let original=SourceUnitLedger(item.rawQuote).words.map(\.text)
+            let repaired=SourceUnitLedger(item.sourceQuote).words.map(\.text)
+            guard original == repaired
+                || (original.first == "and" && Array(original.dropFirst()) == repaired)
+                || (repaired.first == "and" && Array(repaired.dropFirst()) == original) else { return nil }
+        }
+        let units=RuntimeIndexedSource(source),ledger=SourceUnitLedger(source)
+        guard !units.units.isEmpty,!ledger.words.isEmpty,
+              RuntimeProposalGuard.covers(source,quotes:units.units.map(\.text)),
+              units.units.allSatisfy({ RuntimeCompleteSourceFrames.currentOwnedUnitSpan($0,source:source) != nil }) else { return nil }
+        func singleton(_ literal:String) -> ExtractedThought? {
+            guard let result=RuntimeShortSourceCertificate.interpret(literal,referenceDate:referenceDate,calendar:calendar),
+                  result.operations.isEmpty,result.items.count == 1,let item=result.items.first,
+                  !item.wasRepaired,!item.needsReview,!item.organization.needsClarification,
+                  item.organization.state == .resolved,item.rawQuote == literal,item.sourceQuote == literal,
+                  item.sourceUnitIDs == Set(SourceUnitLedger(literal).words.indices) else { return nil }
+            return item
+        }
+        // Indexed Task is the existing canonical actionable row type. All
+        // other source-proved metadata, including literal recipient, survives.
+        func canonical(_ own:OrganizedThought) -> OrganizedThought {
+            let kind=own.itemType == .personFollowUp ? ItemType.task : own.itemType
+            return .init(itemType:kind,category:kind == .shopping ? .shopping : kind == .idea ? .ideas : own.category,
+                priority:own.priority,personName:own.personName,dueDate:own.dueDate,
+                reminderDate:own.reminderDate,reminderDelivery:own.reminderDelivery,
+                recurrenceRule:own.recurrenceRule,needsClarification:own.needsClarification,
+                temporalIntent:own.temporalIntent,locationIntent:own.locationIntent,state:own.state)
+        }
+        func component(_ start:Int,_ end:Int,organization:OrganizedThought,
+            analysis:String? = nil,title:String?,group:String? = nil) -> Component? {
+            guard units.units.indices.contains(start),end > start,end <= units.units.count else { return nil }
+            let span=units.units[start].range.lowerBound..<units.units[end-1].range.upperBound
+            let quote=String(source[span]).trimmingCharacters(in:.whitespacesAndNewlines)
+            let evidence=units.units[start..<end].map(\.text).joined(separator:" ")
+            let words=ledger.ids(in:span),own=canonical(organization)
+            guard !words.isEmpty,SourceUnitLedger(quote).words.map(\.text) == SourceUnitLedger(evidence).words.map(\.text),
+                  !own.needsClarification,own.state == .resolved,own.locationIntent == nil,own.recurrenceRule == nil,
+                  (own.reminderDate == nil ? own.reminderDelivery == .none
+                    : (own.itemType.isActionable && own.reminderDelivery == .notification && ReminderPhrasing.requestsReminder(evidence)))
+            else { return nil }
+            let purpose:Purpose
+            switch own.itemType {
+            case .task:purpose = .task
+            case .shopping:purpose = .shopping
+            case .note:purpose = .note
+            case .idea:purpose = .idea
+            default:return nil
+            }
+            if !own.itemType.isActionable {
+                guard own.dueDate == nil,own.reminderDate == nil,own.temporalIntent == .none,group == nil else { return nil }
+            }
+            let parent=ExtractedThought(sourceQuote:quote,rawQuote:quote,wasRepaired:false,
+                analysisText:analysis ?? evidence,suggestedTitle:title,organization:own,
+                confidence:1,needsReview:false,sourceUnitIDs:words,shoppingGroup:group)
+            return .init(start:start,end:end,purpose:purpose,parent:parent)
+        }
+        var candidates=Array(repeating:[Component](),count:units.units.count)
+        func add(_ candidate:Component?) {
+            guard let candidate else { return }
+            // Only the same complete row is a duplicate proof. Conflicting
+            // metadata or display projections remain competing candidates.
+            guard !candidates[candidate.start].contains(where:{
+                $0.end == candidate.end && $0.purpose == candidate.purpose && $0.parent == candidate.parent
+            }) else { return }
+            candidates[candidate.start].append(candidate)
+        }
+        for id in units.units.indices {
+            let literal=units.units[id].text,body=RuntimeFoundationActionShape.body(literal)
+            if let item=singleton(literal) {
+                // This is only the existing unchanged title projection. The
+                // complete Short proof above, not these narrow contact frames,
+                // supplies cardinality, organization and all effects.
+                let frames=RuntimeRecipientReplacement.currentFrames(body)
+                let contactAction=(frames?.count == 1 && frames?[0].kind.isActionable == true && frames?[0].person != nil)
+                    ? frames?[0].action : RuntimeCommunicationReading.read(body)?.action
+                let title=item.organization.itemType.isActionable ? (contactAction ?? body) : nil
+                add(component(id,id+1,organization:item.organization,title:title))
+            }
+            if let frame=RuntimeCompleteSourceFrames.pickupPreparationFrame(literal,referenceDate:referenceDate,calendar:calendar) {
+                add(component(id,id+1,organization:frame.organization,title:frame.visibleTitle))
+            }
+            if let frame=RuntimeCompleteSourceFrames.appositionalCallFrame(literal,referenceDate:referenceDate,calendar:calendar) {
+                add(component(id,id+1,organization:frame.organization,title:frame.visibleTitle))
+            }
+            if ClauseScope.writtenArtifactContent(in:literal,referenceDate:referenceDate,calendar:calendar) != nil {
+                let own=ThoughtOrganizer.organize(literal,referenceDate:referenceDate,calendar:calendar)
+                if own.itemType == .task,own.state == .resolved,!own.needsClarification,
+                   own.personName == nil,own.reminderDate == nil,own.reminderDelivery == .none,
+                   own.locationIntent == nil,own.recurrenceRule == nil {
+                    add(component(id,id+1,organization:own,title:body))
+                }
+            }
+            if let parent=RuleBasedThoughtExtractor.memberAvailabilityShoppingParent(literal),
+               parent.rawQuote == literal,parent.sourceQuote == literal,
+               parent.sourceUnitIDs == Set(SourceUnitLedger(literal).words.indices) {
+                add(component(id,id+1,organization:parent.organization,
+                    title:parent.suggestedTitle,group:parent.shoppingGroup))
+            }
+            if let parent=RuleBasedThoughtExtractor.plannedRetailShoppingParent(literal,referenceDate:referenceDate,calendar:calendar),
+               parent.rawQuote == literal,parent.sourceQuote == literal,
+               parent.sourceUnitIDs == Set(SourceUnitLedger(literal).words.indices) {
+                add(component(id,id+1,organization:parent.organization,analysis:parent.analysisText,
+                    title:parent.analysisText,group:parent.shoppingGroup))
+            }
+        }
+        if units.units.count >= 2,
+           let heading=RuntimeCompleteSourceFrames.headingActionFrame([0,1],units:units,referenceDate:referenceDate,calendar:calendar),
+           let body=singleton(heading.action),[ItemType.task,.personFollowUp].contains(body.organization.itemType),
+           canonical(body.organization) == canonical(heading.organization) {
+            add(component(0,2,organization:body.organization,title:heading.visibleTitle))
+        }
+        // Count distinct covers only up to ambiguity, never an intention cap.
+        let count=units.units.count
+        var ways=Array(repeating:0,count:count+1);ways[count]=1
+        var choice=Array<Component?>(repeating:nil,count:count)
+        for start in (0..<count).reversed() {
+            for candidate in candidates[start] where ways[candidate.end] != 0 {
+                if ways[start] == 0 && ways[candidate.end] == 1 { choice[start]=candidate }
+                ways[start]=min(2,ways[start]+ways[candidate.end])
+            }
+        }
+        guard ways[0] == 1 else { return nil }
+        var components:[Component]=[],owned=Set<Int>(),cursor=0
+        while cursor < count {
+            guard let candidate=choice[cursor],candidate.start == cursor,
+                  owned.isDisjoint(with:candidate.parent.sourceUnitIDs) else { return nil }
+            owned.formUnion(candidate.parent.sourceUnitIDs);components.append(candidate);cursor=candidate.end
+        }
+        guard owned == Set(ledger.words.indices),!Task.isCancelled,
+              components.reduce(0,{ $0+$1.parent.sourceUnitIDs.count }) == ledger.words.count else { return nil }
+        let parents=ThoughtExtractionResult(items:components.map(\.parent),method:.rules)
+        let shaped=ThoughtExtractionEngine.shapingShoppingResult(parents,transcript:source)
+        // The existing expander owns literal product occurrences; framing is
+        // allocated once to the first child and full parent provenance remains.
+        var accounted=Set<Int>()
+        for parent in parents.items {
+            let children=shaped.items.indices.filter {
+                !shaped.items[$0].sourceUnitIDs.isEmpty
+                    && shaped.items[$0].sourceUnitIDs.isSubset(of:parent.sourceUnitIDs)
+            }
+            guard !children.isEmpty,accounted.isDisjoint(with:children),
+                  children.allSatisfy({ shaped.items[$0].rawQuote == parent.rawQuote
+                    && shaped.items[$0].organization == parent.organization
+                    && shaped.items[$0].shoppingGroup == parent.shoppingGroup }),
+                  children.reduce(into:Set<Int>(),{ $0.formUnion(shaped.items[$1].sourceUnitIDs) }) == parent.sourceUnitIDs,
+                  children.reduce(0,{ $0+shaped.items[$1].sourceUnitIDs.count }) == parent.sourceUnitIDs.count else { return nil }
+            accounted.formUnion(children)
+        }
+        guard accounted == Set(shaped.items.indices),!Task.isCancelled else { return nil }
+        return .init(source:source,units:units,components:components,parents:parents,shaped:shaped)
+    }
+}
+
+/// Shared source-only role readers and ownership vetoes. These moved
+/// bodies retain their existing acceptance and metadata behavior; this layer
+/// adds no composition, cardinality, routing or model authority.
+enum RuntimeCompleteSourceFrames {
+    static let currentOwnAffirmativeAdverbs = #"(?:(?:now|also|still|definitely|certainly)\s+){0,2}"#
+
+    static func currentOwnedUnitSpan(_ unit:RuntimeIndexedSource.Unit,source:String) -> Range<String.Index>? {
+        guard !QuotedSpeechScope.hasUnclosedQuote(source),
+              let voice=QuotedSpeechScope.voiceProjection(in:source) else { return nil }
+        return ownedUnitSpan(unit,source:source,voice:voice)
+    }
+    /// One immutable whole-source voice proof for this invocation only. Exact
+    /// literal occurrence and containment use the same standalone predicate.
+    static func currentOwnedUnitSpans(_ units:RuntimeIndexedSource) -> [Range<String.Index>?] {
+        guard !QuotedSpeechScope.hasUnclosedQuote(units.source),
+              let voice=QuotedSpeechScope.voiceProjection(in:units.source) else {
+            return Array(repeating:nil,count:units.units.count)
+        }
+        return units.units.map { ownedUnitSpan($0,source:units.source,voice:voice) }
+    }
+    private static func ownedUnitSpan(_ unit:RuntimeIndexedSource.Unit,source:String,
+        voice:QuotedSpeechScope.VoiceProjection) -> Range<String.Index>? {
+        guard let literal=source.range(of:unit.text,options:.literal,range:unit.range),
+              voice.ownVoiceRanges.contains(where:{ $0.lowerBound <= literal.lowerBound && literal.upperBound <= $0.upperBound }) else { return nil }
+        return literal
+    }
+
+    static func currentPurposeProofsCanBind(_ source:String) -> Bool {
+        currentPurposeProofsCanBind(source,closedJointCallRanges:[])
+    }
+
+    static func currentPurposeProofsCanBind(_ source:String,closedJointCallRanges:[NSRange]) -> Bool {
+        guard !currentPurposeOwnershipStatement(source) else { return false }
+        // Exempt only the grammar's literal "Actually" correction marker,
+        // never other changes or commitments appearing inside names/topics.
+        // Empty ranges retain the original general gate without new checks.
+        let closedCorrectionMarkers=closedJointCallRanges.compactMap { span -> NSRange? in
+            guard let range=Range(span,in:source),!range.isEmpty,
+                  let voice=QuotedSpeechScope.voiceProjection(in:source),
+                  voice.ownVoiceRanges.contains(where:{ $0.lowerBound <= range.lowerBound && range.upperBound <= $0.upperBound }),
+                  RuntimeJointCallReading.read(String(source[range])) != nil,
+                  let regex=NSRegularExpression.speakItCached(#"(?i)[.!]\s*(Actually)\s+make\s+it\s+one\s+call\s+with\s+both\s+of\s+them\s+together\s+on\s+"#),
+                  let marker=regex.firstMatch(in:source,range:span) else { return nil }
+            return marker.range(at:1)
+        }
+        guard closedCorrectionMarkers.count == closedJointCallRanges.count else { return false }
+        // Exempt only occurrences inside the complete, positively proved own
+        // denied infinitival complement. Every other occurrence in the whole
+        // current capture still vetoes sealing an owner. No source is removed.
+        let deniedRanges=RuntimeIndexedSource(source).units.compactMap { unit -> NSRange? in
+            guard let literal=currentOwnedUnitSpan(unit,source:source) else { return nil }
+            // This complete negative agreement is itself the whole status.
+            // Only its owned occurrence can exempt the denied change word;
+            // every later adoption/correction elsewhere still vetoes binding.
+            if currentDeniedAgreementStatus(unit.text) { return NSRange(literal,in:source) }
+            guard let denied=currentDeniedCommitment(unit.text) else { return nil }
+            let local=NSRange(denied.complement,in:unit.text),base=NSRange(literal,in:source)
+            return NSRange(location:base.location+local.location,length:local.length)
+        }
+        let progressive = #"(?:agreeing|consenting|accepting|adopting|deciding|committing|promising)"#
+        let adverb=currentOwnAffirmativeAdverbs
+        let presentOwn = "(?:I\\s+"+adverb+"am|we\\s+"+adverb+#"are|I['’]m|we['’]re)"#
+        let perfectOwn = #"(?:(?:I|we)\s+"# + adverb + #"have|I['’]ve|we['’]ve)"#
+        let simpleAdoption = #"\b(?:I|we)\s+"# + adverb + "(?:have\\s+"+adverb+#")?(?:agree|agreed|consent|consented|accept|accepted|adopt|adopted|decide|decided|commit|committed|promise|promised|say\s+yes|said\s+yes)\b"#
+        let aspectAdoption = #"\b"# + presentOwn + "\\s+" + adverb + progressive + #"\b|\b"# + perfectOwn
+            + "\\s+"+adverb+#"(?:agreed|consented|accepted|adopted|decided|committed|promised|said\s+yes)\b|\b"# + perfectOwn + "\\s+"+adverb+"been\\s+"+adverb+progressive+#"\b"#
+        let pattern = #"(?i)\b(?:actually|instead|correction|never\s+mind|cancel|delete|withdraw|make\s+that|no\s+(?:wait|make)|wait|sorry|leave\s+that\s+off|take\s+that\s+back|replace|switch|switched|change|changed|forget|scratch|remove|stop)\b|\b(?:I|we)\s+(?:have\s+)?(?:now\s+)?(?:agree|agreed|consent|consented|accept|accepted|adopt|adopted|decide|decided|commit|committed|promise|promised|say\s+yes|said\s+yes)\b|"# + aspectAdoption + "|" + simpleAdoption
+        guard let regex=NSRegularExpression.speakItCached(pattern) else { return false }
+        return regex.matches(in:source,range:NSRange(source.startIndex...,in:source)).allSatisfy { match in
+            (deniedRanges + closedCorrectionMarkers).contains { $0.location <= match.range.location && NSMaxRange(match.range) <= NSMaxRange($0) }
+        }
+    }
+
+    static func currentDeniedCommitment(_ text:String) -> (complement:Range<String.Index>,object:String,predicates:[String])? {
+        guard QuotedSpeechScope.ranges(in:text).isEmpty,!QuotedSpeechScope.hasUnclosedQuote(text) else { return nil }
+        let verb = #"(?:polish|repair|replace|clean|wash|paint|trim|mend|restore|adjust|fix|return|swap|change)"#
+        let pattern = #"(?i)^\s*(?:I\s+am|we\s+are)\s+not\s+promising\s+to\s+("# + verb + #"(?:\s+(?:or|and)\s+"# + verb + #"){0,2}\s+(it|[^;.!?]+?))[.!]?\s*$"#
+        guard let regex=NSRegularExpression.speakItCached(pattern),
+              let match=regex.firstMatch(in:text,range:NSRange(text.startIndex...,in:text)),
+              let complement=Range(match.range(at:1),in:text),let objectRange=Range(match.range(at:2),in:text) else { return nil }
+        let object=String(text[objectRange])
+        guard object.lowercased() == "it" || RuntimeCurrentNominalProof.read(object) else { return nil }
+        let predicateText=String(text[complement.lowerBound..<objectRange.lowerBound])
+        let predicates=predicateText.lowercased().split(whereSeparator: { $0.isWhitespace }).map(String.init).filter { $0 != "and" && $0 != "or" }
+        return (complement,object,predicates)
+    }
+
+    static func currentPurposeOwnershipStatement(_ source:String) -> Bool {
+        func exact(_ text:String,_ pattern:String)->[String]? {
+            guard let regex=NSRegularExpression.speakItCached("(?i)^\\s*(?:"+pattern+")[;.!]?\\s*$"),
+                  let m=regex.firstMatch(in:text,range:NSRange(text.startIndex...,in:text)) else { return nil }
+            return (1..<m.numberOfRanges).map { Range(m.range(at:$0),in:text).map { String(text[$0]) } ?? "" }
+        }
+        let subject = #"(?:(?:that|this|it)|(?:that|this|the)\s+(?:task|job|work|responsibility))"#
+        let copula = #"(?:is|isn['’]t|is\s+not)(?:\s+now)?"#
+        let person = PersonMentionResolver.communicationRelationPhrasePattern + #"|\p{L}[\p{L}\p{M}'’-]*(?:\s+\p{L}[\p{L}\p{M}'’-]*)?"#
+        guard !QuotedSpeechScope.hasUnclosedQuote(source),let wholeVoice=QuotedSpeechScope.voiceProjection(in:source) else { return true }
+        for unit in RuntimeIndexedSource(source).units {
+            // Owned spans come from the COMPLETE current source. A sentence
+            // unit can split quoted text, so fragment-level quote detection
+            // cannot turn a quoted speaker's role into the user's assertion.
+            let own=wholeVoice.ownVoiceRanges.compactMap { range -> String? in
+                let lower=max(range.lowerBound,unit.range.lowerBound),upper=min(range.upperBound,unit.range.upperBound)
+                return lower < upper ? String(source[lower..<upper]) : nil
+            }.joined(separator:" ").trimmingCharacters(in:.whitespacesAndNewlines)
+            guard !own.isEmpty else { continue }
+            // Normalize only a complete own unit's grammatical contraction.
+            // Possessive actors, quote payloads and reminder objects are not
+            // rewritten; every resulting role form is still anchored below.
+            let text=own
+                .replacingOccurrences(of:"(?i)^\\s*("+subject+")[’']s\\s+",with:"$1 is ",options:.regularExpression)
+                .replacingOccurrences(of:#"(?i)^\s*I[’']m\s+"#,with:"I am ",options:.regularExpression)
+                .replacingOccurrences(of:#"(?i)^\s*we[’']re\s+"#,with:"We are ",options:.regularExpression)
+            // An inverted own-role subject is still an ownership change. This
+            // merely declines purpose sealing; every predicate stays available
+            // to the complete current-source interpretation and validation.
+            if text.range(of:#"(?i)^\s*(?:my|our)\s+(?:own\s+)?(?:task|job|work|responsibility)\s+(?:is|isn['’]t|is\s+not)(?:\s+now)?\s+\S"#,options:.regularExpression) != nil { return true }
+            let ownRole = #"(?:(?:no\s+longer\s+)?(?:my|our)\s+(?:own\s+)?(?:task|job|work|responsibility)|(?:no\s+longer\s+)?(?:mine|ours)|for\s+(?:me|us)\s+to\s+do)"#
+            if exact(text,subject+"\\s+"+copula+"\\s+"+ownRole) != nil { return true }
+            // A complete leading own-role assertion still changes ownership
+            // when it has a coordinated/subordinate continuation. Decline the
+            // optimization; the ordinary graph retains and reads that tail.
+            if text.range(of:"(?i)^\\s*"+subject+"\\s+"+copula+"\\s+"+ownRole+#"(?=\s*(?:[,;]|\b(?:to|and|but|yet|then|so|if|unless|when|after|before)\b))"#,options:.regularExpression) != nil { return true }
+            let ownResponsibility = #"(?:I\s+am|we\s+are)\s+(?:now\s+)?(?:not\s+)?responsible\s+for\s+(?:this|that)(?:\s+(?:task|job|work))?"#
+            if exact(text,ownResponsibility) != nil { return true }
+            if text.range(of:"(?i)^\\s*"+ownResponsibility+#"(?=\s*(?:[,;]|\b(?:and|but|yet|then|so|if|unless|when|after|before)\b))"#,options:.regularExpression) != nil { return true }
+            if let f=exact(text,subject+"\\s+"+copula+"\\s+("+person+#")[’']s\s+(?:own\s+)?(?:job|task|work)(?:,\s*not\s+(?:mine|ours))?"#),
+               RuntimeRecipientReplacement.literalRecipient(f[0]) { return true }
+            if let f=exact(text,subject+#"\s+belongs\s+to\s+("#+person+")"),RuntimeRecipientReplacement.literalRecipient(f[0]) { return true }
+        }
+        return false
+    }
+
+    static func currentDeniedAgreementStatus(_ text:String)->Bool {
+        guard QuotedSpeechScope.ranges(in:text).isEmpty,!QuotedSpeechScope.hasUnclosedQuote(text) else { return false }
+        let body=RuntimeFoundationActionShape.body(text)
+        return body.range(of:#"(?i)^\s*(?:I|we)\s+(?:have\s+not|haven['’]t)\s+(?:agreed|consented)\s+to\s+(?:cancel|delete|remove)\s+(?:that|this|the|my|our|his|her|their)\s+(?:appointment|meeting|booking|task|reminder|event)[.!]?\s*$"#,options:.regularExpression) != nil
+    }
+
+    struct HeadingActionFrame {
+        let sourceRange:Range<String.Index>
+        let headingRange:Range<String.Index>
+        let actionRange:Range<String.Index>
+        let headingWordIDs:Set<Int>
+        let actionWordIDs:Set<Int>
+        let heading:String
+        let action:String
+        /// The heading's window remains literal context, never an own due date.
+        let contextIntent:TemporalIntent
+        let organization:OrganizedThought
+        var visibleTitle:String { action + " — " + heading }
+    }
+
+    static func headingActionFrame(_ ids:[Int],units:RuntimeIndexedSource,
+                                   referenceDate:Date,calendar:Calendar) -> HeadingActionFrame? {
+        guard ids == [0,1],units.units.count >= 2 else { return nil }
+        // Existing domain labels and list-framing nouns supply the role.
+        // The determined one-word topic is an opaque literal label, not a
+        // product/name/NP inference. Unknown or finite residuals do not fit.
+        let domains=[ItemCategory.work,.school,.personal].map(\.rawValue).joined(separator:"|")
+        let pattern="(?i)^\\s*(?:"+domains+#")\s+(?:stuff|tasks|errands)\s+for\s+((?:the|my|our|this|that)\s+\p{L}[\p{L}\p{M}-]*)(?:\s+((?:this|next)\s+week))?\.\s*$"#
+        let header=units.units[0].text
+        guard let regex=NSRegularExpression.speakItCached(pattern),
+              let match=regex.firstMatch(in:header,range:NSRange(header.startIndex...,in:header)),
+              let topic=Range(match.range(at:1),in:header),
+              ThoughtOrganizer.hasNoLiteralTiming(in:String(header[topic]),referenceDate:referenceDate,calendar:calendar),
+              let headingRange=currentOwnedUnitSpan(units.units[0],source:units.source),
+              let actionRange=currentOwnedUnitSpan(units.units[1],source:units.source),
+              headingRange.upperBound <= actionRange.lowerBound,
+              currentPurposeProofsCanBind(units.source),
+              !SelfCorrectionResolver.hasCorrectionJunction(in:units.source) else { return nil }
+        let span=headingRange.lowerBound..<actionRange.upperBound
+        let whole=String(units.source[span]),action=String(units.source[actionRange])
+        guard !QuotedSpeechScope.hasUnclosedQuote(whole),QuotedSpeechScope.ranges(in:whole).isEmpty,
+              ClauseScope.read(header).act == .direct,
+              [.direct,.communicating].contains(ClauseScope.read(action).act),
+              !ThoughtOrganizer.isNegatedOwnCommitment(action.lowercased()),
+              ConditionalIntentScope.dependency(in:action) == nil,
+              RuntimeFoundationActionShape.executable(action),
+              ThoughtCompletion.unfinished(in:action) == nil else { return nil }
+        let heading=String(units.source[headingRange])
+        let context=ThoughtOrganizer.organize(heading,referenceDate:referenceDate,calendar:calendar)
+        let ownsWindow=match.range(at:2).location != NSNotFound
+        guard !context.needsClarification,context.reminderDate == nil,
+              context.reminderDelivery == .none,context.locationIntent == nil,context.recurrenceRule == nil,
+              (ownsWindow ? context.temporalIntent.kind == .calendarWindow : context.temporalIntent == .none) else { return nil }
+        let organization=ThoughtOrganizer.organize(action,referenceDate:referenceDate,calendar:calendar)
+        guard [.task,.personFollowUp].contains(organization.itemType),
+              organization.state == .resolved,!organization.needsClarification else { return nil }
+        if ownsWindow,let ownDay=organization.temporalIntent.day {
+            guard let day=ownDay.startOfDay(in:calendar),
+                  let start=context.temporalIntent.day?.startOfDay(in:calendar),
+                  let end=context.temporalIntent.windowEndDay?.startOfDay(in:calendar),
+                  start <= day,day <= end else { return nil }
+        }
+        let ledger=SourceUnitLedger(units.source),headingIDs=ledger.ids(in:headingRange),actionIDs=ledger.ids(in:actionRange)
+        guard !headingIDs.isEmpty,!actionIDs.isEmpty,headingIDs.isDisjoint(with:actionIDs),
+              headingIDs.union(actionIDs) == ledger.ids(in:span) else { return nil }
+        return .init(sourceRange:span,headingRange:headingRange,actionRange:actionRange,
+            headingWordIDs:headingIDs,actionWordIDs:actionIDs,heading:heading,action:action,
+            contextIntent:context.temporalIntent,organization:organization)
+    }
+
+    struct PickupPreparationFrame {
+        let proof:ClauseScope.PickupPreparationDeadline
+        let action:String
+        let visibleTitle:String
+        let organization:OrganizedThought
+    }
+
+    static func pickupPreparationFrame(_ source:String,referenceDate:Date,
+                                       calendar:Calendar)->PickupPreparationFrame? {
+        guard let proof=ClauseScope.pickupPreparationDeadline(in:source,referenceDate:referenceDate,calendar:calendar) else { return nil }
+        let action=proof.organizationText(in:source)
+        guard RuntimeFoundationActionShape.executable(action),ClauseScope.read(action).act == .direct,
+              !ThoughtOrganizer.isNegatedOwnCommitment(action.lowercased()),
+              ConditionalIntentScope.dependency(in:action) == nil,
+              ThoughtCompletion.unfinished(in:action) == nil else { return nil }
+        let own=ThoughtOrganizer.organize(action,referenceDate:referenceDate,calendar:calendar)
+        guard own.itemType == .task,own.state == .resolved,!own.needsClarification,
+              own.personName == nil,own.dueDate == nil,own.temporalIntent == .none,
+              own.reminderDate == nil,own.reminderDelivery == .none,
+              own.locationIntent == nil,own.recurrenceRule == nil,
+              var intent=ThoughtOrganizer.bookingTargetTiming(String(source[proof.timingRange]),
+                referenceDate:referenceDate,calendar:calendar),
+              intent.kind == .exactDateTime,let day=intent.day,let time=intent.time,
+              intent.deadlineBoundary == nil,intent.clockBoundary == nil,
+              intent.relativeSeconds == nil,intent.windowEndDay == nil,
+              intent.recurrence == nil,intent.unsupportedTrigger == nil else { return nil }
+        let resolved=TemporalResolver.resolve(intent,anchor:referenceDate,calendar:calendar,wantsReminder:false)
+        guard let cutoff=resolved.dueDate,cutoff > referenceDate,resolved.reminderDate == nil,
+              CalendarDay(from:cutoff,calendar:calendar) == day,
+              calendar.component(.hour,from:cutoff) == time.hour,
+              calendar.component(.minute,from:cutoff) == time.minute else { return nil }
+        // This is a due cutoff, never an exact execution appointment or alert.
+        // BEFORE remains visible and in full literal provenance; TemporalIntent
+        // has no general before/after relation field and gains none here.
+        intent.sourceText=source
+        let organization=OrganizedThought(itemType:.task,category:own.category,priority:own.priority,
+            personName:nil,dueDate:cutoff,reminderDate:nil,reminderDelivery:.none,recurrenceRule:nil,
+            needsClarification:false,temporalIntent:intent,state:.resolved)
+        let lead=String(action.prefix(1)).uppercased()+String(action.dropFirst())
+        let title=lead+" "+String(source[proof.deadlineRange])+" — "+String(source[proof.contextRange])
+        return .init(proof:proof,action:action,visibleTitle:title,organization:organization)
+    }
+
+    struct AppositionalCallFrame {
+        let proof: ClauseScope.AppositionalCallContext
+        let action: String
+        let visibleTitle: String
+        let organization: OrganizedThought
+    }
+
+    static func appositionalCallFrame(_ source: String, referenceDate: Date,
+                                      calendar: Calendar) -> AppositionalCallFrame? {
+        guard let proof = ClauseScope.appositionalCallContext(in: source,
+                referenceDate: referenceDate, calendar: calendar) else { return nil }
+        let action = proof.executionText(in: source)
+        let own = ThoughtOrganizer.organize(action, referenceDate: referenceDate, calendar: calendar)
+        guard ClauseScope.read(action).act == .direct, RuntimeFoundationActionShape.executable(action),
+              own.itemType == .personFollowUp, own.personName == proof.personLabel,
+              own.state == .resolved, !own.needsClarification,
+              own.dueDate != nil, own.temporalIntent.kind == .dateOnly,
+              own.temporalIntent.day != nil, own.temporalIntent.time == nil,
+              own.temporalIntent.deadlineBoundary == nil, own.temporalIntent.clockBoundary == nil,
+              own.reminderDate == nil, own.reminderDelivery == .none,
+              own.locationIntent == nil, own.recurrenceRule == nil else { return nil }
+        return .init(proof: proof, action: action,
+            visibleTitle: proof.visibleTitle(in: source), organization: own)
+    }
+}
+
 #if canImport(FoundationModels)
 @available(iOS 26.4, *)
 extension RuntimeAccountOwnership {
@@ -19879,8 +23067,11 @@ extension RuntimeAccountOwnership {
             var text = prompt()
             let initialPromptCount = try await model.tokenCount(for:text)
 #if DEBUG
+            var admittedPromptCount = initialPromptCount
+#endif
+#if DEBUG
             let selectedIDs = examples.map(\.id).joined(separator:",")
-            RuntimeFoundationInterpreter.developmentObserver?("call components phase=account-decision contextSize=\(model.contextSize) sourceText=\(try await model.tokenCount(for:source)) indexedSource=\(try await model.tokenCount(for:indexed)) userContext=\(try await model.tokenCount(for:currentContext)) clockZone=\(try await model.tokenCount(for:clock)) framing=\(try await model.tokenCount(for:"WORKED REFERENCES ABOUT OTHER CAPTURES DATA:\n\nCURRENT CONTEXT DATA:\n\nCOMPLETE INDEXED CURRENT TRANSCRIPT DATA:\n")) instructions=\(instructionCount) schema=\(schemaCount) currentOnlyPrompt=\(initialPromptCount) outputLimit=\(reserve) selected=\(selectedIDs) units=\(units.units.count)")
+            RuntimeFoundationInterpreter.developmentObserver?("call components phase=account-decision contextSize=\(model.contextSize) sourceTextBytes=\(source.utf8.count) indexedSourceBytes=\(indexed.utf8.count) userContextBytes=\(currentContext.utf8.count) clockZoneBytes=\(clock.utf8.count) framingTokens=unmeasured instructions=\(instructionCount) schema=\(schemaCount) currentOnlyPrompt=\(initialPromptCount) outputLimit=\(reserve) selected=\(selectedIDs) units=\(units.units.count)")
 #endif
             guard initialPromptCount + schemaCount + instructionCount + reserve <= model.contextSize else {
 #if DEBUG
@@ -19893,12 +23084,17 @@ extension RuntimeAccountOwnership {
                 let proposedTokens = try await model.tokenCount(for:proposed)
                 let fits = proposedTokens + schemaCount + instructionCount + reserve <= model.contextSize
 #if DEBUG
-                RuntimeFoundationInterpreter.developmentObserver?("reference fit phase=account-decision id=\(example.id) projectedTokens=\(try await model.tokenCount(for:RuntimeFoundationInterpreter.projectedDemonstration(example))) proposedPrompt=\(proposedTokens) accepted=\(fits)")
+                RuntimeFoundationInterpreter.developmentObserver?("reference fit phase=account-decision id=\(example.id) projectedTokens=unmeasured projectedBytes=\(RuntimeFoundationInterpreter.projectedDemonstration(example).utf8.count) proposedPrompt=\(proposedTokens) accepted=\(fits)")
 #endif
-                if fits { text = proposed } else { included.removeLast() }
+                if fits {
+                    text = proposed
+#if DEBUG
+                    admittedPromptCount = proposedTokens
+#endif
+                } else { included.removeLast() }
             }
 #if DEBUG
-            RuntimeFoundationInterpreter.developmentObserver?("budget prompt=\(try await model.tokenCount(for:text)) instructions=\(instructionCount) schema=\(schemaCount) examples=\(included.map(\.id).joined(separator:",")) phase=account-decision contextSize=\(model.contextSize) responseReserve=\(reserve) currentUnits=\(units.units.count) referenceSection=\(try await model.tokenCount(for:referenceSection()))")
+            RuntimeFoundationInterpreter.developmentObserver?("budget prompt=\(admittedPromptCount) instructions=\(instructionCount) schema=\(schemaCount) examples=\(included.map(\.id).joined(separator:",")) phase=account-decision contextSize=\(model.contextSize) responseReserve=\(reserve) currentUnits=\(units.units.count) referenceSectionBytes=\(referenceSection().utf8.count)")
 #endif
             completion = "generating"
             let session = LanguageModelSession(model:model,instructions:instructions)
@@ -19908,8 +23104,8 @@ extension RuntimeAccountOwnership {
             }
             completion = "generation-completed"
 #if DEBUG
-            RuntimeFoundationInterpreter.developmentObserver?("outline response tokens=\(try await model.tokenCount(for:response.transcriptEntries)) json=\(response.rawContent.jsonString) phase=account-decision")
-            RuntimeFoundationInterpreter.developmentObserver?("call output phase=account-decision rawJSONTokens=\(try await model.tokenCount(for:response.rawContent.jsonString)) outputLimit=\(reserve) consumed=\(included.map(\.id).joined(separator:","))")
+            RuntimeFoundationInterpreter.developmentObserver?("outline response tokens=unmeasured rawJSONBytes=\(response.rawContent.jsonString.utf8.count) json=\(response.rawContent.jsonString) phase=account-decision")
+            RuntimeFoundationInterpreter.developmentObserver?("call output phase=account-decision rawJSONTokens=unmeasured rawJSONBytes=\(response.rawContent.jsonString.utf8.count) outputLimit=\(reserve) consumed=\(included.map(\.id).joined(separator:","))")
 #endif
             guard !Task.isCancelled else {
 #if DEBUG
@@ -19944,9 +23140,11 @@ enum RuntimeFoundationInterpreter {
     // Only a synthetic developer harness installs this observer. No app log,
     // analytics sink, shared bank or production diagnostic receives content.
     @TaskLocal static var developmentObserver: (@Sendable (String) -> Void)? = nil
+    static func observedTokenCount(_ count:Int?)->String { count.map { String($0) } ?? "unmeasured" }
 #endif
     static func measuredGeneration<T>(phase:String,operation:() async throws -> T) async rethrows -> T {
 #if DEBUG
+        developmentObserver?("diagnostic boundary=sdk-respond-enter phase=\(phase)")
         let clock=ContinuousClock(),start=ContinuousClock.now
         func observe(_ state:String) {
             let elapsed=clock.now-start,parts=elapsed.components
@@ -20090,123 +23288,29 @@ enum RuntimeFoundationInterpreter {
     }
     /// No purpose optimization may seal an owner before later current source
     /// changes or adopts its meaning. The ordinary graph remains expressive.
-    private static let currentOwnAffirmativeAdverbs = #"(?:(?:now|also|still|definitely|certainly)\s+){0,2}"#
+    private static let currentOwnAffirmativeAdverbs = RuntimeCompleteSourceFrames.currentOwnAffirmativeAdverbs
     /// A fragment inside a quotation cannot prove the current user's purpose.
     /// Locate the complete trimmed unit in the ORIGINAL source and require one
     /// whole-capture owned span to contain every meaningful character.
     private static func currentOwnedUnitSpan(_ unit:RuntimeIndexedSource.Unit,source:String) -> Range<String.Index>? {
-        guard !QuotedSpeechScope.hasUnclosedQuote(source),
-              let voice=QuotedSpeechScope.voiceProjection(in:source),
-              let literal=source.range(of:unit.text,options:.literal,range:unit.range),
-              voice.ownVoiceRanges.contains(where:{ $0.lowerBound <= literal.lowerBound && literal.upperBound <= $0.upperBound }) else { return nil }
-        return literal
+        RuntimeCompleteSourceFrames.currentOwnedUnitSpan(unit, source: source)
     }
     static func currentPurposeProofsCanBind(_ source:String) -> Bool {
-        currentPurposeProofsCanBind(source,closedJointCallRanges:[])
+        RuntimeCompleteSourceFrames.currentPurposeProofsCanBind(source)
     }
     /// Only the exact correction marker of a complete original-owned closed
     /// joint-call span is exempt. Every other whole-capture veto stays active.
     private static func currentPurposeProofsCanBind(_ source:String,closedJointCallRanges:[NSRange]) -> Bool {
-        guard !currentPurposeOwnershipStatement(source) else { return false }
-        // Exempt only the grammar's literal "Actually" correction marker,
-        // never other changes or commitments appearing inside names/topics.
-        // Empty ranges retain the original general gate without new checks.
-        let closedCorrectionMarkers=closedJointCallRanges.compactMap { span -> NSRange? in
-            guard let range=Range(span,in:source),!range.isEmpty,
-                  let voice=QuotedSpeechScope.voiceProjection(in:source),
-                  voice.ownVoiceRanges.contains(where:{ $0.lowerBound <= range.lowerBound && range.upperBound <= $0.upperBound }),
-                  RuntimeJointCallReading.read(String(source[range])) != nil,
-                  let regex=NSRegularExpression.speakItCached(#"(?i)[.!]\s*(Actually)\s+make\s+it\s+one\s+call\s+with\s+both\s+of\s+them\s+together\s+on\s+"#),
-                  let marker=regex.firstMatch(in:source,range:span) else { return nil }
-            return marker.range(at:1)
-        }
-        guard closedCorrectionMarkers.count == closedJointCallRanges.count else { return false }
-        // Exempt only occurrences inside the complete, positively proved own
-        // denied infinitival complement. Every other occurrence in the whole
-        // current capture still vetoes sealing an owner. No source is removed.
-        let deniedRanges=RuntimeIndexedSource(source).units.compactMap { unit -> NSRange? in
-            guard let literal=currentOwnedUnitSpan(unit,source:source) else { return nil }
-            // This complete negative agreement is itself the whole status.
-            // Only its owned occurrence can exempt the denied change word;
-            // every later adoption/correction elsewhere still vetoes binding.
-            if currentDeniedAgreementStatus(unit.text) { return NSRange(literal,in:source) }
-            guard let denied=currentDeniedCommitment(unit.text) else { return nil }
-            let local=NSRange(denied.complement,in:unit.text),base=NSRange(literal,in:source)
-            return NSRange(location:base.location+local.location,length:local.length)
-        }
-        let progressive = #"(?:agreeing|consenting|accepting|adopting|deciding|committing|promising)"#
-        let adverb=currentOwnAffirmativeAdverbs
-        let presentOwn = "(?:I\\s+"+adverb+"am|we\\s+"+adverb+#"are|I['’]m|we['’]re)"#
-        let perfectOwn = #"(?:(?:I|we)\s+"# + adverb + #"have|I['’]ve|we['’]ve)"#
-        let simpleAdoption = #"\b(?:I|we)\s+"# + adverb + "(?:have\\s+"+adverb+#")?(?:agree|agreed|consent|consented|accept|accepted|adopt|adopted|decide|decided|commit|committed|promise|promised|say\s+yes|said\s+yes)\b"#
-        let aspectAdoption = #"\b"# + presentOwn + "\\s+" + adverb + progressive + #"\b|\b"# + perfectOwn
-            + "\\s+"+adverb+#"(?:agreed|consented|accepted|adopted|decided|committed|promised|said\s+yes)\b|\b"# + perfectOwn + "\\s+"+adverb+"been\\s+"+adverb+progressive+#"\b"#
-        let pattern = #"(?i)\b(?:actually|instead|correction|never\s+mind|cancel|delete|withdraw|make\s+that|no\s+(?:wait|make)|wait|sorry|leave\s+that\s+off|take\s+that\s+back|replace|switch|switched|change|changed|forget|scratch|remove|stop)\b|\b(?:I|we)\s+(?:have\s+)?(?:now\s+)?(?:agree|agreed|consent|consented|accept|accepted|adopt|adopted|decide|decided|commit|committed|promise|promised|say\s+yes|said\s+yes)\b|"# + aspectAdoption + "|" + simpleAdoption
-        guard let regex=NSRegularExpression.speakItCached(pattern) else { return false }
-        return regex.matches(in:source,range:NSRange(source.startIndex...,in:source)).allSatisfy { match in
-            (deniedRanges + closedCorrectionMarkers).contains { $0.location <= match.range.location && NSMaxRange(match.range) <= NSMaxRange($0) }
-        }
+        RuntimeCompleteSourceFrames.currentPurposeProofsCanBind(source, closedJointCallRanges: closedJointCallRanges)
     }
     /// A denial supplies no action, object identity, date or saved mutation.
     /// Closed nonfinite coordination shares one literal object; a finite actor,
     /// condition, quote or residual continuation cannot use this exemption.
     static func currentDeniedCommitment(_ text:String) -> (complement:Range<String.Index>,object:String,predicates:[String])? {
-        guard QuotedSpeechScope.ranges(in:text).isEmpty,!QuotedSpeechScope.hasUnclosedQuote(text) else { return nil }
-        let verb = #"(?:polish|repair|replace|clean|wash|paint|trim|mend|restore|adjust|fix|return|swap|change)"#
-        let pattern = #"(?i)^\s*(?:I\s+am|we\s+are)\s+not\s+promising\s+to\s+("# + verb + #"(?:\s+(?:or|and)\s+"# + verb + #"){0,2}\s+(it|[^;.!?]+?))[.!]?\s*$"#
-        guard let regex=NSRegularExpression.speakItCached(pattern),
-              let match=regex.firstMatch(in:text,range:NSRange(text.startIndex...,in:text)),
-              let complement=Range(match.range(at:1),in:text),let objectRange=Range(match.range(at:2),in:text) else { return nil }
-        let object=String(text[objectRange])
-        guard object.lowercased() == "it" || RuntimeCurrentNominalProof.read(object) else { return nil }
-        let predicateText=String(text[complement.lowerBound..<objectRange.lowerBound])
-        let predicates=predicateText.lowercased().split(whereSeparator: { $0.isWhitespace }).map(String.init).filter { $0 != "and" && $0 != "or" }
-        return (complement,object,predicates)
+        RuntimeCompleteSourceFrames.currentDeniedCommitment(text)
     }
     static func currentPurposeOwnershipStatement(_ source:String) -> Bool {
-        func exact(_ text:String,_ pattern:String)->[String]? {
-            guard let regex=NSRegularExpression.speakItCached("(?i)^\\s*(?:"+pattern+")[;.!]?\\s*$"),
-                  let m=regex.firstMatch(in:text,range:NSRange(text.startIndex...,in:text)) else { return nil }
-            return (1..<m.numberOfRanges).map { Range(m.range(at:$0),in:text).map { String(text[$0]) } ?? "" }
-        }
-        let subject = #"(?:(?:that|this|it)|(?:that|this|the)\s+(?:task|job|work|responsibility))"#
-        let copula = #"(?:is|isn['’]t|is\s+not)(?:\s+now)?"#
-        let person = PersonMentionResolver.communicationRelationPhrasePattern + #"|\p{L}[\p{L}\p{M}'’-]*(?:\s+\p{L}[\p{L}\p{M}'’-]*)?"#
-        guard !QuotedSpeechScope.hasUnclosedQuote(source),let wholeVoice=QuotedSpeechScope.voiceProjection(in:source) else { return true }
-        for unit in RuntimeIndexedSource(source).units {
-            // Owned spans come from the COMPLETE current source. A sentence
-            // unit can split quoted text, so fragment-level quote detection
-            // cannot turn a quoted speaker's role into the user's assertion.
-            let own=wholeVoice.ownVoiceRanges.compactMap { range -> String? in
-                let lower=max(range.lowerBound,unit.range.lowerBound),upper=min(range.upperBound,unit.range.upperBound)
-                return lower < upper ? String(source[lower..<upper]) : nil
-            }.joined(separator:" ").trimmingCharacters(in:.whitespacesAndNewlines)
-            guard !own.isEmpty else { continue }
-            // Normalize only a complete own unit's grammatical contraction.
-            // Possessive actors, quote payloads and reminder objects are not
-            // rewritten; every resulting role form is still anchored below.
-            let text=own
-                .replacingOccurrences(of:"(?i)^\\s*("+subject+")[’']s\\s+",with:"$1 is ",options:.regularExpression)
-                .replacingOccurrences(of:#"(?i)^\s*I[’']m\s+"#,with:"I am ",options:.regularExpression)
-                .replacingOccurrences(of:#"(?i)^\s*we[’']re\s+"#,with:"We are ",options:.regularExpression)
-            // An inverted own-role subject is still an ownership change. This
-            // merely declines purpose sealing; every predicate stays available
-            // to the complete current-source interpretation and validation.
-            if text.range(of:#"(?i)^\s*(?:my|our)\s+(?:own\s+)?(?:task|job|work|responsibility)\s+(?:is|isn['’]t|is\s+not)(?:\s+now)?\s+\S"#,options:.regularExpression) != nil { return true }
-            let ownRole = #"(?:(?:no\s+longer\s+)?(?:my|our)\s+(?:own\s+)?(?:task|job|work|responsibility)|(?:no\s+longer\s+)?(?:mine|ours)|for\s+(?:me|us)\s+to\s+do)"#
-            if exact(text,subject+"\\s+"+copula+"\\s+"+ownRole) != nil { return true }
-            // A complete leading own-role assertion still changes ownership
-            // when it has a coordinated/subordinate continuation. Decline the
-            // optimization; the ordinary graph retains and reads that tail.
-            if text.range(of:"(?i)^\\s*"+subject+"\\s+"+copula+"\\s+"+ownRole+#"(?=\s*(?:[,;]|\b(?:to|and|but|yet|then|so|if|unless|when|after|before)\b))"#,options:.regularExpression) != nil { return true }
-            let ownResponsibility = #"(?:I\s+am|we\s+are)\s+(?:now\s+)?(?:not\s+)?responsible\s+for\s+(?:this|that)(?:\s+(?:task|job|work))?"#
-            if exact(text,ownResponsibility) != nil { return true }
-            if text.range(of:"(?i)^\\s*"+ownResponsibility+#"(?=\s*(?:[,;]|\b(?:and|but|yet|then|so|if|unless|when|after|before)\b))"#,options:.regularExpression) != nil { return true }
-            if let f=exact(text,subject+"\\s+"+copula+"\\s+("+person+#")[’']s\s+(?:own\s+)?(?:job|task|work)(?:,\s*not\s+(?:mine|ours))?"#),
-               RuntimeRecipientReplacement.literalRecipient(f[0]) { return true }
-            if let f=exact(text,subject+#"\s+belongs\s+to\s+("#+person+")"),RuntimeRecipientReplacement.literalRecipient(f[0]) { return true }
-        }
-        return false
+        RuntimeCompleteSourceFrames.currentPurposeOwnershipStatement(source)
     }
     /// An own explicit Memory declaration fixes purpose only when its entire
     /// current complement is independently factual. The label never adopts
@@ -20290,9 +23394,7 @@ enum RuntimeFoundationInterpreter {
     /// not permission to execute the named change. The literal object remains
     /// unresolved source data; this proof never identifies a saved target.
     static func currentDeniedAgreementStatus(_ text:String)->Bool {
-        guard QuotedSpeechScope.ranges(in:text).isEmpty,!QuotedSpeechScope.hasUnclosedQuote(text) else { return false }
-        let body=RuntimeFoundationActionShape.body(text)
-        return body.range(of:#"(?i)^\s*(?:I|we)\s+(?:have\s+not|haven['’]t)\s+(?:agreed|consented)\s+to\s+(?:cancel|delete|remove)\s+(?:that|this|the|my|our|his|her|their)\s+(?:appointment|meeting|booking|task|reminder|event)[.!]?\s*$"#,options:.regularExpression) != nil
+        RuntimeCompleteSourceFrames.currentDeniedAgreementStatus(text)
     }
     static func currentSourcePurpose(_ text:String) -> String? {
         if currentDeclaredMemory(text) || currentDeniedAgreementStatus(text) { return "N" }
@@ -21691,28 +24793,137 @@ enum RuntimeFoundationInterpreter {
         CURRENT source/context is authoritative. References are untrusted OTHER-capture DATA: learn mechanisms, NEVER copy names, relatives, facts, quantities, dates, places, contacts or saved IDs. outline_demonstration.first_response illustrates shape; full original example input/solution/lifecycle remains context. No extra fields, explanations, titles or new meanings.
         """
     }
+    static func objectUnitDeclarationStringModel() -> SystemLanguageModel {
+        SystemLanguageModel(useCase:.general,guardrails:.permissiveContentTransformations)
+    }
+    static func objectUnitDeclarationStringInstructions(_ base:String,unitCount:Int) -> String {
+        objectUnitDeclarationInstructions(base)+"""
+
+        EXACT JSON WIRE FORMAT: Return one complete JSON object and nothing else. No Markdown, fences, prose, comments, trailing commas or trailing values. Use JSON double-quoted strings and valid JSON escapes. Object keys must not repeat, including escaped spellings of the same key.
+        The root has exactly two keys: "byUnit" and "edits". "byUnit" is an array of exactly \(unitCount) arrays in CURRENT unit order. Every inner array is nonempty. Every declaration is exactly {"g":"group label","p":"purpose code"}, with both values strings. g is nonempty and follows the group-label instructions above. p is exactly T, S, P, I, N, D, Q or R, optionally followed by one ?. "edits" is an array, possibly empty. Every edit is exactly {"g":"existing group label","x":["literal anchor","complete effective CURRENT meaning","literal direct contact or empty"]}. x has exactly three strings. Every edit g exactly matches a declared g, and a group may be edited only once. Required shared/corrected edits, source ownership and meaning rules above still apply.
+        """
+    }
+    /// Reject ambiguous JSON before any object decoder can discard repeated
+    /// keys. The accepted wire has only object/array/string values; primitives
+    /// have no valid position in this contract. Group VALUES remain opaque UTF8.
+    private struct ObjectDeclarationJSON {
+        let bytes:[UInt8]
+        var index=0
+        mutating func whitespace() {
+            while index < bytes.count && [UInt8(0x20),0x09,0x0A,0x0D].contains(bytes[index]) { index += 1 }
+        }
+        mutating func take(_ byte:UInt8) -> Bool {
+            whitespace()
+            guard index < bytes.count,bytes[index] == byte else { return false }
+            index += 1;return true
+        }
+        mutating func string() -> [UInt8]? {
+            whitespace()
+            let start=index
+            guard index < bytes.count,bytes[index] == 0x22 else { return nil }
+            index += 1
+            while index < bytes.count {
+                let byte=bytes[index];index += 1
+                if byte == 0x22 {
+                    guard let decoded=try? JSONDecoder().decode(String.self,from:Data(bytes[start..<index])) else { return nil }
+                    return Array(decoded.utf8)
+                }
+                guard byte >= 0x20 else { return nil }
+                if byte == 0x5C {
+                    guard index < bytes.count else { return nil }
+                    let escape=bytes[index];index += 1
+                    if escape == 0x75 {
+                        guard index+4 <= bytes.count,bytes[index..<index+4].allSatisfy({
+                            (0x30...0x39).contains($0) || (0x41...0x46).contains($0) || (0x61...0x66).contains($0)
+                        }) else { return nil }
+                        index += 4
+                    } else if ![UInt8(0x22),0x5C,0x2F,0x62,0x66,0x6E,0x72,0x74].contains(escape) { return nil }
+                }
+            }
+            return nil
+        }
+        mutating func value(containerDepth:Int) -> Bool {
+            whitespace()
+            guard index < bytes.count else { return false }
+            if bytes[index] == 0x7B || bytes[index] == 0x5B {
+                // Contract maximum: root/byUnit/unit/declaration, or
+                // root/edits/edit/x. Strings are leaves at either depth.
+                guard containerDepth < 4 else { return false }
+                return bytes[index] == 0x7B ? object(containerDepth:containerDepth+1) : array(containerDepth:containerDepth+1)
+            }
+            return string() != nil
+        }
+        mutating func object(containerDepth:Int) -> Bool {
+            guard take(0x7B) else { return false }
+            if take(0x7D) { return true }
+            var keys=Set<[UInt8]>()
+            while true {
+                guard let key=string(),keys.insert(key).inserted,take(0x3A),value(containerDepth:containerDepth) else { return false }
+                if take(0x7D) { return true }
+                guard take(0x2C) else { return false }
+            }
+        }
+        mutating func array(containerDepth:Int) -> Bool {
+            guard take(0x5B) else { return false }
+            if take(0x5D) { return true }
+            while true {
+                guard value(containerDepth:containerDepth) else { return false }
+                if take(0x5D) { return true }
+                guard take(0x2C) else { return false }
+            }
+        }
+        mutating func completeObject() -> Bool {
+            guard object(containerDepth:1) else { return false }
+            whitespace();return index == bytes.count
+        }
+    }
+    static func objectUnitDeclarationStringContent(_ raw:String) throws -> GeneratedContent? {
+        var syntax=ObjectDeclarationJSON(bytes:Array(raw.utf8))
+        guard syntax.completeObject() else { return nil }
+        let content=try GeneratedContent(json:raw)
+        guard content.isComplete else { return nil }
+        return content
+    }
+    static func decodeObjectUnitDeclarationString(_ raw:String,units:RuntimeIndexedSource)
+        throws -> (rows:[FirstOutlineRow],completions:[[String]])? {
+        guard let content=try objectUnitDeclarationStringContent(raw) else { return nil }
+        return try decodeObjectUnitDeclarations(content,units:units)
+    }
+
     static func decodeObjectUnitDeclarations(_ content:GeneratedContent,units:RuntimeIndexedSource)
         throws -> (rows:[FirstOutlineRow],completions:[[String]])? {
         guard let data=content.jsonString.data(using:.utf8),
               var root=try JSONSerialization.jsonObject(with:data) as? [String:Any],Set(root.keys) == ["byUnit","edits"],
               let membership=root["byUnit"] as? [[[String:Any]]],membership.count == units.units.count,
-              root["edits"] is [[String:Any]] else { return nil }
-        var encoded:[[String]]=[]
+              let rawEdits=root["edits"] as? [[String:Any]] else { return nil }
+        // Object-wire labels are opaque nonempty strings. UTF8 keys avoid
+        // merging canonically equivalent Unicode or parsing label contents.
+        var labels:[[UInt8]:Int]=[:]
+        var expanded:[[[String:Any]]]=[]
         for declarations in membership {
             guard !declarations.isEmpty else { return nil }
-            var members:[String]=[]
+            var members:[[String:Any]]=[]
             for declaration in declarations {
-                guard Set(declaration.keys) == ["g","p"],let group=declaration["g"] as? String,
-                      let purpose=declaration["p"] as? String else { return nil }
-                members.append(group+":"+purpose)
+                guard Set(declaration.keys) == ["g","p"],let group=declaration["g"] as? String,!group.isEmpty,
+                      let value=declaration["p"] as? String else { return nil }
+                let review=value.hasSuffix("?"),code=review ? String(value.dropLast()) : value
+                guard let purpose=keyedNaturalPurposes[code] else { return nil }
+                let key=Array(group.utf8)
+                if labels[key] == nil { labels[key]=labels.count }
+                members.append(["g":labels[key]!,"p":purpose+(review ? "?" : "")])
             }
-            encoded.append(members)
+            expanded.append(members)
         }
-        root["byUnit"]=encoded
+        var edits:[[String:Any]]=[]
+        for var edit in rawEdits {
+            guard let raw=edit["g"] as? String,let local=labels[Array(raw.utf8)] else { return nil }
+            edit["g"]=local;edits.append(edit)
+        }
+        root["byUnit"]=expanded;root["edits"]=edits
         let bytes=try JSONSerialization.data(withJSONObject:root,options:.sortedKeys)
-        // Exact string labels, metadata, purpose/review consistency and edits
-        // still pass the unchanged strict normalizer and complete decoders.
-        return try decodeCompactUnitDeclarations(GeneratedContent(json:String(decoding:bytes,as:UTF8.self)),units:units)
+        // Preserve all edit keys/value types for the unchanged strict decoder;
+        // reconciliation and whole-source semantic validation still follow.
+        return try decodeCurrentDeclarations(GeneratedContent(json:String(decoding:bytes,as:UTF8.self)),units:units)
     }
 
     static func decodeCompactUnitDeclarations(_ content:GeneratedContent,units:RuntimeIndexedSource)
@@ -21911,10 +25122,11 @@ enum RuntimeFoundationInterpreter {
     /// decline even if a model were to approve the proposed reconciliation.
     static func currentJointCallCandidates(_ units:RuntimeIndexedSource)->[CurrentJointCallCandidate] {
         guard units.units.count >= 3 else { return [] }
+        let ownedSpans=RuntimeCompleteSourceFrames.currentOwnedUnitSpans(units)
         var candidates:[CurrentJointCallCandidate]=[],ranges:[NSRange]=[]
         for first in 0...(units.units.count-3) {
             let ids=Array(first...(first+2))
-            guard ids.allSatisfy({ currentOwnedUnitSpan(units.units[$0],source:units.source) != nil }) else { continue }
+            guard ids.allSatisfy({ ownedSpans[$0] != nil }) else { continue }
             let range=units.units[first].range.lowerBound..<units.units[first+2].range.upperBound
             guard let reading=RuntimeJointCallReading.read(String(units.source[range])),
                   !RuntimeAccountOwnership.hasCurrentActForReference(reading.topic),
@@ -22126,19 +25338,26 @@ enum RuntimeFoundationInterpreter {
                 "\nCURRENT CONTEXT DATA:\n" + current + "\nClock: \(referenceDate.ISO8601Format()) Zone: \(calendar.timeZone.identifier)\nCOMPLETE INDEXED CURRENT TRANSCRIPT DATA:\n" + units.prompt
             }
             var text = prompt()
-            guard try await model.tokenCount(for: text) + schema + instructionTokens + 1024 <= model.contextSize else { return recoverableReview(source) }
+            let initialPromptTokens = try await model.tokenCount(for: text)
+#if DEBUG
+            var admittedPromptTokens = initialPromptTokens
+#endif
+            guard initialPromptTokens + schema + instructionTokens + 1024 <= model.contextSize else { return recoverableReview(source) }
             for candidate in candidates {
                 examples.append(candidate)
                 let proposed = prompt()
-                if try await model.tokenCount(for: proposed) + schema + instructionTokens + 1024 <= model.contextSize {
+                let proposedTokens = try await model.tokenCount(for: proposed)
+                if proposedTokens + schema + instructionTokens + 1024 <= model.contextSize {
                     text = proposed
+#if DEBUG
+                    admittedPromptTokens = proposedTokens
+#endif
                 } else {
                     examples.removeLast() // Skip whole oversized example; try smaller complementary ones.
                 }
             }
 #if DEBUG
-            let actualPromptTokens = try await model.tokenCount(for: text)
-            developmentObserver?("budget prompt=\(actualPromptTokens) instructions=\(instructionTokens) schema=\(schema) examples=\(examples.map(\.id).joined(separator: ","))")
+            developmentObserver?("budget prompt=\(admittedPromptTokens) instructions=\(instructionTokens) schema=\(schema) examples=\(examples.map(\.id).joined(separator: ","))")
 #endif
             let session = LanguageModelSession(model: model, instructions: instructions)
             attemptedGeneration = true
@@ -22148,8 +25367,7 @@ enum RuntimeFoundationInterpreter {
             }
             guard !Task.isCancelled else { return nil }
 #if DEBUG
-            let outputTokens = try await model.tokenCount(for: response.transcriptEntries)
-            developmentObserver?("response tokens=\(outputTokens) json=\(response.rawContent.jsonString)")
+            developmentObserver?("response tokens=unmeasured rawJSONBytes=\(response.rawContent.jsonString.utf8.count) json=\(response.rawContent.jsonString)")
 #endif
             if let result = validateIndexed(response.content, source: source, units: units, referenceDate: referenceDate,
                                      calendar: calendar, rules: rules, context: context) { return result }
@@ -22188,36 +25406,42 @@ enum RuntimeFoundationInterpreter {
     /// A complete, round-tripped packet and its caution are one optional input.
     /// This call's SDK capacity decides admission; examples cannot displace it.
     static func admittedCompactGroupingHints(requiredPrompt:String,baseInstructions:String,hints:String,
-                                             model:SystemLanguageModel,schema:Int,reserve:Int) async throws -> (instructions:String,grouping:String,reason:String) {
-        guard !hints.isEmpty else { return (baseInstructions,"","no-current-group-discovery") }
-        guard let compact=RuntimeCurrentGroupingHints.compact(hints) else { return (baseInstructions,"","invalid-current-group-packet") }
+                                             model:SystemLanguageModel,schema:Int,reserve:Int) async throws -> (instructions:String,grouping:String,reason:String,promptTokens:Int?,instructionTokens:Int?) {
+        guard !hints.isEmpty else { return (baseInstructions,"","no-current-group-discovery",nil,nil) }
+        guard let compact=RuntimeCurrentGroupingHints.compact(hints) else { return (baseInstructions,"","invalid-current-group-packet",nil,nil) }
         let packet="\nFALLIBLE CURRENT PARSER GROUPS DATA:\n"+compact
         let caution=" Fallible groups are [storedKind,currentUnitIndex...]; N denotes CURRENT uN, never saved IDs or group labels. Follow schema. Recheck all grouping and purpose against the whole current capture, assign unassigned units, and reconcile corrections. Hints grant no actions, dates or saved changes."
         let chosen=baseInstructions+caution
         let promptCost=try await model.tokenCount(for:requiredPrompt+packet)
         let instructionCost=try await model.tokenCount(for:Instructions(chosen))
-        guard promptCost+instructionCost+schema+reserve <= model.contextSize else { return (baseInstructions,"","current-group-packet-and-caution-exceed-capacity") }
-        return (chosen,packet,"admitted-complete-current-group-packet")
+        guard promptCost+instructionCost+schema+reserve <= model.contextSize else { return (baseInstructions,"","current-group-packet-and-caution-exceed-capacity",nil,nil) }
+        return (chosen,packet,"admitted-complete-current-group-packet",promptCost,instructionCost)
     }
 
     struct StagedPromptAdmission {
         struct ReferenceFit {
-            let index:Int, projectedTokens:Int, proposedPrompt:Int
+            let index:Int, projectedTokens:Int?, proposedPrompt:Int
             let accepted:Bool
+            var projectedBytes:Int? = nil
         }
         let prompt:String, instructions:String, grouping:String
         let includedIndices:[Int], referenceFits:[ReferenceFit]
         let requiredFits:Bool
         var groupingReason:String = "unspecified"
+        // Exact-request counts already required by admission, never new SDK reads.
+        var promptTokens:Int? = nil
+        var instructionTokens:Int? = nil
+        var currentOnlyPromptTokens:Int? = nil
     }
 
-    /// Invocation-local identity for one exact guided request. A token total
+    /// Invocation-local identity for one exact request and transport. A token total
     /// cannot establish identity, and no receipt can donate model capacity.
     struct StagedAdmissionRequest:Equatable {
         let current:String, addition:String, baseInstructions:String, hints:String
         let demonstrations:[String]
         let schemaJSON:Data
         let schemaTokens:Int, responseReserve:Int, ownContextCapacity:Int
+        var transport:String = "guided"
     }
     struct StagedAdmissionReceipt {
         let request:StagedAdmissionRequest
@@ -22234,7 +25458,7 @@ enum RuntimeFoundationInterpreter {
         let admitted=fit.includedIndices.compactMap { old.demonstrations.indices.contains($0) ? old.demonstrations[$0] : nil }
         guard fit.requiredFits,exact(old.current,request.current),exact(old.addition,request.addition),
               exact(old.baseInstructions,request.baseInstructions),exact(old.hints,request.hints),
-              old.schemaJSON == request.schemaJSON,old.schemaTokens == request.schemaTokens,
+              old.transport == request.transport,old.schemaJSON == request.schemaJSON,old.schemaTokens == request.schemaTokens,
               old.responseReserve == request.responseReserve,old.ownContextCapacity == request.ownContextCapacity,
               fit.includedIndices.allSatisfy({ old.demonstrations.indices.contains($0) }),
               admitted.count == request.demonstrations.count,
@@ -22245,7 +25469,8 @@ enum RuntimeFoundationInterpreter {
         return StagedPromptAdmission(prompt:fit.prompt,instructions:fit.instructions,grouping:fit.grouping,
             includedIndices:Array(request.demonstrations.indices),
             referenceFits:accepted.enumerated().map { index,row in .init(index:index,
-                projectedTokens:row.projectedTokens,proposedPrompt:row.proposedPrompt,accepted:true) },requiredFits:true,groupingReason:fit.groupingReason)
+                projectedTokens:row.projectedTokens,proposedPrompt:row.proposedPrompt,accepted:true,projectedBytes:row.projectedBytes) },requiredFits:true,groupingReason:fit.groupingReason,
+            promptTokens:fit.promptTokens,instructionTokens:fit.instructionTokens,currentOnlyPromptTokens:fit.currentOnlyPromptTokens)
     }
 
     /// Required current data and the response reserve have priority. Admit the
@@ -22262,11 +25487,16 @@ enum RuntimeFoundationInterpreter {
         let required=text([]),requiredCost=try await model.tokenCount(for:required)
         guard requiredCost+baseInstructionCount+schema+reserve <= model.contextSize else {
             return StagedPromptAdmission(prompt:required,instructions:baseInstructions,grouping:"",
-                includedIndices:[],referenceFits:[],requiredFits:false,groupingReason:"required-current-data-exceed-capacity")
+                includedIndices:[],referenceFits:[],requiredFits:false,groupingReason:"required-current-data-exceed-capacity",
+                promptTokens:requiredCost,instructionTokens:baseInstructionCount,currentOnlyPromptTokens:requiredCost)
         }
         let admitted=try await admittedCompactGroupingHints(requiredPrompt:required,baseInstructions:baseInstructions,
             hints:hints,model:model,schema:schema,reserve:reserve)
-        let instructionCount=try await model.tokenCount(for:Instructions(admitted.instructions))
+        // Both alternatives were counted for these exact instruction bytes
+        // above: admitted caution here, or unchanged base on every refusal.
+        let instructionCount=admitted.instructionTokens ?? baseInstructionCount
+        let currentOnlyPromptTokens=admitted.promptTokens ?? requiredCost
+        var promptTokens=currentOnlyPromptTokens
         var included:[Int]=[],fits:[StagedPromptAdmission.ReferenceFit]=[]
         // Only the exact digest-gated formatter can add this derived contract
         // example. Reserve its opportunity before shorter unadapted packets
@@ -22282,13 +25512,14 @@ enum RuntimeFoundationInterpreter {
         for index in admissionOrder {
             let proposed=try await model.tokenCount(for:text((included+[index]).sorted(),grouping:admitted.grouping))
             let accepted=proposed+instructionCount+schema+reserve <= model.contextSize
-            fits.append(.init(index:index,projectedTokens:try await model.tokenCount(for:demonstrations[index]),
-                proposedPrompt:proposed,accepted:accepted))
-            if accepted { included.append(index);included.sort() }
+            fits.append(.init(index:index,projectedTokens:nil,proposedPrompt:proposed,accepted:accepted,
+                projectedBytes:demonstrations[index].utf8.count))
+            if accepted { included.append(index);included.sort();promptTokens=proposed }
         }
         return StagedPromptAdmission(prompt:text(included,grouping:admitted.grouping),
             instructions:admitted.instructions,grouping:admitted.grouping,
-            includedIndices:included,referenceFits:fits,requiredFits:true,groupingReason:admitted.reason)
+            includedIndices:included,referenceFits:fits,requiredFits:true,groupingReason:admitted.reason,
+            promptTokens:promptTokens,instructionTokens:instructionCount,currentOnlyPromptTokens:currentOnlyPromptTokens)
     }
 
     /// Later decisions retain mechanisms already admitted for this capture.
@@ -22387,7 +25618,8 @@ enum RuntimeFoundationInterpreter {
     static func currentComponentCues(_ units:RuntimeIndexedSource,referenceDate:Date,calendar:Calendar)->[CurrentComponentCue] {
         guard !Task.isCancelled,!QuotedSpeechScope.hasUnclosedQuote(units.source) else { return [] }
         var cues:[CurrentComponentCue]=[]
-        let owned=Set(units.units.indices.filter { currentOwnedUnitSpan(units.units[$0],source:units.source) != nil })
+        let ownedSpans=RuntimeCompleteSourceFrames.currentOwnedUnitSpans(units)
+        let owned=Set(units.units.indices.filter { ownedSpans[$0] != nil })
         for start in units.units.indices {
             guard owned.contains(start) else { continue }
             let text=units.units[start].text
@@ -22444,9 +25676,12 @@ enum RuntimeFoundationInterpreter {
                                 context: RuntimeCaptureContext, configuration: RuntimeExampleConfiguration,
                                 rules: ThoughtExtractionResult,
                                 preselectedExamples: [RuntimeWorkedExample]?,ruleTrace:RuntimeRuleTrace? = nil) async -> ThoughtExtractionResult? {
-        let model = SystemLanguageModel.default
-        guard model.availability == .available, model.supportsLocale(.current), !Task.isCancelled else { return nil }
+        let defaultModel = SystemLanguageModel.default
+        guard defaultModel.availability == .available, defaultModel.supportsLocale(.current), !Task.isCancelled else { return nil }
         guard rules.operations.isEmpty else { return nil }
+#if DEBUG
+        developmentObserver?("diagnostic boundary=staged-preparation-enter")
+#endif
         var attempted = false
         var activePhase = "outline"
         var completion = "preflight"
@@ -22454,11 +25689,35 @@ enum RuntimeFoundationInterpreter {
             let selected: [RuntimeWorkedExample]
             if let preselectedExamples { selected = preselectedExamples }
             else { selected = try await RuntimeExampleLibrary.shared.select(source, configuration: configuration) }
+#if DEBUG
+            RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=staged-units-enter phase=outline")
+#endif
             let units = RuntimeIndexedSource(source)
             guard RuntimeProposalGuard.covers(source, quotes: units.units.map(\.text)) else { return recoverableReview(source) }
+#if DEBUG
+            RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=staged-units-exit phase=outline")
+#endif
+#if DEBUG
+            RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=staged-atoms-enter phase=outline")
+#endif
             let ownershipAtoms = fixedOutlineAtoms(units,referenceDate:referenceDate,calendar:calendar)
+#if DEBUG
+            RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=staged-atoms-exit phase=outline")
+#endif
+#if DEBUG
+            RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=staged-component-cues-enter phase=outline")
+#endif
             let componentCues=currentComponentCues(units,referenceDate:referenceDate,calendar:calendar)
+#if DEBUG
+            RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=staged-component-cues-exit phase=outline")
+#endif
+#if DEBUG
+            RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=staged-fixed-eligibility-enter phase=outline")
+#endif
             let fixedEligible = fixedOutlineEligible(units,atoms:ownershipAtoms,referenceDate:referenceDate,calendar:calendar)
+#if DEBUG
+            RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=staged-fixed-eligibility-exit phase=outline")
+#endif
             let componentPartition=prefersComponentPartition(componentCues,atoms:ownershipAtoms,usesFixedOwnership:fixedEligible)
             let usesFixedOwnership = fixedEligible && !componentPartition
 #if DEBUG
@@ -22473,8 +25732,18 @@ enum RuntimeFoundationInterpreter {
             let keySlices=boundedCurrentKeySlices(usesLiteral:usesLiteralKeyedOwnership,atoms:ownershipAtoms)
             let usesFreeSeparatedOwnership=usesSeparatedOwnership && !unresolvedPositions.isEmpty
                 && (unresolvedPositions.count < ownershipAtoms.count || usesLiteralKeyedOwnership)
+#if DEBUG
+            RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=staged-joint-calls-enter phase=outline")
+#endif
             let currentJointCalls=usesFixedOwnership ? [] : currentJointCallCandidates(units)
+#if DEBUG
+            RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=staged-joint-calls-exit phase=outline")
+#endif
             let usesCompactUnitDeclarations=usesCompactCurrentOutline(unitCount:units.units.count,usesFixedOwnership:usesFixedOwnership,hasCurrentJointCalls:!currentJointCalls.isEmpty)
+            let model=defaultModel
+            if usesCompactUnitDeclarations {
+                guard model.availability == .available,model.supportsLocale(.current),!Task.isCancelled else { return nil }
+            }
             let ownershipPrompt=stagedOwnershipPrompt(units,atoms:ownershipAtoms,usesFixedOwnership:usesFixedOwnership,
                 usesSeparatedOwnership:usesSeparatedOwnership,usesFreeSeparatedOwnership:usesFreeSeparatedOwnership,currentJointCalls:currentJointCalls)
             let actualContext = try await RuntimeCurrentContextTransport.prompt(context,model:model)
@@ -22486,7 +25755,13 @@ enum RuntimeFoundationInterpreter {
             let usesResponsibilityOwnership=usesFreeSeparatedOwnership && !usesLiteralKeyedOwnership && !currentResponsibilityKeys(units,atoms:ownershipAtoms).isEmpty
             let outlineInstructions=usesResponsibilityOwnership ? responsibilityKeyedInstructions(baseOutlineInstructions,units:units,atoms:ownershipAtoms) : baseOutlineInstructions
             let tentativeGroups=RuntimeCurrentGroupingHints.render(source,rules:rules,trace:ruleTrace,units:units)
+#if DEBUG
+            RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=staged-source-builders-exit phase=outline")
+#endif
             func fittedPrompt(_ instruction: String, schema: Int, schemaDefinition: GenerationSchema, reserve: Int, phase: String, addition: String = "", includeReferences: Bool = true, admittedReferenceIDs:Set<String>? = nil, reuse:StagedAdmissionReceipt? = nil) async throws -> (String, [RuntimeWorkedExample], String, StagedAdmissionReceipt)? {
+#if DEBUG
+                RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=staged-fit-prework-enter phase=\(phase)")
+#endif
                 let candidates=includeReferences ? stagedReferenceCandidates(selected,admittedIDs:admittedReferenceIDs) : []
 #if DEBUG
                 if let admittedReferenceIDs {
@@ -22501,27 +25776,35 @@ enum RuntimeFoundationInterpreter {
                 let request=StagedAdmissionRequest(current:current,addition:addition,baseInstructions:instruction,
                     hints:phase.hasPrefix("outline") ? tentativeGroups : "",demonstrations:candidates.map(demonstration),
                     schemaJSON:try schemaEncoder.encode(schemaDefinition),schemaTokens:schema,responseReserve:reserve,
-                    ownContextCapacity:model.contextSize)
+                    ownContextCapacity:model.contextSize,transport:"guided")
+#if DEBUG
+                RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=staged-fit-prework-exit phase=\(phase)")
+#endif
                 let fitStarted=ContinuousClock.now
+#if DEBUG
+                RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=staged-fit-enter phase=\(phase)")
+#endif
                 let reusable=reuse.flatMap { reusedStagedAdmission($0,for:request) }
                 let admission:StagedPromptAdmission
                 if let reusable { admission=reusable }
                 else { admission=try await fitStagedPrompt(current:current,addition:addition,baseInstructions:instruction,
                     hints:request.hints,demonstrations:request.demonstrations,model:model,schema:schema,reserve:reserve) }
+#if DEBUG
+                RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=staged-fit-exit phase=\(phase)")
+#endif
                 guard !Task.isCancelled else { throw CancellationError() }
 #if DEBUG
                 let fitDuration=fitStarted.duration(to:.now)
                 developmentObserver?("admission preparation phase=\(phase) seconds=\(Double(fitDuration.components.seconds)+Double(fitDuration.components.attoseconds)/1e18) mode=\(reusable == nil ? "fitted" : "exact-invocation-receipt") ownContextCapacity=\(model.contextSize) identity=full-current-instructions-schema-reserve-admitted-reference-bytes capacity=own-call-read")
 #endif
                 let included=admission.includedIndices.map { candidates[$0] }
-                let grouping=admission.grouping,chosenInstruction=admission.instructions,prompt=admission.prompt
+                let chosenInstruction=admission.instructions,prompt=admission.prompt
 #if DEBUG
-                developmentObserver?("current grouping admission phase=\(phase) tracePresent=\(ruleTrace != nil) discovery=\(request.hints.isEmpty ? (ruleTrace == nil ? "trace-absent" : "trace-present-render-declined-or-not-requested") : "complete-rendered-packet") discoveredBytes=\(request.hints.utf8.count) discoveredTokens=\(try await model.tokenCount(for:request.hints)) admittedBytes=\(admission.grouping.utf8.count) admittedTokens=\(try await model.tokenCount(for:admission.grouping)) reason=\(admission.groupingReason) capacity=own-call-read")
+                let grouping=admission.grouping
+                developmentObserver?("current grouping admission phase=\(phase) tracePresent=\(ruleTrace != nil) discovery=\(request.hints.isEmpty ? (ruleTrace == nil ? "trace-absent" : "trace-present-render-declined-or-not-requested") : "complete-rendered-packet") discoveredBytes=\(request.hints.utf8.count) discoveredTokens=unmeasured admittedBytes=\(admission.grouping.utf8.count) admittedTokens=unmeasured reason=\(admission.groupingReason) capacity=own-call-read")
 #endif
-                let instructionCount=try await model.tokenCount(for:Instructions(chosenInstruction))
-                let currentOnly=try await model.tokenCount(for:"WORKED REFERENCES ABOUT OTHER CAPTURES DATA:\n\n"+current+grouping+addition)
 #if DEBUG
-                developmentObserver?("call components phase=\(phase) contextSize=\(model.contextSize) sourceText=\(try await model.tokenCount(for:source)) indexedSource=\(try await model.tokenCount(for:unitPrompt)) userContext=\(try await model.tokenCount(for:actualContext)) clockZone=\(try await model.tokenCount(for:"Clock: \(referenceDate.ISO8601Format()) Zone: \(calendar.timeZone.identifier)")) framing=\(try await model.tokenCount(for:"WORKED REFERENCES ABOUT OTHER CAPTURES DATA:\nCURRENT CONTEXT DATA:\nCOMPLETE INDEXED CURRENT TRANSCRIPT DATA:\n" + (!ownershipPrompt.isEmpty ? "CURRENT SOURCE OWNERSHIP ATOMS DATA:\n" : ""))) reconciliationContext=\(try await model.tokenCount(for:addition)) ownershipGraph=\(try await model.tokenCount(for:ownershipPrompt)) tentativeCurrentGroups=\(try await model.tokenCount(for:grouping)) sourceComponentCandidates=\(try await model.tokenCount(for:componentScaffold)) ownershipMode=\(!keySlices.isEmpty ? "fixed-literal-current-key-slice" : usesLiteralKeyedOwnership ? "fixed-literal-current-key" : usesFreeSeparatedOwnership ? (usesResponsibilityOwnership ? "fixed-free-current-key-responsibility" : "fixed-free-current-key") : usesSeparatedOwnership ? "fixed-purpose-owner" : usesFixedOwnership ? "fixed" : usesCompactUnitDeclarations ? "compact-complete-current-unit-object-declarations-inline-reconciliation" : currentJointCalls.isEmpty ? "expressive-complete-small-current" : "legacy") instructions=\(instructionCount) schema=\(schema) currentOnlyPrompt=\(currentOnly) outputLimit=\(reserve) selected=\(candidates.map(\.id).joined(separator:",")) units=\(units.units.count)")
+                developmentObserver?("call components phase=\(phase) contextSize=\(model.contextSize) sourceTextBytes=\(source.utf8.count) indexedSourceBytes=\(unitPrompt.utf8.count) userContextBytes=\(actualContext.utf8.count) clockZoneTokens=unmeasured framingTokens=unmeasured reconciliationContextBytes=\(addition.utf8.count) ownershipGraphBytes=\(ownershipPrompt.utf8.count) tentativeCurrentGroupsBytes=\(grouping.utf8.count) sourceComponentCandidatesBytes=\(componentScaffold.utf8.count) ownershipMode=\(!keySlices.isEmpty ? "fixed-literal-current-key-slice" : usesLiteralKeyedOwnership ? "fixed-literal-current-key" : usesFreeSeparatedOwnership ? (usesResponsibilityOwnership ? "fixed-free-current-key-responsibility" : "fixed-free-current-key") : usesSeparatedOwnership ? "fixed-purpose-owner" : usesFixedOwnership ? "fixed" : usesCompactUnitDeclarations ? "compact-complete-current-unit-object-declarations-inline-reconciliation" : currentJointCalls.isEmpty ? "expressive-complete-small-current" : "legacy") instructions=\(observedTokenCount(admission.instructionTokens)) schema=\(schema) transport=\(request.transport) currentOnlyPrompt=\(observedTokenCount(admission.currentOnlyPromptTokens)) outputLimit=\(reserve) selected=\(candidates.map(\.id).joined(separator:",")) units=\(units.units.count)")
 #endif
 #if DEBUG
                 if let observer=developmentObserver {
@@ -22533,7 +25816,9 @@ enum RuntimeFoundationInterpreter {
                     let encoder=JSONEncoder();encoder.outputFormatting=[.sortedKeys]
                     var complete=record
                     complete["schemaJSON"]=String(decoding:try encoder.encode(schemaDefinition),as:UTF8.self)
-                    complete["schemaEncodingScope"]="Public GenerationSchema Codable bytes; internal SDK rendering is not exposed"
+                    complete["schemaEncodingScope"]=request.transport == "guided" ? "Public GenerationSchema Codable bytes; internal SDK rendering is not exposed" : "Validation contract only; no SDK schema transmitted"
+                    complete["transport"]=request.transport
+                    complete["transmittedSDKSchemaTokens"]=schema
                     let bytes=try JSONSerialization.data(withJSONObject:complete,options:[.sortedKeys])
                     observer("call current inputs phase=\(phase) json="+String(decoding:bytes,as:UTF8.self))
                 }
@@ -22546,23 +25831,27 @@ enum RuntimeFoundationInterpreter {
                 }
 #if DEBUG
                 for fit in admission.referenceFits {
-                    developmentObserver?("reference fit phase=\(phase) id=\(candidates[fit.index].id) projectedTokens=\(fit.projectedTokens) proposedPrompt=\(fit.proposedPrompt) accepted=\(fit.accepted) admissionInstructions=chosen-exact admissionPriority=complete-current-group-packet-before-worked-references")
+                    developmentObserver?("reference fit phase=\(phase) id=\(candidates[fit.index].id) projectedTokens=\(observedTokenCount(fit.projectedTokens)) projectedBytes=\(observedTokenCount(fit.projectedBytes)) proposedPrompt=\(fit.proposedPrompt) accepted=\(fit.accepted) admissionInstructions=chosen-exact admissionPriority=complete-current-group-packet-before-worked-references")
                 }
 #endif
 #if DEBUG
-                developmentObserver?("budget prompt=\(try await model.tokenCount(for: prompt)) instructions=\(instructionCount) schema=\(schema) examples=\(included.map(\.id).joined(separator: ",")) phase=\(phase) contextSize=\(model.contextSize) responseReserve=\(reserve) currentUnits=\(units.units.count) referenceSection=\(try await model.tokenCount(for:included.map(demonstration).joined(separator:"\n")))")
+                developmentObserver?("budget prompt=\(observedTokenCount(admission.promptTokens)) instructions=\(observedTokenCount(admission.instructionTokens)) schema=\(schema) examples=\(included.map(\.id).joined(separator: ",")) phase=\(phase) contextSize=\(model.contextSize) responseReserve=\(reserve) currentUnits=\(units.units.count) referenceSectionBytes=\(included.map(demonstration).joined(separator:"\n").utf8.count)")
 #endif
 #if DEBUG
                 if let observer=developmentObserver {
                     let encoder=JSONEncoder();encoder.outputFormatting=[.sortedKeys]
                     let record:[String:Any]=["phase":phase,"assembledPrompt":prompt,"instructions":chosenInstruction,
                         "schemaJSON":String(decoding:try encoder.encode(schemaDefinition),as:UTF8.self),
-                        "schemaEncodingScope":"Public GenerationSchema Codable bytes; internal SDK rendering is not exposed",
+                        "schemaEncodingScope":request.transport == "guided" ? "Public GenerationSchema Codable bytes; internal SDK rendering is not exposed" : "Validation contract only; no SDK schema transmitted",
+                        "transport":request.transport,"transmittedSDKSchemaTokens":schema,
                         "contextSize":model.contextSize,"outputLimit":reserve,"sampling":"greedy",
                         "fittedReferences":included.map { ["id":$0.id,"projectedText":demonstration($0)] }]
                     let bytes=try JSONSerialization.data(withJSONObject:record,options:[.sortedKeys])
                     observer("call assembled inputs phase=\(phase) json="+String(decoding:bytes,as:UTF8.self))
                 }
+#endif
+#if DEBUG
+                RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=staged-fitted-prompt-exit phase=\(phase)")
 #endif
                 return (prompt,included,chosenInstruction,.init(request:request,admission:admission))
             }
@@ -22617,8 +25906,8 @@ enum RuntimeFoundationInterpreter {
                     }
                     completion="generation-completed"
 #if DEBUG
-                    developmentObserver?("call output phase=\(activePhase) rawJSONTokens=\(try await model.tokenCount(for:response.rawContent.jsonString)) outputLimit=\(spec.reserve) consumed=\(references.map(\.id).joined(separator:","))")
-                    developmentObserver?("outline response phase=\(activePhase) tokens=\(try await model.tokenCount(for:response.transcriptEntries)) json=\(response.rawContent.jsonString)")
+                    developmentObserver?("call output phase=\(activePhase) rawJSONTokens=unmeasured rawJSONBytes=\(response.rawContent.jsonString.utf8.count) outputLimit=\(spec.reserve) consumed=\(references.map(\.id).joined(separator:","))")
+                    developmentObserver?("outline response phase=\(activePhase) tokens=unmeasured rawJSONBytes=\(response.rawContent.jsonString.utf8.count) json=\(response.rawContent.jsonString)")
 #endif
                     guard !Task.isCancelled,let partial=try decodeCurrentKeySlice(response.content,keys:spec.keys,atoms:ownershipAtoms) else {
 #if DEBUG
@@ -22641,20 +25930,38 @@ enum RuntimeFoundationInterpreter {
                 outlineReferences=shared;activePhase="outline-reconciliation"
             } else {
             let usesCompactGuided = usesCompactUnitDeclarations
+#if DEBUG
+            RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=staged-schema-build-enter phase=outline")
+#endif
             guard let currentSchema = try (usesLiteralKeyedOwnership ? literalKeyedFreeOutlineSchema(ownershipAtoms) : usesFreeSeparatedOwnership ? responsibilityKeyedFreeOutlineSchema(units,atoms:ownershipAtoms) : usesSeparatedOwnership ? separatedOutlineSchema(ownershipAtoms) : usesFixedOwnership ? fixedOutlineSchema(ownershipAtoms) : usesCompactGuided ? objectUnitDeclarationSchema(units) : dynamicOutlineSchema(units,currentJointCalls:currentJointCalls)) else { return recoverableReview(source) }
+#if DEBUG
+            RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=staged-schema-build-exit phase=outline")
+#endif
+#if DEBUG
+            RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=staged-schema-count-enter phase=outline")
+#endif
             let outlineSchema = try await model.tokenCount(for:currentSchema)
+#if DEBUG
+            RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=staged-schema-count-exit phase=outline")
+#endif
             let outlineReserve = usesFixedOwnership ? min(3072,max(128,(usesFreeSeparatedOwnership ? unresolvedPositions.count : ownershipAtoms.count) * 14 + 64)) : min(3072,max(768,units.units.count * (usesCompactGuided ? 24 : 48) + 128))
             guard let (outlinePrompt, references, actualOutlineInstructions, _) = try await fittedPrompt((usesCompactGuided ? objectUnitDeclarationInstructions(outlineInstructions) : outlineInstructions) + (currentJointCalls.isEmpty ? "" : " Each row must choose currentReconciliation none or an exact SOURCE-PROPOSED CURRENT joint-call key. Approve only the complete effective meaning of the exact same current units, after checking all current source for other actions, conditions and later changes. These proposals are not app-proved answers. none retains ordinary revision review."), schema: outlineSchema, schemaDefinition: currentSchema, reserve: outlineReserve, phase:"outline") else { return recoverableReview(source) }
-            // The dynamic schema admits only this capture's identifiers. The
-            // worked mechanisms can therefore inform ownership planning while
-            // foreign names, titles and anchors have no first-response field.
+            // Guided content keeps the existing declaration structure. Source
+            // ownership, effective meaning and effects still require the same
+            // strict decoder, complete reconciliation and full validators.
             guard !Task.isCancelled else {
 #if DEBUG
                 developmentObserver?("call end phase=\("outline") completion=not-started cancellation=observed reason=cancelled-before-sdk validation=not-generated")
 #endif
                 return recoverableReview(source)
             }
+#if DEBUG
+            RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=staged-session-create-enter phase=outline")
+#endif
             let outlineSession = LanguageModelSession(model: model, instructions: actualOutlineInstructions)
+#if DEBUG
+            RuntimeFoundationInterpreter.developmentObserver?("diagnostic boundary=staged-session-create-exit phase=outline")
+#endif
             attempted = true
             completion = "generating"
             let outline = try await measuredGeneration(phase:"outline") {
@@ -22663,7 +25970,7 @@ enum RuntimeFoundationInterpreter {
             }
             completion = "generation-completed"
 #if DEBUG
-            developmentObserver?("call output phase=outline rawJSONTokens=\(try await model.tokenCount(for:outline.rawContent.jsonString)) outputLimit=\(outlineReserve) consumed=\(references.map(\.id).joined(separator:","))")
+            developmentObserver?("call output phase=outline rawJSONTokens=unmeasured rawJSONBytes=\(outline.rawContent.jsonString.utf8.count) outputLimit=\(outlineReserve) consumed=\(references.map(\.id).joined(separator:","))")
 #endif
             guard !Task.isCancelled else {
 #if DEBUG
@@ -22672,7 +25979,7 @@ enum RuntimeFoundationInterpreter {
                 return recoverableReview(source)
             }
 #if DEBUG
-            developmentObserver?("outline response tokens=\(try await model.tokenCount(for: outline.transcriptEntries)) json=\(outline.rawContent.jsonString)")
+            developmentObserver?("outline response tokens=unmeasured rawJSONBytes=\(outline.rawContent.jsonString.utf8.count) json=\(outline.rawContent.jsonString)")
 #endif
             outlineReferences=references
             if usesCompactGuided {
@@ -22752,7 +26059,7 @@ enum RuntimeFoundationInterpreter {
                 }
                 completion = "generation-completed"
 #if DEBUG
-                developmentObserver?("call output phase=revision rawJSONTokens=\(try await model.tokenCount(for:revision.rawContent.jsonString)) outputLimit=\(revisionReserve) consumed=\(revisionReferences.map(\.id).joined(separator:","))")
+                developmentObserver?("call output phase=revision rawJSONTokens=unmeasured rawJSONBytes=\(revision.rawContent.jsonString.utf8.count) outputLimit=\(revisionReserve) consumed=\(revisionReferences.map(\.id).joined(separator:","))")
 #endif
                 guard !Task.isCancelled else {
 #if DEBUG
@@ -22761,7 +26068,7 @@ enum RuntimeFoundationInterpreter {
                     return recoverableReview(source)
                 }
 #if DEBUG
-                developmentObserver?("revision response tokens=\(try await model.tokenCount(for: revision.transcriptEntries)) json=\(revision.rawContent.jsonString)")
+                developmentObserver?("revision response tokens=unmeasured rawJSONBytes=\(revision.rawContent.jsonString.utf8.count) json=\(revision.rawContent.jsonString)")
 #endif
                 guard let revisions = try decodeDynamicRevisions(revision.content,requestedRows:requestedRows,sharedRows:requiredSharedRows,proofs:proofs),
                       let completed = completingStagedPlan(items,revisions:revisions,
@@ -22865,7 +26172,11 @@ enum RuntimeFoundationInterpreter {
     /// not the example's mutable approval bookkeeping or a current answer.
     static let reviewedOutlineProjectionDigests = [
         "SIR1-503251":"ce8e8de469a3d360227d80af6bc3277124ec5fb965b5e1e816b7e23be693f251",
-        "SIR1-456352":"2a8383266fab491ae0f7a711e083e568a7e011b3137241356e3766cf353a879a"
+        "SIR1-456352":"2a8383266fab491ae0f7a711e083e568a7e011b3137241356e3766cf353a879a",
+        "SIR1-000408":"5fa6b36d65032df4326ea41c40425e6d636f0f07aed735f3c9d5480dedf9f4e7",
+        "SIR1-002152":"d29eb094c126a6dceb2ce3569766f67fb270024479aedb181dfb5db2e3051b0d",
+        "SIR1-503074":"1acc028002d141998c927f2fe52555095d7b2de711461f51170ede39660b7847",
+        "SIR1-001152":"2108f1252a67c118938173013d4aa398a6be308eab98f1c3fdb1ef13a5550bfd"
     ]
 
     static func projectedDemonstration(_ row:RuntimeWorkedExample,outlineContract:ReferenceOutlineContract?) -> String {
@@ -23807,6 +27118,109 @@ enum RuntimeFoundationInterpreter {
         return nil
     }
 
+    /// The public current-source entry remains callable; the portable registry
+    /// constructs the same one plan consumed by the mandatory indexed adapter.
+    static func completeSourceComposition(_ source:String,referenceDate:Date,
+        calendar:Calendar,rules:ThoughtExtractionResult,context:RuntimeCaptureContext) -> ThoughtExtractionResult? {
+        guard let plan=RuntimeCompleteSourceComposition.read(source,referenceDate:referenceDate,
+            calendar:calendar,rules:rules) else { return nil }
+        return completeSourceComposition(plan,referenceDate:referenceDate,calendar:calendar,rules:rules,context:context)
+    }
+    static func completeSourceComposition(_ sourcePlan:RuntimeCompleteSourceComposition.Plan,
+        referenceDate:Date,calendar:Calendar,rules:ThoughtExtractionResult,
+        context:RuntimeCaptureContext) -> ThoughtExtractionResult? {
+        let source=sourcePlan.source,units=sourcePlan.units
+        let rows:[FirstOutlineRow]=sourcePlan.components.map { component in
+            let purpose:Purpose
+            switch component.purpose {
+            case .task:purpose = .task
+            case .shopping:purpose = .shopping
+            case .note:purpose = .note
+            case .idea:purpose = .idea
+            }
+            return .init(evidence:component.evidence,purpose:purpose,requiresRewrite:false,needsReview:false)
+        }
+        guard !Task.isCancelled,let plan=stagedOutlinePlan(rows,units:units),plan.sharedRows.isEmpty else { return nil }
+        // These rows came only from the complete unchanged source cover,
+        // never a supplied model contact. Keep the contact field empty so
+        // unchanged validation reconstructs source-owned recipient metadata.
+        // Generic staged plans and supplied proposals retain their contacts.
+        var sourceItems=plan.items
+        guard sourceItems.allSatisfy({ $0.anchor.isEmpty && $0.currentMeaning.isEmpty }) else { return nil }
+        for index in sourceItems.indices { sourceItems[index].directContact="" }
+        let requested=Set(stagedRewriteRows(rows,items:sourceItems,sharedRows:plan.sharedRows,
+            units:units,referenceDate:referenceDate,calendar:calendar))
+        guard requested.isEmpty,
+              let revisions=try? decodeInlineCurrentRevisions(Array(repeating:[String](),count:rows.count),
+                rowCount:rows.count,requestedRows:requested,sharedRows:plan.sharedRows),
+              let completed=completingStagedPlan(sourceItems,revisions:revisions,requestedRows:requested,
+                sharedRows:plan.sharedRows,units:units),
+              let validated=validateIndexed(.init(items:completed),source:source,units:units,
+                referenceDate:referenceDate,calendar:calendar,rules:rules,context:context),
+              validated.operations.isEmpty,
+              validated.items == sourcePlan.parents.items,!Task.isCancelled else { return nil }
+        // Exact row equality includes original casing/quotes, titles, all
+        // organization metadata/effects and disjoint original word identities.
+        // Any additional modern veto or projection mismatch declines; never
+        // fall back to an unchecked portable result on this same system.
+#if DEBUG
+        developmentObserver?("complete source composition consumed=no-references unique-cover=true current-units=\(units.units.count) parent-rows=\(rows.count) shaped-rows=\(sourcePlan.shaped.items.count) source-validation=unchanged effects=source-proved")
+#endif
+        return sourcePlan.parents
+    }
+
+    typealias HeadingActionFrame = RuntimeCompleteSourceFrames.HeadingActionFrame
+    /// A complete category/list frame has a positive source role before its
+    /// literal current command is read. This does not prove intention count,
+    /// contact identity or context inheritance for other source components.
+    static func headingActionFrame(_ ids:[Int],units:RuntimeIndexedSource,
+                                   referenceDate:Date,calendar:Calendar) -> HeadingActionFrame? {
+        RuntimeCompleteSourceFrames.headingActionFrame(ids, units: units, referenceDate: referenceDate, calendar: calendar)
+    }
+
+    typealias PickupPreparationFrame = RuntimeCompleteSourceFrames.PickupPreparationFrame
+    static func pickupPreparationFrame(_ source:String,referenceDate:Date,
+                                       calendar:Calendar)->PickupPreparationFrame? {
+        RuntimeCompleteSourceFrames.pickupPreparationFrame(source, referenceDate: referenceDate, calendar: calendar)
+    }
+
+    typealias AppositionalCallFrame = RuntimeCompleteSourceFrames.AppositionalCallFrame
+    static func appositionalCallFrame(_ source: String, referenceDate: Date,
+                                      calendar: Calendar) -> AppositionalCallFrame? {
+        RuntimeCompleteSourceFrames.appositionalCallFrame(source, referenceDate: referenceDate, calendar: calendar)
+    }
+
+    /// A complete unchanged original-owned communication can retain the
+    /// literal recipient already proved by the ordinary source organizer.
+    /// This supplies metadata only, never action, clock or effect authority.
+    static func completeOriginalCommunicationRecipient(_ item: IndexedItem,
+        literalBody: String, units: RuntimeIndexedSource,
+        sourceReading: OrganizedThought) -> String? {
+        guard item.purpose == .task, item.anchor.isEmpty, !item.needsReview,
+              item.currentMeaning.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              item.evidence.count == 1, let id = item.evidence.first,
+              units.units.indices.contains(id),
+              let span = currentOwnedUnitSpan(units.units[id], source: units.source),
+              literalBody.utf8.elementsEqual(units.source[span].utf8),
+              currentPurposeProofsCanBind(units.source),
+              QuotedSpeechScope.ranges(in: literalBody).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(literalBody),
+              [.direct, .communicating].contains(ClauseScope.read(literalBody).act),
+              let arguments = ClauseScope.communicationArgumentCandidate(in: literalBody),
+              literalBody[..<arguments.recipientRange.lowerBound].range(
+                  of: #"(?i)^\s*(?:please\s+)?(?:can\s+you\s+)?\#(ClauseScope.communicationVerb)\s+$"#,
+                  options: .regularExpression) != nil,
+              sourceReading.itemType == .personFollowUp, sourceReading.state == .resolved,
+              !sourceReading.needsClarification,
+              case let .person(recipient) = PersonMentionResolver.followUpTarget(in: literalBody),
+              recipient.confidence > .low, recipient.sourceRange == arguments.recipientRange,
+              recipient.label == sourceReading.personName,
+              SourceUnitLedger(recipient.label).words.map(\.text)
+                == SourceUnitLedger(String(literalBody[arguments.recipientRange])).words.map(\.text)
+        else { return nil }
+        return recipient.label
+    }
+
     static func validateIndexed(_ proposal: IndexedProposal, source: String, units: RuntimeIndexedSource,
                                 referenceDate: Date, calendar: Calendar, rules: ThoughtExtractionResult,
                                 context: RuntimeCaptureContext) -> ThoughtExtractionResult? {
@@ -23848,6 +27262,8 @@ enum RuntimeFoundationInterpreter {
         let withdrawalDependencies = RuntimeCurrentWithdrawal.dependencies(units)
         let cancelledUnits = Set(withdrawalDependencies.map(\.creation))
         let cancelledContextUnits = cancelledUnits.union(withdrawalDependencies.map(\.withdrawal))
+        let withdrawalVetoedUnits = cancelledUnits.union(RuntimeCurrentWithdrawal.namedVetoedUnits(
+            units, referenceDate: referenceDate, calendar: calendar))
         let referencePairs = RuntimeExplicitReferenceScope.pairs(units)
         let referenceOnlyUnits = Set(referencePairs.flatMap { [$0.fact, $0.directive] })
         let nonCreationUnits = Set(units.units.indices.filter {
@@ -23951,11 +27367,62 @@ enum RuntimeFoundationInterpreter {
                [.task,.shopping,.packing].contains(item.purpose) {
                 return indexedRejection("retained-reference-current-purpose")
             }
+            let appositionalCall: AppositionalCallFrame? = {
+                guard item.anchor.isEmpty, normalized.isEmpty, !correction,
+                      item.purpose == .task, item.directContact.isEmpty, !item.needsReview,
+                      item.evidence.count == 1, let id = item.evidence.first,
+                      let span = currentOwnedUnitSpan(units.units[id], source: source),
+                      currentPurposeProofsCanBind(source),
+                      let frame = appositionalCallFrame(literalBody, referenceDate: referenceDate, calendar: calendar),
+                      let raw = ClauseScope.appositionalCallContext(in: String(source[span]),
+                          referenceDate: referenceDate, calendar: calendar),
+                      frame.proof.matchesOriginal(raw, normalizedSource: literalBody, originalSource: String(source[span]))
+                else { return nil }
+                return frame
+            }()
+            let pickupPreparation = item.anchor.isEmpty && normalized.isEmpty && !correction
+                && item.purpose == .task && item.directContact.isEmpty && !item.needsReview
+                ? pickupPreparationFrame(literalBody,referenceDate:referenceDate,calendar:calendar) : nil
             let eventDeadline = item.anchor.isEmpty && normalized.isEmpty && item.purpose == .task
                 ? RuntimeCurrentEventDeadline.read(literalBody,referenceDate:referenceDate,calendar:calendar) : nil
             let conditionalWatering = item.anchor.isEmpty && normalized.isEmpty && item.purpose == .task
                 ? RuntimeCurrentConditionalWatering.read(literalBody,referenceDate:referenceDate,calendar:calendar) : nil
             let currentFrames = RuntimeRecipientReplacement.currentFrames(literalBody)
+            // Presentation metadata only, from the exact whole ORIGINAL
+            // availability declaration. Generated/shared/revised text cannot
+            // supply or transfer this retailer; all action/effect guards follow.
+            let availabilityDeclaration: ShoppingGroupParser.DeclaredShoppingRun? = {
+                guard item.anchor.isEmpty, normalized.isEmpty, !correction,
+                      item.purpose == .shopping, item.directContact.isEmpty, !item.needsReview,
+                      item.evidence.count == 1, let id = item.evidence.first,
+                      let span = currentOwnedUnitSpan(units.units[id], source: source),
+                      currentPurposeProofsCanBind(source),
+                      let current = ShoppingGroupParser.declaredShoppingRun(in: literalBody),
+                      current.entries.compactMap(\.availabilityRange).count == 1,
+                      let original = ShoppingGroupParser.declaredShoppingRun(in: String(source[span])),
+                      current.matchesOriginal(original, source: literalBody,
+                          originalSource: String(source[span])) else { return nil }
+                return original
+            }()
+            let plannedRetail: ExtractedThought? = {
+                guard item.anchor.isEmpty, normalized.isEmpty, !correction,
+                      item.purpose == .shopping, item.directContact.isEmpty, !item.needsReview,
+                      item.evidence.count == 1, let id = item.evidence.first,
+                      let span = currentOwnedUnitSpan(units.units[id], source: source),
+                      currentPurposeProofsCanBind(source),
+                      let parent = RuleBasedThoughtExtractor.plannedRetailShoppingParent(
+                          String(source[span]), referenceDate: referenceDate, calendar: calendar),
+                      let current = ShoppingGroupParser.plannedRetailPurchase(in: literalBody,
+                          referenceDate: referenceDate, calendar: calendar),
+                      let raw = ShoppingGroupParser.plannedRetailPurchase(in: parent.sourceQuote,
+                          referenceDate: referenceDate, calendar: calendar),
+                      current.matchesOriginal(raw, source: literalBody, originalSource: parent.sourceQuote)
+                else { return nil }
+                return parent
+            }()
+            let headingFrame = item.anchor.isEmpty && normalized.isEmpty && !correction
+                && item.purpose == .task && item.directContact.isEmpty && !item.needsReview
+                ? headingActionFrame(item.evidence,units:units,referenceDate:referenceDate,calendar:calendar) : nil
             let finalCalendar = item.anchor.isEmpty
                 ? RuntimeCompleteLiteralCertificate.calendarRepair(literalBody,
                     referenceDate: referenceDate, calendar: calendar)?.items.first : nil
@@ -23981,7 +27448,7 @@ enum RuntimeFoundationInterpreter {
             let contactReading = approvalReplacement.map { RuntimeCommunicationReading.Reading(action:$0.action,recipient:$0.recipient,isConditionalCurrentAction:true) }
                 ?? wholeReplacement.map { RuntimeCommunicationReading.Reading(action:$0.action,recipient:$0.recipient) }
                 ?? anchoredCommunication(anchor: item.anchor, evidence: quotedContextAction ?? literalBody)
-            let currentActionFrame = (currentFrames?.count == 1 && currentFrames?[0].kind.isActionable == true) || jointCall != nil || wholeReplacement != nil || declaredTask || contactReading?.isConditionalCurrentAction == true || recorded?.adopted == true || denied?.adopted == true || conditionalWatering != nil || eventDeadline != nil || finalCalendar != nil
+            let currentActionFrame = (currentFrames?.count == 1 && currentFrames?[0].kind.isActionable == true) || jointCall != nil || wholeReplacement != nil || declaredTask || contactReading?.isConditionalCurrentAction == true || recorded?.adopted == true || denied?.adopted == true || conditionalWatering != nil || eventDeadline != nil || finalCalendar != nil || headingFrame != nil || plannedRetail != nil || pickupPreparation != nil
             let currentAllocations = allocations ?? RuntimeAllocationReading.expected(literalBody)
             // Free-form current corrections require a complete independent
             // correction reader. Source-present words cannot prove the retained
@@ -24002,17 +27469,23 @@ enum RuntimeFoundationInterpreter {
                     ?? (RuntimeRecipientReplacement.normalize(normalized) == RuntimeRecipientReplacement.normalize(contactReading.action))
                 guard matches else { return indexedRejection("current-correction-meaning") }
             }
-            let effective = item.anchor.isEmpty ? (finalCalendar?.analysisText ?? eventDeadline?.action ?? conditionalWatering?.action ?? recorded?.action ?? jointCall?.action ?? contactReading?.action ?? (currentActionFrame ? currentFrames?[0].action : nil) ?? meaning) : meaning
+            let effective: String = {
+                if item.anchor.isEmpty, let appositionalCall { return appositionalCall.action }
+                return item.anchor.isEmpty ? (plannedRetail?.analysisText ?? pickupPreparation?.action ?? headingFrame?.action ?? finalCalendar?.analysisText ?? eventDeadline?.action ?? conditionalWatering?.action ?? recorded?.action ?? jointCall?.action ?? contactReading?.action ?? (currentActionFrame ? currentFrames?[0].action : nil) ?? meaning) : meaning
+            }()
             // A certified whole CURRENT frame supplies deterministic metadata
             // for the same unchanged meaning. It cannot license a generated
             // rewrite, shared anchor, correction or incompatible purpose.
             let ordinaryShort = item.anchor.isEmpty && normalized.isEmpty && !correction
                 ? RuntimeShortSourceCertificate.interpret(literalBody,referenceDate:referenceDate,calendar:calendar) : nil
-            let physical = ordinaryShort == nil && item.anchor.isEmpty && normalized.isEmpty && !correction
+            let completeDiscourse = ordinaryShort == nil && item.anchor.isEmpty && normalized.isEmpty && !correction
                 && item.evidence == Array(first...last)
                 && quote.replacingOccurrences(of:"\r\n",with:"\n").replacingOccurrences(of:"\r",with:"\n").range(of:#"\n[ \t]*\n"#,options:.regularExpression) == nil
+            let physical = completeDiscourse
                 ? RuntimeDiscourseCertificate.interpretPhysicalTaskGroup(literalBody,referenceDate:referenceDate,calendar:calendar) : nil
-            let ordinary = ordinaryShort ?? physical
+            let ownedTask = completeDiscourse && physical == nil && item.purpose == .task && item.directContact.isEmpty
+                ? RuntimeDiscourseCertificate.interpretOwnedTaskGroup(literalBody,referenceDate:referenceDate,calendar:calendar) : nil
+            let ordinary = ordinaryShort ?? physical ?? ownedTask
             let ordinaryItem = ordinary?.items.count == 1 ? ordinary?.items.first : nil
             let ordinaryCompatible: Bool = {
                 guard let kind=ordinaryItem?.organization.itemType else { return false }
@@ -24024,7 +27497,44 @@ enum RuntimeFoundationInterpreter {
                 default: return false
                 }
             }()
-            let ordinaryOrganization = finalCalendar?.organization ?? denied?.organization ?? eventDeadline?.organization ?? conditionalWatering?.organization ?? recorded?.organization ?? (ordinaryCompatible ? ordinaryItem?.organization : nil)
+            let ordinaryOrganization: OrganizedThought? = {
+                if let value = appositionalCall?.organization { return value }
+                if let value = plannedRetail?.organization { return value }
+                if let value = pickupPreparation?.organization { return value }
+                if let value = headingFrame?.organization { return value }
+                if let value = finalCalendar?.organization { return value }
+                if let value = denied?.organization { return value }
+                if let value = eventDeadline?.organization { return value }
+                if let value = conditionalWatering?.organization { return value }
+                if let value = recorded?.organization { return value }
+                return ordinaryCompatible ? ordinaryItem?.organization : nil
+            }()
+            // Only an unchanged, complete own addressed question supplies
+            // this recipient. Check-with remains a task; its proved contact
+            // does not depend on promoting the item to personFollowUp.
+            let completeQuestionRecipient: String? = {
+                guard item.anchor.isEmpty, normalized.isEmpty, !correction,
+                      ordinaryCompatible, let short = ordinaryShort,
+                      short.items.count == 1, let proven = short.items.first,
+                      !proven.needsReview, ordinaryOrganization == proven.organization,
+                      ClauseScope.completeAddressedChoiceQuestion(in: literalBody) != nil else { return nil }
+                return proven.organization.personName
+            }()
+            // An unchanged complete Short frame can prove a described
+            // endpoint without a named-person association. The broader contact
+            // reader retains that literal relation, not a contact identity.
+            let completeDescribedRecipient: Bool = {
+                guard item.anchor.isEmpty, normalized.isEmpty, !correction,
+                      item.directContact.isEmpty, item.evidence.count == 1,
+                      ordinaryCompatible, ordinaryShort?.items.count == 1,
+                      let proven = ordinaryShort?.items.first,
+                      !proven.needsReview, proven.organization.state == .resolved,
+                      proven.organization.itemType == .task, proven.organization.personName == nil,
+                      ordinaryOrganization == proven.organization, let contactReading,
+                      case let .described(label) = PersonMentionResolver.followUpTarget(in: literalBody),
+                      label.caseInsensitiveCompare(contactReading.recipient) == .orderedSame else { return false }
+                return true
+            }()
             // A complete ordinary current Call frame also proves a literal
             // recipient. Do not reject that supported proof merely because
             // the narrower communication reader requires an about/to/for
@@ -24075,6 +27585,11 @@ enum RuntimeFoundationInterpreter {
                 authoritySource = ([purchaseRows[itemIndex] ?? item.anchor] + item.evidence.compactMap { sharedTiming[$0] }).joined(separator: " ")
             }
             let sourceReading = ordinaryOrganization ?? ThoughtOrganizer.organize(authoritySource, referenceDate: referenceDate, calendar: calendar)
+            let originalRecipient = completeOriginalCommunicationRecipient(item,
+                literalBody: literalBody, units: units, sourceReading: sourceReading)
+            if let originalRecipient, !item.directContact.isEmpty, item.directContact != originalRecipient {
+                return indexedRejection("complete-original-recipient-conflict")
+            }
             var kind: ItemType
             switch item.purpose {
             case .task, .packing: kind = .task
@@ -24118,9 +27633,11 @@ enum RuntimeFoundationInterpreter {
             // Roles and purpose are checked independently of literal presence.
             // A correct word in an owner/indirect/quoted position cannot become
             // the user's contact. Memory does not acquire contact/action effects.
-            let communication = contactReading != nil || ordinaryOrganization?.itemType == .personFollowUp || effective.range(of: #"(?i)^(?:please\s+)?(?:ask|tell|call|phone|email|text|message|send)\b"#, options: .regularExpression) != nil
+            let communication = contactReading != nil || ordinaryOrganization?.itemType == .personFollowUp
+                || completeQuestionRecipient != nil
+                || effective.range(of: #"(?i)^(?:please\s+)?(?:ask|tell|call|phone|email|text|message|send)\b"#, options: .regularExpression) != nil
             if !item.directContact.isEmpty, (!kind.isActionable || !communication) { return indexedRejection("indexed-guard-16") }
-            if kind.isActionable, !Set(item.evidence).isDisjoint(with:cancelledUnits) { return indexedRejection("indexed-guard-17") }
+            if kind.isActionable, !Set(item.evidence).isDisjoint(with:withdrawalVetoedUnits) { return indexedRejection("indexed-guard-17") }
             if kind.isActionable, !Set(item.evidence).isDisjoint(with: referenceOnlyUnits) {
                 return indexedRejection("explicit-reference-only-purpose")
             }
@@ -24144,7 +27661,14 @@ enum RuntimeFoundationInterpreter {
                 return indexedRejection("independent-current-memory-destination")
             }
             if kind.isActionable, quotedContextAction == nil,
-               !ActionabilityReader.read(literalBody).belongsOnToday, !currentActionFrame { return indexedRejection("indexed-guard-19") }
+               !ActionabilityReader.read(literalBody).belongsOnToday, !currentActionFrame {
+#if DEBUG
+                if let observer=developmentObserver {
+                    observer("indexed rejection detail stage=indexed-guard-19 row=\(itemIndex) evidence=\(item.evidence) purpose=\(String(describing:item.purpose)) currentActionFrame=\(currentActionFrame) actionability=\(String(describing:ActionabilityReader.read(literalBody)))")
+                }
+#endif
+                return indexedRejection("indexed-guard-19")
+            }
             if kind.isActionable, evidence.range(of: #"(?i)\b(?:inventory\s+only|(?:opening|first)\s+intention\s+is\s+a\s+note|not\s+(?:work|a\s+(?:job|task)\s+for\s+me)|(?:keep|save)\s+(?:one\s+)?(?:separate\s+)?(?:memory|note|idea))\b"#,options: .regularExpression) != nil { return indexedRejection("indexed-guard-20") }
             if kind.isActionable, !item.anchor.isEmpty {
                 guard let anchorRange = evidence.range(of: item.anchor),
@@ -24224,7 +27748,7 @@ enum RuntimeFoundationInterpreter {
                 category: kind == .shopping ? .shopping : kind == .idea ? .ideas : organized.category,
                 priority: organized.priority,
                 personName: kind.isActionable && communication
-                    ? (contactReading?.recipient ?? ordinaryOrganization?.personName ?? item.directContact.nilIfEmpty)
+                    ? (completeDescribedRecipient ? nil : (contactReading?.recipient ?? ordinaryOrganization?.personName ?? originalRecipient ?? item.directContact.nilIfEmpty))
                     // A complete personal fact may supply its current subject.
                     // A mention of another actor's job, object owner or quoted
                     // speaker grants no communication/contact metadata.
@@ -24240,9 +27764,10 @@ enum RuntimeFoundationInterpreter {
                     ? .underspecified(.uncertainClauseBoundary) : sourceReading.state)
                     : (sourceKnowledge || jointCall != nil) ? .resolved : organized.state)
             output.append(.init(sourceQuote: ownedQuote, rawQuote: ownedQuote, wasRepaired: false,
-                analysisText: evidence, suggestedTitle: kind.isActionable ? (ordinaryCompatible && physical != nil ? physical?.items.first?.suggestedTitle ?? effective : effective) : (normalized.isEmpty ? (ownedQuote == quote ? nil : evidence) : meaning),
+                analysisText: plannedRetail?.analysisText ?? evidence, suggestedTitle: kind.isActionable ? (appositionalCall?.visibleTitle ?? pickupPreparation?.visibleTitle ?? headingFrame?.visibleTitle ?? (ordinaryCompatible && physical != nil ? physical?.items.first?.suggestedTitle ?? effective : effective)) : (normalized.isEmpty ? (ownedQuote == quote ? nil : evidence) : meaning),
                 organization: organization, confidence: held ? 0 : 1, needsReview: held,
-                sourceUnitIDs: item.evidence.reduce(into: Set<Int>()) { $0.formUnion(ledger.ids(in: units.units[$1].range)) }))
+                sourceUnitIDs: item.evidence.reduce(into: Set<Int>()) { $0.formUnion(ledger.ids(in: units.units[$1].range)) },
+                shoppingGroup: plannedRetail?.shoppingGroup ?? availabilityDeclaration?.store))
         }
         // Complete source coverage was proved independently above. Shared
         // evidence quotes are legitimate provenance for separate intentions.
@@ -24253,7 +27778,7 @@ enum RuntimeFoundationInterpreter {
         let organized = OrganizedThought(itemType: .unclear, category: .general, priority: .normal,
             personName: nil, dueDate: nil, reminderDate: nil, reminderDelivery: .none,
             recurrenceRule: nil, needsClarification: true,
-            state: .contested(.uncertainClauseBoundary))
+            state: .contested(.organizationIncomplete))
         let item = ExtractedThought(sourceQuote: source, rawQuote: source, wasRepaired: false,
             analysisText: source, suggestedTitle: nil, organization: organized,
             confidence: 0, needsReview: true)

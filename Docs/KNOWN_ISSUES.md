@@ -1,5 +1,95 @@
 # Known Issues
 
+## October 14 integrated regression follow-up (unreleased)
+
+The single integrated native inventory completed with 2,209 passed, 67 failed,
+five skipped and one expected failure (2,282 checks). It is retained as a failed
+run. Targeted reruns subsequently passed 63 of those original failing methods;
+one failed at the local StoreKit canary before its purchase body, one later
+skipped for an unavailable lexical prerequisite, and two unchanged framework
+tag diagnostics were not rerun. These observations span two source snapshots,
+not one green complete suite or a user accuracy percentage. Four additional
+opposing control methods exposed smaller source-ownership defects. Their affected
+replays now pass. A subsequent 1,434-case scan caught one new lost Friday deadline;
+the broad unknown-infinitive licence was removed, and the affected 58-case
+compositions family plus the exact/opposed delegation controls pass. The final
+eight-method run passes with no skips, and the latest unsigned Release compile
+passes. The full inventory and failed scan remain retained; the complete suite
+and complete corpus were not repeated after that narrow fix.
+
+The application changes remove POS-only nominal acceptance, retain missing-object
+and unfinished-source holds through model refinement, and share already bounded
+metadata proofs with segmentation. Named list frames retain independently proved
+physical products, including action-shaped product nouns. Communication metadata
+separates the recipient's message conditions from the user's contact date. A
+cancelled entitlement refresh cannot publish stale access or invalidate an older
+valid read; all three controlled ordering/cancellation methods pass. Those
+controlled checks do not prove live Apple purchase or restore behavior.
+
+A separately frozen, development-only experiment changes the large nonfixed
+first model response to existing typed ownership metadata and defers required
+wording reconciliation. It retains the complete bundled bank, retrieval policy,
+output reserves, 20-second runtime deadline and final ownership/safety checks.
+The second response cannot change the first response's membership, purpose or
+review decisions. The preregistered minimum was all 20 exposed clear long captures wholly correct.
+Independent final saved/reopened scoring found zero wholly correct and 20 safely
+incomplete: 19 whole-capture review holds, and one held task group beside one
+correct Memory note. Only that note was independently usable among the 224
+expected intentions. Original transcripts and lifecycle invariants survived.
+Nineteen outline responses returned, but response completion and eight accepted
+indexed plans did not establish complete organization. The experiment is
+excluded from production source; no schema/deadline tuning loop followed.
+
+This DEBUG experiment also exposed diagnostic-only SDK token-count work inside
+the runtime deadline. Its cost is unmeasured, and a concurrent corpus compile
+further prevents an isolated speed claim. Removing this observation overhead is
+separate from improving semantics. The unchanged production format still needs
+valid measurement and fresh independent qualification; physical phones remain
+unqualified by these simulator results.
+
+The logging-only fix now removes diagnostic SDK tokenization while retaining
+admission/transport reads and exact invocation identity. Its focused receipt,
+capacity and guided-parts checks pass. A bounded affected replay of the unchanged
+production format on LCQ001–003 still yields three whole review holds: two model
+deadlines and one returned response. This is exposed-development evidence, not a
+population accuracy rate or proof of an isolated speed gain. No further format,
+prompt, reference-policy or deadline sweep followed.
+
+Two affected UI journeys have now been observed: rejecting/retrying tutorial
+practice preserves all ten free captures, and a locally ad-hoc-signed iOS 27
+simulator passes the first-real-capture receipt, one-time Pro offer and second
+capture flow through the live allowance journal. The unsigned simulator run
+instead reached the explicit allowance-storage retry alert; the signed run
+required no production fail-open or injected journal. A stale UI helper was
+also corrected to accept the existing typing recovery screen after voice
+startup fails. These results do not qualify phone microphone startup, actual
+purchases, protected-data transitions, reinstall or backup restoration.
+
+## Long-capture qualification remains open (October 14, unreleased)
+
+The first independently authored 20 clear long captures exposed failures on the
+frozen `cbbd2a1` rules fallback. None was wholly correct under the locked
+whole-capture definition. That is development evidence about this long-speech
+stratum, not an accuracy percentage for all captures or users. All original
+transcripts survived the file-backed save, retry, reopen and recovery checks.
+
+The original test scheme disables runtime examples. An earlier diagnostic
+incorrectly labelled its reviewed 59-example fixture as the active configuration;
+that label and any inference that this was a full-bank result are withdrawn.
+The qualification harness now explicitly selects the bundled shipping bank and
+records the configuration actually consumed. On the corrected frozen-source
+run, all ten completed long captures reached the production model deadline and
+remained whole review fallbacks. The remaining cases were stopped rather than
+repeating that failure. The complete 240-case release gate has not passed.
+
+SDK-only Mac replays distinguish format failures from the simulator's missing
+model assets. A proposed complex numeric regex was explicitly unsupported;
+a simpler guide and explicit unit keys did not establish correct meaning.
+Those experimental model schema changes are excluded from the app. A complete
+SDK response or retained original transcript does not establish correct
+organization. iPhone model speed, recognition, automatic finishing, purchase/
+restore and actual notification delivery remain separate device qualifications.
+
 ## Durable confirmation and context-loading follow-up (unreleased)
 
 A bare timing restriction recognized as a separate sentence (for example,
@@ -46,12 +136,27 @@ language assets or microphone accuracy on the two actual phones.
 
 Post-commit organization errors keep the words saved and can close without an
 unsaved-draft claim. Recovery also preserves a manually reviewed whole fallback
-instead of overwriting it with older words. Free-capture accounting remains at
-its existing final-result boundary. A process death between raw persistence and
-final allowance accounting is not transactionally charged by this work; fixing
-that requires a persisted, idempotent chargeability design that preserves free
-practice/operations, Pro-at-capture semantics and the lifetime count after item
-deletion. It must not be replaced with a count of currently surviving sessions.
+instead of overwriting it with older words. The October 13 receipt identified
+an accounting crash gap between raw persistence and final-result charging; the
+October 14 V6 candidate below addresses that separately.
+
+## Durable lifetime allowance candidate (October 14, unreleased)
+
+V6 saves an independent allowance obligation atomically with the raw capture.
+Definitive charge decisions join the final result's transaction, and settlement
+uses a bounded identity journal mirrored in the app-group file and Keychain.
+Retries and duplicate deliveries share a charge identity; deleting capture
+history does not refund it. Pro-at-capture, tutorial/practice, replacements and
+successful operation-only outcomes retain their exemptions.
+
+The first native batch passed 18 allowance and two external-writer methods.
+The next affected batch passed 30 checks, including all frozen-schema migration
+checks and four additional accounting edge cases. These are isolated simulator
+fixtures, not physical Keychain, uninstall or backup/restore qualification.
+Uninstalling while a debit is still pending and identity history is unavailable
+can remove the local obligation along with the capture. Readable persisted
+identity history preserves settled debit identities, but this does not promise
+survival of every interrupted uninstall or restore sequence.
 
 ## Synthetic spoken-capture follow-up (unreleased)
 
@@ -1883,3 +1988,553 @@ The frozen v20 focused run failed six checks, including an existing long paired-
 
 
 2026-10-12 frozen24 full-suite result: 2,038 passed, eight failed, 35 skipped and one expected failure (2,082 total). Five failures are the separately tracked inherited StoreKit `notEntitled` setup limitation. Three new failing tests exposed two mechanisms: one exact-source expectation omitted a preserved terminal period, and two unchanged saved/reopen diagnostic tests crashed in the same recipient-repair range helper on the same original transcript. The expectation now includes the original period. The repair licence now requires the entire correction cue to fit its selected sentence before constructing the suffix range. Cross-sentence cues decline this narrow licence; original transcript and broader correction handling remain intact. Two additional regression methods cover the exact crash and 24 sentence-boundary/stacked-marker/whitespace controls. These changes and the saved-field scope/antecedent repair require their own native qualification; prior passes do not qualify frozen25.
+
+
+## 2026-10-14 candidate: bounded withdrawal safety, partial admission excluded
+
+Local-candidate discovery omitted the expected Bert/Lorraine Memory, so that
+partial-admission route remains excluded. A deliberately supplied stale proposal
+exposed an actual saving-pipeline withdrawal gap; no model generated it. The
+deictic-deferral antecedent remains ambiguous and is not counted as a definite
+wrong Post retention.
+
+The bounded explicit-withdrawal veto and shared positive-continuation ownership
+have passing focused receipts, including the final strengthened quoted-message
+method (one pass, zero failures/skips/runtime warnings). Failed intermediate
+snapshots remain retained. General partial admission, arbitrary later changes
+and broader pronoun/reinstatement ownership are unqualified; a proposal citing
+a vetoed antecedent may conservatively decline for review. Original words remain.
+
+The latest Release predates the withdrawal changes. Original67's per-method
+63-pass mixed snapshot, failed full-suite/full-corpus snapshots, compact20's
+0/20 whole-correct result and shipping-format exposed long captures' 0/3 remain
+separate evidence. Requested rules-only baseline outputs do not establish zero
+model calls from empty runtime events. No population accuracy or physical-device
+qualification is claimed.
+
+
+## 2026-10-14 candidate: affected ownership and audio checks
+
+The artifact split's failed snapshot remains retained beside its passing
+object-span/linker followup. Described-target checks pass for both command
+orders, title case and fresh ModelContext reload. Four audio lifecycle methods
+passed; the requested endpoint method did not execute under its incorrect class
+selector and is not a skip or pass. Its corrected single-method run passed on
+identical source hashes. Physical capture, interruptions/routes and responsiveness
+remain unverified.
+
+The exposed20 replay completed its lifecycle checks, but zero captures were
+wholly correct. A saved-field audit supports 18 purchase organization gains;
+aggregate model scoring remains provisional because several changed labels
+refer to identical old/current fields. The sole alleged regression is one of
+those scoring inconsistencies. No notification delivery was observed: the
+replay disables scheduling and retains empty pending requests. Wrong timing
+metadata remains a product issue, separate from actual alerts.
+
+Unsigned Release and one signed simulator capture/allowance UI journey pass on
+the frozen source. The retained failed full-suite/full-corpus snapshots and
+older semantic results remain separate. Fronted retailer ownership, unfamiliar
+product descriptions, item-local conditions, dense mixed captures and physical
+qualification still require work; no launch-readiness claim follows.
+
+
+## 2026-10-14 retailer milestone: saved-field improvement, remaining scope
+
+The affected LCQ007/LCQ020 replay retains exact original transcripts and stable
+create/retry/reopen/recovery state. Five saved store labels are corrected; three
+Canadian Tire purchases satisfy item-level expectations, including the carrier
+explanation exactly once. Two LCBO purchases still inherit Saturday 8 PM from
+the dinner purpose, so they receive only store-label correction credit.
+
+The unchanged "get last season's jerseys washed" row is still misclassified
+as Shopping and invents Season as a person. Dated trip binding, unknown nominal
+headers/products, item-local availability conditions and broader dense-speech
+qualification remain open. The earlier Release/signed UI successes qualify
+freeze 1f7dd4a9; newer retailer freeze c20a7210 has focused native and file-backed
+evidence only. No overall rescore, fresh launch qualification, physical-device
+behavior, notification delivery or purchase verification is implied.
+
+
+## 2026-10-14 service milestone: scoped saved correction
+
+The subsequent LCQ007 replay corrects the former Shopping/Season classification:
+jerseys are a resolved Today task, with no invented person or Shopping group.
+Exact original words and November 25 date-only metadata remain. All eleven
+other rows and presentations are unchanged through retry/reopen/recovery;
+that stability does not qualify their meaning. Strict-before-picture-day
+semantics remain unqualified.
+
+Beneficiary and prenominal controls pass in their recorded scopes. Unfamiliar
+packaged cores require native English nominal evidence, and their new path
+declines without it. The first unknown-package check failed, then passed on
+unchanged app code; explicit asset preparation qualifies only the final native
+fixture. It does not prove immediate first-launch accuracy. General get versus
+retrieve ambiguity, unfamiliar heads/modifiers and unsupported trailing
+contexts remain product limits. Existing negative cancellation semantics are
+unchanged; actual bare-negative saving stays held for review with wording intact.
+
+LCBO dinner-derived clocks, dated trip binding, broader unknown nominal lists,
+item-local conditions and dense mixed captures remain open. This milestone
+adds no overall accuracy percentage, new whole-capture qualification, model
+benefit, phone latency/recognition, notification delivery or purchase evidence.
+The latest focused freeze 7af0c1ec has not received a Release/UI check.
+
+
+## 2026-10-14 purpose and conditional milestones: bounded scope
+
+LCQ020's two LCBO products no longer inherit dinner's Saturday 8 PM execution
+moment, and each retains the dinner purpose in its visible title. All eleven
+other rows/presentations remain unchanged through actual replay. The separate
+Saturday-errands heading does not yet supply their expected purchase day, so
+these are timing-scope corrections, not complete item-gold matches. The bare
+Zehrs list and other existing role/date gaps remain.
+
+A newly demonstrated leading condition now stays in unsupported-condition
+review rather than becoming resolved Memory. Native/fallback, report, adoption
+and message controls pass, and the failed synthetic sentence preserves its
+complete state through retry/reopen/recovery. The unsupported intent retains
+a contextual 7 PM value while dueDate and reminderDate stay nil; conditional
+timing is therefore not fully organized. Rare reporter names homographic with
+condition openers may conservatively require review; controls prohibit
+unconditional execution. No assertion was removed to accept silent Memory.
+
+Current purpose/conditional source has focused native and file-backed evidence
+only. Full suite/corpus and Release/UI snapshots remain older; broad list,
+heading-date and dense-capture qualification and real-phone checks remain
+required. No overall score, population accuracy, model benefit, delivery,
+purchase verification or new distribution follows from these milestones.
+
+## Explicit grocery-run declared fallback and message follow-up (unreleased)
+
+The supported explicit grocery/shopping-run frame now uses user-declared list
+membership independently of English noun assets. Focused native/forced-missing
+checks retain five literal Zehrs entries, quantities and the complete dumplings
+description. Optional-response tests preserve these rows against drop/merge/
+rewrite/metadata/duplicate proposals, restore a straddled outside call, and allow
+a disjoint note title to improve. These are supplied-response acceptance tests;
+actual Foundation Models generation and thousands-user accuracy are unqualified.
+
+One original LCQ003 replay retains nineteen rows, with all fourteen nonfocus
+semantic rows/presentations unchanged. Duplicate/reopen/two recovery states and
+original UUID/UTF8 identity are stable. A local punctuation fix closed the only
+failed method without changing its assertions. That method alone was rerun;
+the ten prior passing methods, including four model-guard methods, remain on
+the preceding source freeze. Current full-suite/corpus and final Release/UI
+checks are still outstanding.
+
+Earlier iOS 27/26.5 native-dependent failures remain retained, including one
+advertised lexical scheme returning OtherWord for every observed token. The
+new declaration path does not fix general native tagging. A bounded recognized
+retailer plus present I/we need comma list now supports individuated literal
+entries, including the four original Home Depot supplies. Four focused methods
+and the original renovation replay pass; all ten other rows/presentations and
+five lifecycle states remain unchanged. All-known lists retain existing Buy
+semantics. Articled services can be checkable-list noise. Bare unknown mass,
+unknown destinations, comma-free lists, richer timing/need forms, brand
+punctuation, unpunctuated mixed commands, header dates and broader dense-speech
+accuracy remain separate work. Strict or
+missing repair lineage can conservatively keep baseline organization rather
+than accept an optional refinement. No new retry loop or word-suffix/name guess
+was added.
+
+The audit's incorrect December 18 date for the outgoing Mom message is corrected
+by closed contracted finite-subject recognition. Original/curly contractions,
+negative/quoted/conditional message content and explicit outer contact timing
+have focused native/forced-missing evidence. A lookup-only curly-apostrophe
+follow-up keeps we-will/it-will messages intact; failed receipts and all original
+assertions remain. This does not qualify other contractions, fronted message
+adverbs, all addressed questions or dense speech. The exact Professor question
+is now corrected by preferring its complete title-plus-one-name argument before
+the delegated question body. Six focused methods pass, including both lexical
+modes and real-condition/outer-clock controls. An original LCQ003 replay keeps
+that follow-up usable and untimed, preserves all eighteen other rows/presentations
+and all five complete lifecycle states. This does not qualify all names or
+questions. The original Jordan/Aisha send now remains one complete task with
+its existing Tuesday deadline and project/purpose context. Its original replay
+keeps all seventeen other rows/presentations and all five lifecycle states
+unchanged. Negative-send scope and a native-sensitive independent command after
+a coordinated question have focused evidence; only the two failed methods were
+rerun. Unknown target/action ambiguity, richer recipient forms, gapping and
+assignment deadline ownership remain limited or open. Full suite/corpus, latest Release/UI and physical-device qualification
+are still required. No new distribution was produced.
+
+### 2026-10-14 launch-confidence checkpoint
+
+The post-retailer semantic regression scan has zero blockers across 1,434
+cases (seven cosmetic findings). The separate canonical gate stopped on a
+newly documented heldout C101 tuning overlap; metadata and the single failed
+preflight are repaired and focused checks pass, but the complete canonical
+gate has not yet been rerun. No sealed examples or gold were changed.
+
+Independent Claude Opus 5.5 review of two exposed long captures matched 17/25
+expected intentions, with neither whole capture correct. Shared action
+arguments and temporal role binding still have demonstrated failures. This
+is development evidence, not an overall accuracy or launch qualification.
+
+The isolated local monthly StoreKit test passes purchase/replay/restore and
+fails only its two expiry assertions. Local SKTestSession and verified SDK
+reads disagree about the same transaction's expiry. No app workaround or
+weakened assertion has been applied; real Apple sandbox purchase/expiry and
+physical-phone capture behavior remain unqualified.
+
+The coordinated-object repair covers a first bare AND under a positive known
+movement head with bounded determined objects and into/onto. Multiword
+towels/hamper forms pass in both tagging modes and the original renovation
+replay improves without changing its other twelve rows. Unknown predicates
+and conservative nominal homographs remain a limit; other demonstrated
+long-capture object/context/timing errors still prevent qualification.
+
+The false File task in the renovation capture is repaired by a local
+prepositional-object boundary veto; both tagging modes and file-backed
+retry/reopen pass. An intended implicit-object filing command in the same
+unpunctuated frame remains ambiguous. Other compound heads/prepositions and
+remaining long-capture payload/deadline ownership still need qualification.
+
+The dated signup appositive in LCQ003 now retains its session date visibly
+without assigning that date to the signup action. Both focused methods and
+the original rules-only lifecycle replay pass, with seventeen other rows
+unchanged. Only bounded affirmative comma-delimited enrollment event forms
+are proved. Supplied-model preservation of this decision now has focused coverage;
+actual generation is unqualified. Broader booking/event timing and assignment
+deadline ownership remain open. The
+replay's 4.203-second simulator create is one sample, not a speed qualification.
+No new overall accuracy or full-suite/Release/physical-device result is implied.
+
+## 2026-10-14 — owned question focused pass; email integration still open
+
+Full call questions, own execution clocks, supplied-model preservation and
+file-backed retry/reopen pass focused checks across successive source freezes.
+The long-capture call focus is correct, but one replay exposes condo-email
+fragmentation and a missing own dispatch deadline. Ten unrelated rows remain
+stable; this is not a complete integration pass. Actual Claude Opus 5.5 reviewed
+the applied question fixes. The next change must retain the email's source and
+its own BY deadline without transferring foreign artifact/event timing.
+
+Enrollment optional-response protection is now covered by supplied proposals,
+not actual model generation. Existing bounded enrollment, contact, shopping and
+other source-role mechanisms do not establish universal language accuracy.
+Latest broad corpus/full-suite/Release/UI checks predate these fixes and remain
+required before declaring app-level work complete. Device recognition, automatic
+finishing, real notifications, purchases and animation quality require phone QA.
+
+## 2026-10-15 — condo email deadline focused milestone complete
+
+The previous condo-email integration split is repaired: one unchanged literal
+email/reason/dispatch component becomes a resolved Today task with its own
+Tuesday-morning deadline. Three focused methods pass once in6.234s, covering
+both language modes, file-backed retry/reopen and supplied-model protection.
+One original LCQ004 replay passes in2.092s (1.827s repository create), preserving
+all eleven sibling semantic/presentation rows, the complete Call question,
+original UTF8/retry UUIDs and all five complete lifecycle states.
+
+The proof is bounded to an actual Email artifact, quantified notice/warning
+reason and positive singular dispatch BY-calendar restatement. Foreign or
+competing artifacts, action clocks, event-relative/recurring suffixes and
+uncertain/negative/quoted forms decline. Existing morning9AM is a parser
+convention, not a spoken exact time; there is no new dedicated BY schema field.
+Supplied-model proposals were tested; actual generation and population accuracy
+remain unqualified. The next demonstrated failure is the problem-set range
+losing its questions object and deadline owner. Midnight/booking semantics are
+separate unresolved contracts. Latest complete gates/Release/phone QA remain open.
+
+## 2026-10-15 — numbered work ownership focused milestone complete
+
+The stats capture now yields one task with questions5-through9, the stated
+problem set and inherited due span, retaining its complete original sentence.
+Three focused methods and one original LCQ003 replay pass; all fifteen sibling
+rows/presentations and five full lifecycle states stay stable. Scope is the
+closed problem-set/questions and assignment/exercises relation, not arbitrary
+due artifacts or numeric units. Actual Claude Opus5.5 reviewed the source.
+
+Midnight is still current parser Wednesday00:00, while the exposed gold uses
+Wednesday23:59. That discrepancy is not fixed or counted as gold correctness.
+Room booking also has a contract conflict: existing hall-forFriday regression
+expects Friday timing, while this capture's gold treats Friday as session
+context. No source, gold or old assertion has been silently changed to resolve
+that. Independent semantic review precedes further implementation. Fresh
+qualification, latest complete gates/Release and physical-phone checks remain open.
+
+## 2026-10-15 — bounded own-cart retailer grouping
+
+The cart-label role is restricted to one existing resolved Shopping row, one
+exact recognized merchant and literal my/our [shopping] cart wording. It
+requires independently matching full raw/current source and a unique exact
+raw occurrence in the capture. Unknown retailers, other possessors, physical
+modifiers, repeated identical components, multiple products and unsupported
+tails remain conservative limits. The role changes group metadata only; the
+original title, own date and shipping-duration context remain unchanged.
+
+Optional-result protection uses the existing exact singleton/disjoint source
+bridge. A cart-title rewrite that changes visible words can restore the full
+baseline even when a human would prefer it; unrelated good refinements can
+survive. The initial focused run's two passes and failed parser, plus the
+parser-only corrected run, must remain separate evidence. They are not one
+all-green latest-source suite; original replay and sibling stability require
+their actual audited artifacts. ownedRetailCartMilestone records that scope.
+
+Independent 22/25 remains an exposed, different-freeze development review
+until a new semantic review is performed. This local grouping repair is not
+an accuracy rescore, actual-model, phone, latest-full-suite or Release
+qualification. Booking target dates and deadline precision remain separate
+open contracts; no gold or existing assertion was changed to resolve them.
+
+
+## 2026-10-15 — bounded midnight deadline contract
+
+The new end-of-day interpretation is Task-only and requires a complete source
+deadline role plus one adjacent literal midnight and named calendar day. It
+is not a global midnight shift. A primary IS DUE sentence can be recognized
+as a source role yet remain an Event, outside this metadata contract. Numeric
+clocks, zones, recurrence, conditions, quotes, reports, negation, incidental
+object deadlines and unsupported forms retain ordinary handling rather than
+gaining this shortcut. Typed fixed-zone tests qualify consumers only; source
+fixed-zone boundary generation remains unsupported.
+
+Optional proposals may retain the full rules baseline when final source
+ownership or visible wording cannot be re-proved. Travel endpoint mismatches
+and day-only reschedules require review, with no silent retiming. This field
+does not reinterpret previously stored or user-edited deadlines.
+
+Exact next-day 00:00 still differs by one minute from unchanged exposed
+gold 23:59. The milestone records boundary correctness separately from that
+exact-gold miss and does not increment independent 22/25. The 14 historical passes, the initial 2 failed methods, corrected failed-only
+checks and the original LCQ003 audits remain separate evidence freezes. The first strict original
+audit caught intent source-text casing drift and is retained as failed. Final
+provenance-only source has compile-only and second-replay evidence; earlier
+focused passes were not rerun there. UI layout/accessibility and
+latest complete gates/Release/physical-phone QA require separate evidence.
+Booking target-day versus execution-day semantics remain queued for contract
+adjudication; existing booking behavior and gold are untouched.
+
+
+## 2026-10-15 — deadline layout and native toolbar interaction verified
+
+Today exposes the full absolute end-of-day deadline as its Edit button's
+accessibility value and places the wrapping caption below the task title.
+At accessibility text sizes, the Today title expands fully; normal text keeps
+its existing two-line limit. A screenshot review caught the former title
+ellipsis after the interaction test passed; this visual failure is retained.
+
+Two earlier signed UI runs failed a 36-point native Cancel accessibility-frame
+assertion. That frame did not establish the actual hit region. The ineffective
+label-size change was removed. Claude reviewed fixed taps at the button's
+center y ±21.5 points, requiring each point inside the navigation bar/window
+and actual dismissal with the saved item unchanged. The final single affected
+UI method passed in 109.353 seconds with no failures or skips, including both
+edge taps in light/regular and dark/largest-text scenarios. All four Today and
+editor screenshots were inspected: the complete task title and midnight
+caption are readable, and a due-only deadline keeps reminders off. Native
+Cancel/Save actions remain unchanged.
+
+The evidence is signed-simulator UI evidence only. Physical touch, animation,
+microphone, notifications and purchases remain separate checks, as do complete
+gates and Release. Independent 22/25 and the unchanged gold's 60-second
+deadline difference remain historical. Booking target versus execution timing
+is the next separate semantic milestone.
+
+
+## 2026-10-15 — bounded reservation-target timing qualification
+
+The booking target role now has supplied-proposal protection, file-backed
+lifecycle and one strict exposed original-capture audit. Evidence is the union
+of two historical passes and one corrected parser-only pass; all three were
+not rerun on the final test-source freeze. The initial failed Morning Glory
+expectation remains retained. Existing stored deadlines are not migrated or
+reparsed into the new untimed interpretation.
+
+The role is bounded to a positively owned reservation and a validated target.
+Opaque object/place wording, competing clocks and unmatched raw/current source
+can remain conservative holds. Target dates stay visible in title/source, not
+a searchable persistent target-date field. The seven development corpus and
+four old unit assertion revisions are declared in DECISIONS; sealed gold,
+harness, thresholds and independent 22/25 are unchanged. No whole-capture,
+actual-model, population, phone, UI or distribution qualification follows.
+One frozen development checkpoint on the 20 previously failed synthetic captures
+and 224 unchanged expectations is next. It is not fresh/population/model
+qualification. Scorer disagreements and the unchanged gold's 60-second deadline
+difference remain explicit; complete gates and Release remain separate evidence.
+
+
+## 2026-10-15 — current development checkpoint remains incomplete
+
+The current frozen 20-capture checkpoint is mechanically durable but semantically
+incomplete. Its 115/224 and 0/20 counts are provisional scorer outputs, not a
+qualification rate or readiness claim. Claims/retained-artifact audits identify
+scoring disputes, the unchanged gold's 60-second midnight difference, and a new
+split of the Grandma call's before-ten context into Memory. Notification metadata
+is not proof of scheduled or delivered alerts; the coarse unsafe/silent enum also
+includes non-actionable extra notes. The next bounded work is action-owned call
+timing context, then retail list membership. No new model campaign or broad launch
+gate follows from this checkpoint.
+
+
+## 2026-10-15 — call timing-context scope
+
+The exposed Grandma Ruth call now retains its complete before-ten preference
+and the existing Saturday 9 AM reading, without a new reminder. Strict original
+replay confirms all 18 siblings and five durable states; it does not establish
+whole-capture correctness or alter the provisional 115/224 and 0/20 checkpoint.
+Conventional kin binding is not universal coreference across same-gender prior
+antecedents, and unknown reason words are not certified nouns/actors. Broader
+pronoun, described-recipient and preference forms remain unqualified. Historical
+focused failures remain recorded separately from corrected passes. Latest full
+gates, Release, physical-phone and actual-model qualification remain separate;
+bounded recognized retail membership is the next milestone.
+
+
+## 2026-10-15 — recognized retail milestone scope
+
+Nine literal entries in exposed Home Hardware, Costco and Staples captures are now correctly grouped and survive retry/reopen/recovery. Thirty-eight other rows are exact; a neighboring Nora row drops one stray leading full stop only. The strict comparison failure is retained, with the measured punctuation-only delta recorded; no all-39-exact claim is made. Unknown retailers, single-member and modified-person pickup forms, dense object coordination, actual model speed, physical phones and current full gates remain unqualified. This does not change the provisional 115/224 and 0/20 checkpoint.
+
+
+## 2026-10-15 — original-sentence lexical milestone scope
+
+The exposed punctuated barbecue/patio-set instruction now remains one complete task with its 16 sibling rows unchanged and full durable-state verification. The native tagger previously read the final noun as a verb after terminal punctuation was stripped. Exact sentence-context projection fixes that demonstrated cause. Unpunctuated variants, other shared task heads and unknown past predicates remain outside this proof. The provisional 115/224 and zero-whole-capture checkpoint is unchanged; shipping-model, fresh qualification, final gates and physical-phone checks remain open.
+
+
+## 2026-10-15 — model contract repaired; dense capture still unqualified
+
+Runtime titled-name fragmentation and object-label spelling rejection have focused regression coverage. The single current full-bank clinic capture nevertheless timed out and remains one verbatim Needs Review item, with no individually organized intention. Data survives; product accuracy and model latency are still open. Exact unknown titles, initials, possessed names and action-homograph surnames retain conservative segmentation. Do not infer launch readiness or a population accuracy percentage from the seven passing contract tests.
+
+
+## 2026-10-16 — current launch-confidence limits
+
+Three aligned references fit the complete clinic prompt, but the one changed shipping observation still times out without a response. Its recoverable verbatim row is safe incomplete, not ten organized intentions. Its misleading possible-two-thoughts label still needs a distinct processing-review reason. Fresh240-case product qualification and iPhone13/16 recognition, endpointing and latency remain open. The omitted1100-method pass has8failed methods; the date-owner failure is subsequently fixed with two affected methods passing, and remaining failures are tracked individually in the integration ledger. Apple purchase/restore, delivered notifications, device animation and update behavior require qualified device/sandbox evidence. No population accuracy percentage or green full-suite claim follows.
+
+
+## 2026-10-16 — recovery feedback verified; dense model remains open
+
+New processing fallbacks show Words saved / Needs organization and keep the complete original. They no longer describe an unproved split or request a new recording. Existing stored fallback rows that already carry uncertainClauseBoundary are not migrated and may retain the old possible-split wording. The focused dark/accessibility-XXXL recovery flow and final unsigned Release compile pass; full VoiceOver, every text size, physical-device animation and external Siri/Live Activity presentation are not qualified by that check.
+
+All eight original omissions failures now have passing affected results, including separately discovered opposed controls. Evidence is across explicit source freezes, not a repeated all-green full suite. The historical1100-method and dense-capture scores remain unchanged. No unchanged model run was repeated. The last actual clinic capture admitted4031/4096 reserved tokens but produced no response before deadline cancellation; no decoding or semantic validation occurred. The SDK wrapper does not separate queueing, prefill, inference and cancellation acknowledgment, so a provider latency cause is not proved. Existing complete-source certificates intentionally do not cover that whole clinic graph; removing their guards is not a demonstrated fix. Fresh240 qualification, iPhone13/16 speech/endpointing/speed and Apple delivery/purchase/update evidence remain open.
+
+
+### 2026-10-16 — dense-capture response deadline remains open
+
+The latest single exposed LCQ002 shipping diagnostic retained all original words and stable saved state but organized zero of ten expected intentions: no complete SDK response arrived before the existing work deadline cancelled it. The 22.648-second repository call includes rules, retrieval, preparation, SDK wait and finalization; it is not pure model inference or an iPhone latency measurement. The new monotonic DEBUG timeline identifies those coarse spans.
+
+One duplicate instruction-count call is removed and its affected admission/identity checks and Release compile pass. A separate preparation-only measurement suggests first-use token-service work can be material, but its warm-up/order differs from shipping. No speed gain, prewarm benefit, dense completion or fresh population accuracy is established. No new distributed build or physical-device result follows from these diagnostics.
+
+
+### 2026-10-16 — compact transformation remains unqualified for whole captures
+
+The changed compact String transport admits the complete exposed clinic request within3,967/4,096 reserved tokens and passes two offline decoding/validation methods. It has not produced a measured complete native response. No faster completion or population accuracy follows from token admission. A checked synthetic whole-unit proposal still exposes source-role gaps; its original rejected result is retained. The first category-heading/action component now passes its focused checks, including complete supplier wording and command-owned timing. Repair/pickup-relative deadlines, trip-owned shopping and other complete dense-capture metadata still require affected proof. The short split supplier-fragment behavior was not changed by the heading fix and is not general name/entity qualification.
+
+Fresh unseen whole-capture qualification, physical iPhone13/16 recognition, auto-finish and speed, actual Apple purchase/restore, delivered notifications and update preservation remain separate open evidence. No claim of being fully launch-ready is made.
+
+
+### 2026-10-16 — pickup component verified, shopping provenance still in progress
+
+The supported complete pickup/preparation source role passes the original and varied cutoffs, retains explicit BEFORE and has no app alert. Its general temporal relation remains literal source/title plus due cutoff; physical presentation is unqualified. The shopping-trip candidate gets the tested products, quantities, store and day right, but its initial two checks fail on ledger assumptions and a conservative refinement-restoration gap involving a removed initial AND. The rules ledger describes repaired creation text; the model ledger describes original text. Raw originals remain intact. The affected failures are retained and are being corrected without changing historical gold or claiming whole-capture success.
+
+
+### 2026-10-16 — three dense-capture components verified; complete organization still open
+
+The shopping provenance failure is closed in both affected methods: original and varied purchases retain quantities, stated store and trip day while an independent valid title edit survives. Written closure content and local appositional reminder-call context each pass their two affected methods. Closure dates no longer become a task date within the supported complete source frame; a patient's own explicit call day no longer borrows appointment time or an earlier contact. All retain original source and zero unasked alerts. Historical failed results remain preserved.
+
+These are bounded component checks, across successive code freezes. The complete exposed clinic proposal still needs its final output assessed, the changed String transport still needs one actual native response observation, and fresh unseen qualification and real-phone/Apple-service checks remain open. No population accuracy percentage, whole-capture success or launch-ready status follows from component passes.
+
+
+### 2026-10-16 — actual compact String run exposes terminal-review handoff regression
+
+The single changed String observation still receives no complete SDK response before the existing deadline. Unlike the earlier saved fallback, this run persists fifteen ordinary resolved parser rows: the planned-shopping preservation bridge rejects the terminal whole-source review at G26 and restores the baseline. All five durable states retain the exact original and stable identities without notification or operation effects, but supplier/size and packing context remain fragmented with extra rows and no processing-review marker. This is silently incomplete organization and blocks launch. The earlier preliminary safe-incomplete description of this run was incorrect; actual state audit supersedes it. A terminal-review handoff fix is being prepared without weakening the provenance guard or rerunning the model unchanged.
+
+Separately, the deterministic checked proposal now passes unchanged complete validation and produces ten shaped items. Local independent review and actual Claude Opus 5.5 review match their visible meanings to all sealed intentions and prohibitions. The extra structured Dr. Patel association assertion still fails and remains failed; it is a projection gap even though the full recipient/question/decision wording remains visible. Neither this checked proposal nor the lifecycle test's mechanical pass demonstrates successful native organization or population accuracy.
+
+
+### 2026-10-16 — terminal-review regression closed by affected integration checks
+
+The demonstrated G26 handoff regression is repaired: injected canonical processing failures retain one whole-original, inert Needs organization row through actual capture, retry, cold reopen and two recoveries. Current operation precedence also passes. The structured Dr. Patel projection gap is fixed, and the original complete deterministic proposal now produces ten shaped items with all thirteen field assertions passing. No old assertion or sealed expectation was removed.
+
+The actual String run remains a historical incomplete result: no complete SDK response arrived, and its fifteen resolved baseline rows remain failed evidence. The affected fault-injection closure does not retroactively change that run or establish faster completion. A material dense-completion improvement, fresh unseen whole-capture qualification and real-phone/Apple-service checks remain required.
+
+
+### 2026-10-16 — actual timeout handoff verified; dense completion remains open
+
+The subsequent changed native observation confirms the terminal fix beyond fault injection: all five persisted states contain one inert complete-original Needs organization item, with no unmarked fragmented tasks, reminders or operations. The former fifteen-row handoff regression is closed on this observation. However, removing one optional correction teacher reduced the prompt without producing a complete model response before the unchanged deadline. The semantic result remains safe incomplete, zero of ten intended items organized. No fresh population, physical-phone speed/recognition or launch-readiness claim follows. Further unchanged generation/reference-tuning loops are stopped.
+
+
+### 2026-10-16 — freeform response route withdrawn; automatic dense completion still unqualified
+
+The temporary streaming diagnostic exposed malformed partial JSON and ungrounded proposed meaning. It never returned a candidate, and persistence correctly retained one inert complete-original Needs organization item. Shipping staged interpretation now uses the existing guided object schema again; five affected controls pass, with complete context/reference/schema accounting and unchanged meaning guards. This closes the demonstrated freeform wire weakness, not the model-completion or population-accuracy gap. Prior guided deadline failures remain failures, and another unchanged guided run is not being used as evidence. General communication-question, reference-follow-up and payment-deadline source proofs still need completion before automatic whole-source composition can be qualified.
+
+
+## 2026-10-16 — bounded addressed-choice question scope
+
+The tested own Ask/Check-with choice questions now retain complete payload, recipient and independently owned asking day without scheduling their inner alternatives. Original failures remain archived beside corrected affected passes. The proof supports only its fully consumed finite grammar; arbitrary questions, extra acts, unresolved recipients and other unproved content still require ordinary interpretation or review. Full dense automatic organization, unseen qualification, final full gates and physical-phone speed/recognition remain open. Complete ordinary follow-up context is the next component; this checkpoint has no new model-generation or population-accuracy result.
+
+
+## 2026-10-16 — follow-up and freshness limits
+
+The tested complete follow-up family retains one bounded singular document matter and optional reference-number file/folder context, with a resolved literal endpoint and no timing/effects. Broader follow-ups, plural matters, other reference/location forms and arbitrary modifiers remain outside this component's proof. Corrected full-output assertions confirm optional whole-row generated wording cannot remove original context; the earlier failing new assertion was a test-oracle error, not a confirmed product loss.
+
+No valid retained unseen240 replacement was identified. The September27 set is exposed development evidence and cannot qualify the current candidate. Fresh qualification requires a newly authored, independently audited and sealed set after the final code freeze. Dense automatic composition, shipping-model performance, final full gates and physical-phone/Apple-service evidence remain open.
+
+
+## 2026-10-16 — invoice deadline and automatic composition limits
+
+Supported complete invoice-before-day forms pass portable/final-metadata controls without contacts, alerts or unsafe date guesses. This is a bounded invoice role, not proof for arbitrary payment objects or deadline phrasing. The final-period test failure was an oracle mismatch with canonical analysis; immutable original words were preserved.
+
+Automatic dense organization remains open. Complete action authority is insufficient to assume a singleton supplier-order body. A full source-derived composition requires positive body/quantity/status ownership and strict original coverage, rather than copying the manually validated clinic proposal. No new large/unseen qualification, final full-suite/Release or physical-phone performance claim is made.
+
+
+### 2026-10-16 — complete phone-order handoff verified; whole capture remains open
+
+The supported quantified supplier-call/reorder transaction now stays whole in actual no-model, direct-rules and configured runtime extraction. The previously demonstrated three-fragment/Henry-only result is closed by the affected method; existing full indexed validation is retained. Complete names, product distribution, stock context and original occurrences survive without added effects. This is bounded component evidence, not arbitrary shopping/name recognition or population accuracy. Automatic composition of the complete dense capture, a newly authored unseen240 qualification, final integrated gates and physical-phone/Apple-service evidence remain open.
+
+### 2026-10-16 — original automatic composition verified; broader qualification open
+
+The exposed clinic capture now organizes automatically into ten independently correct intentions and preserves them through five stable saved states without added effects. This closes that original development case, not population accuracy or native-model completion. The varied/capacity method now passes its eight positive runs and twelve conservative opposed declines after the scoped described-contact handoff correction; earlier failures stay retained. Independent output review confirms the four varied sources in both tagger modes, with no invented identity or missing literal tail. These authored controls establish bounded development behavior rather than an accuracy rate. Whole-composition support currently requires iOS 26.4+ APIs; iOS 17 whole parity is still preparation, independent of model hardware. A newly authored unseen240 set after final freeze, final integrated gates and physical-phone/Apple-service evidence remain open. Existing development scores and sealed expectations are unchanged.
+
+### 2026-10-16 — portable implementation verified on modern simulator only
+
+Whole-source composition is now available through the unannotated iOS 17+ implementation, with unchanged modern validation and exact metadata agreement. The original and varied fields remain unchanged in focused parity checks. Actual iOS 17 runtime and physical-phone parity are untested; deployment compilation is insufficient. Nineteen previously failed exposed captures lack current whole-capture closure, rather than being nineteen confirmed failures of this composer. Their bundled checkpoint, fresh240 after final freeze, final gates and Apple/device evidence remain separate.
+
+### 2026-10-16 — current bundled nineteen are safe but unorganized
+
+All nineteen remaining exposed captures time out at the unchanged runtime deadline and remain wholly in Needs organization: zero correct, nineteen safe incomplete, zero unsafe. Originals, identities and all five saved states are stable without effects, but no intended tasks or purchases are organized. Median simulator repository creation is 21.706 seconds (21.206–26.510); no physical/ASR or SDK-internal speed claim follows. Profiling never recorded. A demonstrated completion/performance remedy is still required; unchanged reruns and fresh qualification are deferred.
+
+### 2026-10-16 — later telemetry does not close deadline completion
+
+LCQ013 now has successful request-level Instruments telemetry, unlike the earlier failed recording: 1,395 input/410 output tokens, zero cached, 4.735 seconds to response start and an 8.084-second response interval. Cancellation still occurs at the twenty-second deadline, with no accepted outline or available response content. Approximately 7.372 seconds before SDK entry remains unlocalized. Ownership batching saves only .004679291 seconds in the pure median comparison; it is not a demonstrated shipping-speed remedy. No phone-throughput or valid-JSON completion claim follows. The actual nineteen remain zero correct and nineteen safe incomplete; no unchanged native rerun follows this CPU result.
+
+### 2026-10-16 — smaller outline did not complete; prewarm deferred
+
+The four passing pure outline checks did not translate into completion: the one changed LCQ013 shipping run still timed out, retained one whole-original Needs organization item and organized zero intentions. Exact prior source/tests were restored; the failed evidence remains. Isolated 3.362-second schema counting does not explain nineteen failures whose historical post-cues preparation was often already short, so prewarm remains deferred. No unchanged native/format rerun or final/phone claim follows. All nineteen original failures remain unresolved; conditional retail member-availability scope is the next bounded mechanism under review.
+
+
+### 2026-10-16 — bounded conditional-shopping closure
+
+The exposed Dollarama shopping unit now produces three correct entries under Dollarama, with if they have it attached only to gaffer tape. Actual repository creation took .684337459 seconds on the iPhone 16 simulator; the meanings, original words and item identities survive retry, reopening and two recoveries without effects or model generation. Four authored list forms pass item/occurrence/metadata controls in both tagger modes. This is component evidence, not full LCQ013, population accuracy or phone timing.
+
+This source shortcut still declines first/final/multiple qualifiers and opaque bare names or compounds without existing product evidence. Declining the shortcut is not a guarantee that a general model path organizes the capture correctly. The complete-source registry also lacks a bare Print the roster provider; a new test incorrectly assumed otherwise, and its original failure remains retained. The nineteen original dense failures, fresh unseen qualification, final gates and physical-device/Apple-service checks remain open.
+
+The subsequent pure whole-LCQ013 coverage observation admits the corrected shopping unit but has no complete plan: nine other units lack one of this registry's complete component proofs. This explains why the component fix does not close that whole capture and motivates broader completion work rather than an unchanged model rerun.
+
+
+## Owned clock-boundary scope (development, October 16, 2026)
+
+The first AFTER/BEFORE execution-clock producer requires one positively owned explicit calendar day and a supported Task, Person follow-up or Shopping action. Bare bounds without a day, numeric slash-date forms, named source zones, conditional/ambiguous ownership, competing bounds and unsupported event bounds require review rather than silently becoming AT. Bound reminders remain unscheduled until an exact alert time is chosen. Existing stored clocks keep their prior semantics; this source fix does not retime historical user data. Real-phone recognition, notification delivery and visual interaction still require hands-on qualification. Current native dense-capture completion and fresh population-oriented evaluation remain separate open launch gates.
+
+
+The timing-only descriptive THAT-message projection is intentionally bounded. Its existing complete subject/predicate/clock role supports the verified Text/Email/Message examples and fronted own AT time; p.m./Dr. punctuation, matrix days between addressee and THAT, unsupported subject modifiers and other unproved forms can decline this optional proof. Declining the helper is not itself proof of the entire pipeline's result. Wider naming, punctuation and message forms still need qualification.
+
+The original rules-only long capture still displays Tonight as an exact 8 PM despite no spoken hour. Faithful daypart representation is the next product-confidence milestone. A standalone negative restriction can also fall into generic Task-or-note review; it is safe but its presentation remains unresolved. Neither permissive model grading nor transcript durability closes these product findings.
+
+
+### 2026-10-16 — named daypart attempt excluded from merge scope
+
+The named-daypart candidate was tested but deferred and restored out of all twenty-seven affected paths. No `NamedDayPart` metadata is included in this merge. Its fourteen initial focused passes plus the corrected failed-only pass are historical candidate evidence. Independent review of its original thirteen-row output found ten intentions correct and one safe incomplete; split sponsor-logo context, an extra opening note and the sealed count limit prevented whole-capture correctness. That output is not a result of the restored shipping source.
+
+The original Tonight wording still becomes an exact 8 PM without a spoken hour. Faithful daypart precision remains unresolved; the candidate’s sponsor-logo split is excluded from the restored shipping source. The last bundled nineteen-capture checkpoint remains historical zero correct/nineteen safe incomplete, with no new whole-nineteen grade. Fresh unseen qualification, configured-model completion, physical speech/routing/notifications/purchases and final canonical results remain separate; no launch-readiness claim follows from merging the completed work. See integration checkpoints 194–197.
+
+
+## 2026-10-16 — final completed-scope wrap verification
+
+The completed restored source was frozen across 126 Swift/project files. The canonical corpus gate passed: 1,434 cases, 1,425 clean, zero critical/behavioral failures, two metadata and seven cosmetic failures; zero blocking. The unsigned generic-device Release compile passed with existing warnings retained. The final canonical full unit run FAILED: 2,423 passed, 24 failed, 13 skipped and one expected failure across 2,461 reported tests. No replacement full run, assertion weakening or diagnostic suppression was performed. These are regression observations, not population accuracy.
+
+Read-only triage finds seven direct native lexical prerequisites failing with unavailable English tagging evidence, several assertions conflicting with intentional completed contracts, and the previously retained NR03 checked-five versus saved-eight incomplete handoff. Historical-message splitting, name/title metadata, the Train teacher admission budget and the measured semantic p95 of 313.611 ms against a 250 ms budget remain unresolved. The monthly StoreKit test failed only its expiry assertions: local Xcode state marked the transaction expired while all three SDK surfaces returned the same verified future-dated entitlement. Purchase/replay/restore assertions reached without failures; the whole test remains failed. No production expiry fix is justified by this evidence. No new unsafe clock/effect or withdrawn-action resurrection was demonstrated by the parser failure messages; this is not a no-regression guarantee.
+
+The one signed dark/AXXXL saved-review UI check also FAILED at its expected Words saved receipt. Retained video shows Saved on this iPhone / Organizing your thought; the final accessibility hierarchy shows organized clinic items on Today. The current fixture did not exercise the intended terminal incomplete-review journey, so that journey is not qualified by this run. Source/binary binding and failed attachments are retained. No test fixture or product code was changed to obtain a green result.
+
+The user explicitly requested wrapping and merging the completed source work, then asked to hurry and stop consuming usage. The merge records these red checks and unresolved launch limits rather than declaring the app launch-ready. The excluded daypart candidate remains excluded. Native dense completion, faithful Tonight precision, fresh unseen evaluation, physical speech/auto-finish, notification delivery, real purchase/restore and installed-build upgrades remain open. No distribution build, phone installation or App Store Connect change is included.

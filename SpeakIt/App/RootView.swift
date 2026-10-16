@@ -385,6 +385,7 @@ struct RootView: View {
                         text: text,
                         source: .sample,
                         createdAt: referenceDate.addingTimeInterval(Double(index) / 100),
+                        allowancePolicy: .practice,
                         schedulesReminders: false
                     )
                 }
@@ -414,6 +415,7 @@ struct RootView: View {
                         text: text,
                         source: .sample,
                         createdAt: referenceDate.addingTimeInterval(Double(index) / 100),
+                        allowancePolicy: .practice,
                         schedulesReminders: false
                     )
                     if let item = result?.items.first {
@@ -435,6 +437,7 @@ struct RootView: View {
                         text: text,
                         source: .sample,
                         createdAt: referenceDate.addingTimeInterval(Double(index) / 100),
+                        allowancePolicy: .practice,
                         schedulesReminders: false
                     )
                 }
@@ -450,12 +453,14 @@ struct RootView: View {
                     _ = try? await repository.createCaptureResult(
                         text: text, source: .sample,
                         createdAt: referenceDate.addingTimeInterval(Double(index) / 100),
+                        allowancePolicy: .practice,
                         schedulesReminders: false
                     )
                 }
                 _ = try? await repository.createCaptureResult(
                     text: "I need you to cancel the reminder about the appointment tomorrow. I cannot remember whether I called it the clinic visit or the dentist visit when I saved it. Do not guess between them just because one was created more recently. I can choose the right one when I see the names.\n\nAlso buy a packet of envelopes. That is a clear new task unrelated to the appointment, so it can be saved while the cancellation waits. Keep the cancellation request visible and ask me which saved reminder I mean. None of the appointment reminders should change before I select one.",
                     source: .sample, createdAt: referenceDate.addingTimeInterval(0.02),
+                    allowancePolicy: .practice,
                     schedulesReminders: false
                 )
             }
@@ -488,6 +493,7 @@ struct RootView: View {
                !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 _ = try? await repository.createCaptureResult(
                     text: text, source: .sample, createdAt: .now,
+                    allowancePolicy: .practice,
                     schedulesReminders: false
                 )
             }
@@ -1490,6 +1496,7 @@ struct RootView: View {
                     text: text,
                     source: .shareSheet,
                     createdAt: pending.payload.createdAt,
+                    allowancePolicy: subscriptionStore.hasProAccess ? .pro : .free,
                     schedulesReminders: true
                 )
                 SharedCaptureInbox.remove(at: pending.url)
@@ -1497,9 +1504,7 @@ struct RootView: View {
                     // Cancelling, completing or withdrawing manages existing
                     // content rather than storing a new thought, so it does not
                     // spend one of the ten free captures.
-                    if result.consumesFreeCapture {
-                        subscriptionStore.recordSuccessfulCapture()
-                    }
+                    subscriptionStore.refreshFreeAllowance()
                     SpeakItAnalytics.track(.captureSaved(
                         source: .shareSheet,
                         itemCount: result.itemCount,
@@ -1550,6 +1555,7 @@ struct RootView: View {
                     text: recoveredText,
                     source: draft.captureSource,
                     createdAt: draft.startedAt,
+                    allowancePolicy: subscriptionStore.hasProAccess ? .pro : .free,
                     schedulesReminders: true
                 )
                 CaptureDraftStore.clear(id: draft.id)
@@ -1557,9 +1563,7 @@ struct RootView: View {
                     // Cancelling, completing or withdrawing manages existing
                     // content rather than storing a new thought, so it does not
                     // spend one of the ten free captures.
-                    if result.consumesFreeCapture {
-                        subscriptionStore.recordSuccessfulCapture()
-                    }
+                    subscriptionStore.refreshFreeAllowance()
                     SpeakItAnalytics.track(.captureSaved(
                         source: .recovery,
                         itemCount: result.itemCount,

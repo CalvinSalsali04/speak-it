@@ -1005,7 +1005,8 @@ class CompromisedRegistry(unittest.TestCase):
 
         C342 sits in both limbs, which is exactly what let a column pass for
         the union and kept the wrong total looking self-consistent. A sum
-        would say six here and the right answer is five.
+        would have said six for the initial cohort whose union was five.
+        Later dated disclosures do not change why a union is required.
         """
         c = self.registry()
         self.assertEqual(
@@ -1030,6 +1031,32 @@ class CompromisedRegistry(unittest.TestCase):
                     self.assertGreater(
                         len(provenance.strip()), 10,
                         f"{cid} is listed under {name!r} without saying where")
+
+    def test_c101_exact_overlap_keeps_dated_provenance_in_both_registries(self):
+        """Metadata only: no sealed row/fixture text or current-file hash check.
+
+        The fingerprint names the observed checkpoint, not a condition that
+        later legitimate test edits must keep satisfying. Removing this known
+        contamination cannot silently restore a clean-sealed denominator.
+        """
+        expected = ("Detected 2026-10-14: exact normalized overlap in "
+            "SpeakItTests/PersonMentionTests.swift; observed file SHA256 "
+            "55679be5a725548cf4e489c99c2721288901bf88151a8418b88c2c2f2338dcd5; "
+            "fixture line and introducing authorship unresolved.")
+        leak = pathlib.Path(__file__).resolve().parent / "everyday" / "leak-check.py"
+        tree = ast.parse(leak.read_text())
+        tables = {}
+        for node in tree.body:
+            if isinstance(node, ast.Assign) and isinstance(node.value, ast.Dict):
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        tables[target.id] = ast.literal_eval(node.value)
+        self.assertEqual(tables["OVERLAP_DOCUMENTED"][("heldout.tsv", "C101")], expected)
+        registry = self.registry()
+        self.assertEqual(registry.IN_TUNED_MATERIAL["C101"], expected)
+        self.assertIn("C101", registry.COMPROMISED)
+        self.assertIn("C101", registry.EXCLUDED)
+        self.assertNotIn("C101", registry.EXPOSED_WITHOUT_INSPECTION)
 
     def test_the_registry_agrees_with_the_leak_check_that_detects_them(self):
         """Two records of one fact drift. This is the thing that notices.

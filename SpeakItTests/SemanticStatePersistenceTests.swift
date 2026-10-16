@@ -239,6 +239,7 @@ final class SemanticStatePersistenceTests: XCTestCase {
                 "ambiguousTemporalScope",
                 "incompleteThought",
                 "missingAction",
+                "organizationIncomplete",
                 "reportedSpeech",
                 "uncertainClauseBoundary",
                 "unsupportedCondition"
@@ -357,6 +358,13 @@ final class SemanticStatePersistenceTests: XCTestCase {
         XCTAssertEqual(ClarificationRequirement(.uncertainClauseBoundary), .splitDecision)
         XCTAssertEqual(ClarificationRequirement(.ambiguousPerson), .ambiguousPerson)
         XCTAssertEqual(ClarificationRequirement(.ambiguousPerson).editorField, .person)
+        let processing = ClarificationRequirement(.organizationIncomplete)
+        XCTAssertEqual(processing, .organizationIncomplete)
+        XCTAssertEqual(processing.listLabel, "Needs organization")
+        XCTAssertEqual(processing.editorPrompt, "Your words are saved. Review this capture to organize it.")
+        XCTAssertEqual(processing.editorField, .splitDecision)
+        XCTAssertNotEqual(processing, .splitDecision, "Grouping words cannot complete organization")
+        XCTAssertEqual(ClarificationRequirement(.uncertainClauseBoundary).listLabel, "Might be 2 thoughts")
     }
 
     /// A recorded gap outranks the reconstruction, but not the facts above it:

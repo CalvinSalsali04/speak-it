@@ -677,30 +677,30 @@ Sources holding exactly the same utterances are one body, grouped first. Then
 a body wholly inside another is not a second population. 25 sources reduce to
 22 distinct bodies and **12 that sit inside no other**:
 
-| utterances | share of 12,159 | population |
+| utterances | share of 14,288 | population |
 |---:|---:|---|
-| 10,322 | 84.9% | the gating corpus in `SpeakItTests` |
-| 818 | 6.7% | `Tools/SpeechLab/phase2`, in four byte-identical files |
-| 695 | 5.7% | `Tools/SpeechLab/phase2/repair/trust-closure/cases.jsonl` |
-| 472 | 3.9% | `Tools/SpeechLab/audit/combined-renderings.jsonl` |
-| 163 | 1.3% | `Tools/CorpusRunner/devsets/unfinished.tsv` |
-| 123 | 1.0% | `Tools/SpeechLab/phase2/repair/trust-closure/exclusions.jsonl` |
-| 121 | 1.0% | `Tools/CorpusRunner/devsets/coordination.tsv` |
-| 114 | 0.9% | `Tools/CorpusRunner/devsets/routed.tsv` |
-| 85 | 0.7% | `Tools/CorpusRunner/devsets/rambling.tsv` |
-| 55 | 0.5% | `Tools/CorpusRunner/devsets/abandonment.tsv` |
-| 46 | 0.4% | `Tools/CorpusRunner/devsets/runon.tsv` |
-| 45 | 0.4% | `Tools/CorpusRunner/devsets/framing.tsv` |
+| 12,452 | 87.2% | the gating corpus in `SpeakItTests` |
+| 818 | 5.7% | `Tools/SpeechLab/phase2`, in four byte-identical files |
+| 695 | 4.9% | `Tools/SpeechLab/phase2/repair/trust-closure/cases.jsonl` |
+| 472 | 3.3% | `Tools/SpeechLab/audit/combined-renderings.jsonl` |
+| 163 | 1.1% | `Tools/CorpusRunner/devsets/unfinished.tsv` |
+| 123 | 0.9% | `Tools/SpeechLab/phase2/repair/trust-closure/exclusions.jsonl` |
+| 121 | 0.8% | `Tools/CorpusRunner/devsets/coordination.tsv` |
+| 114 | 0.8% | `Tools/CorpusRunner/devsets/routed.tsv` |
+| 85 | 0.6% | `Tools/CorpusRunner/devsets/rambling.tsv` |
+| 55 | 0.4% | `Tools/CorpusRunner/devsets/abandonment.tsv` |
+| 46 | 0.3% | `Tools/CorpusRunner/devsets/runon.tsv` |
+| 45 | 0.3% | `Tools/CorpusRunner/devsets/framing.tsv` |
 
 The four files under `Tools/SpeechLab/phase2` are the same 818 utterances four
 times: `adjudication/cases-adjudicated.jsonl`, `data/cases.jsonl`,
 `data/renderings.jsonl`, `review/independent-review-pack.jsonl`. A form
 appearing only there reads as four sources and is one.
 
-**That column sums to 13,059 and its shares to 107.4%, because the twelve
+**That column sums to 15,189 and its shares to 106.3%, because the twelve
 populations are maximal rather than disjoint.** A body inside no other body
-may still overlap one. The excess of 900 counts an utterance once for every
-additional maximal population that contains it. Only the union, 12,159, is a
+may still overlap one. The excess of 901 counts an utterance once for every
+additional maximal population that contains it. Only the union, 14,288, is a
 total.
 
 ### By kind, and the one place two kinds overlap
@@ -708,38 +708,38 @@ total.
 Two of the three pairs share nothing: not one utterance is in both
 `SpeakItTests` and the SpeechLab tree, and not one is in both the SpeechLab
 tree and a development set. The development sets and the fixtures overlap by
-114, so the three kinds are 10,322 + 1,333 + 618 = 12,273 against a union of
-12,159 and do not add up. Written out so that they do:
+115, so the three kinds are 12,452 + 1,333 + 618 = 14,403 against a union of
+14,288 and do not add up. Written out so that they do:
 
-| kind | utterances | share of 12,159 |
+| kind | utterances | share of 14,288 |
 |---|---:|---:|
-| test fixtures only | 10,208 | 84.0% |
-| generated renderings (the SpeechLab tree) | 1,333 | 11.0% |
-| development sets only | 504 | 4.1% |
-| in both a development set and a fixture | 114 | 0.9% |
-| **total** | **12,159** | |
+| test fixtures only | 12,337 | 86.3% |
+| generated renderings (the SpeechLab tree) | 1,333 | 9.3% |
+| development sets only | 503 | 3.5% |
+| in both a development set and a fixture | 115 | 0.8% |
+| **total** | **14,288** | |
 
-**95.9% of everything this project may read — 11,655 of 12,159 — is either a
+**96.5% of everything this project may read — 13,785 of 14,288 — is either a
 fixture written to exercise the parser or a rendering generated from a
 blueprint.** The material written to look like somebody talking is 618
-utterances, of which 504 exist nowhere else.
+utterances, of which 503 exist nowhere else.
 
-### The 114 are not spread evenly, and where they land is the interesting part
+### The 115 are not spread evenly, and where they land is the interesting part
 
 | development set | also a fixture | of |
 |---|---:|---:|
 | `abandonment.tsv` | 36 | 55 (65.5%) |
 | `runon.tsv` | 13 | 46 (28.3%) |
-| `unfinished.tsv` | 45 | 163 (27.6%) |
+| `unfinished.tsv` | 46 | 163 (28.2%) |
 | `routed.tsv` | 15 | 114 (13.2%) |
 | `coordination.tsv` | 12 | 121 (9.9%) |
 | `framing.tsv` | 0 | 45 |
 | `rambling.tsv` | 0 | 85 |
 
-**That column sums to 121 against a heading of 114**, for the same reason one
-level down: 7 of the 114 sit in two development sets each and are counted in
+**That column sums to 122 against a heading of 115**, for the same reason one
+level down: 7 of the 115 sit in two development sets each and are counted in
 both rows — three in `coordination` and `routed`, two in `abandonment` and
-`unfinished`, two in `routed` and `unfinished`. 121 − 7 = 114.
+`unfinished`, two in `routed` and `unfinished`. 122 − 7 = 115.
 
 <!-- end generated: population -->
 

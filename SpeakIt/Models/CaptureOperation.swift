@@ -743,9 +743,10 @@ struct SavedFieldRevision: Equatable, Sendable {
         // A stop immediately inside a balanced closing quote can expose an
         // outside request to the review guard. It cannot establish an edit
         // or make the quoted words an existing saved-item introduction.
+        let protection = QuotedSpeechScope.BoundaryProtection(in: source)
         let quotedStops: Set<String.Index>
         if includingQuotedStopsForReview {
-            quotedStops = Set(QuotedSpeechScope.ranges(in: source).compactMap { quote -> String.Index? in
+            quotedStops = Set(protection.quotedRanges.compactMap { quote -> String.Index? in
                 let closing = source.index(before: quote.upperBound)
                 guard closing > quote.lowerBound,
                       ".!?".contains(source[source.index(before: closing)]) else { return nil }
@@ -761,7 +762,7 @@ struct SavedFieldRevision: Equatable, Sendable {
             let next = source.index(after: index)
             if ".!?".contains(source[index]),
                next == source.endIndex || source[next].isWhitespace,
-               !QuotedSpeechScope.protects(index..<next, in: source) {
+               !protection.protects(index..<next) {
                 result.append(start..<next)
                 start = next
             } else if quotedStops.contains(next),

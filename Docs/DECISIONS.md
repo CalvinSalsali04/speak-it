@@ -1,5 +1,31 @@
 # Decisions
 
+## 2026-10-14 — Reuse complete source proofs before segmentation
+
+Native failures showed that proving a relationship after splitting was too
+late: a message explanation, task-list filing instruction, component constraint
+or forward term could already have lost its owner. The same complete, bounded
+relationship proofs now protect only their own exact source intervals before
+splitting and still run when assigning owners. Independent trailing acts and
+facts remain separate. Original connectors retained in a quote have matching
+source word identifiers; no source-only formatting repair grants action or
+notification authority.
+
+Native part-of-speech tags can call a finite predicate a noun or a physical
+product a verb. POS-only runtime nominal certificates are removed. Explicit
+purchase frames require complete nominal product evidence, and addressed
+messages keep their explicit matrix and complement ownership. An explicit tell/ask recipient also licenses the existing head-only imperative
+class, including the ordinary “hold” stem. Unlisted noun-first stems such as
+review, draft and edit keep their established temporal reading; call/email
+purpose clauses retain their prior ownership. A broader unknown-stem/object
+licence was removed after the corpus caught a lost Friday review deadline.
+Focused opposed controls run both with native tags and without them.
+
+Claude Opus 5.5 reviewed the five explicitly approved private source files and
+synthetic reports. Its proposed risks were checked against the actual helpers;
+confirmed defects received bounded fixes, while existing safety checks were
+preserved. This review is source evidence, not semantic or device qualification.
+
 ## 2026-10-13 — Sentence punctuation cannot waive a timing constraint
 
 A final adverse replay found that allowing every multi-sentence capture past the
@@ -5839,3 +5865,1067 @@ Final unsigned Release compilation passed. No physical iPhone, Apple sandbox,
 real notification delivery or installed-update result is implied. The original
 2,233-check run remains a failing historical receipt; five StoreKit setup and
 language-environment failures are not relabelled as passes.
+
+
+## 2026-10-14 — qualify the actual runtime and keep message ownership consistent
+
+A qualification receipt must record the runtime configuration actually consumed.
+The ordinary unit-test scheme intentionally disables examples; the opt-in
+qualification runner now explicitly selects the bundled 510,000-record bank.
+Its rules-only mode is labelled separately, and unknown mode names fail before
+calling the repository. Model availability and an SDK-complete JSON response
+are diagnostic facts, never whole-capture correctness. Unsupported or
+semantically unsuccessful schema experiments are not accepted into production.
+
+Coordinated addressed questions share the communication's recipient. Honorifics
+remain literal, and historical dates inside the question do not schedule a new
+errand. Clause, conjunction, two-date and whitespace splitters must honor the
+same matrix/body decision. Whitespace before a verb-shaped noun followed by a
+nominative relative-clause subject is not a fresh imperative. Independent named
+addressees and separately dated commands retain their own rows.
+
+Mixed-capture retail frames must prove products from their own sentence before
+synthesizing a purchase. A store name alone does not establish that a person,
+owned belonging, question or return command is a product to buy. Package sizes
+and container nouns preserve the user's literal quantity wording. These are
+mechanism regressions on exposed examples; they do not qualify arbitrary lists
+or dense speech. The final regression evidence is recorded only after the
+integrated candidate checks complete.
+
+Contracted closed-pronoun copulas are read locally in calendar commitment
+classification. “It's Monday” and “it is Monday” must agree; the immutable
+source is unchanged. Explicit due dates, day-and-clock appointments and
+scheduled subjects retain the existing rules. Product quantity/package cores
+that exactly match a known product do not depend on the tagger mistaking
+“a dozen eggs” for a finite clause. A failed coordinated product parse cannot
+be retried as one object solely because its final word names a product.
+
+## 2026-10-14 — reserve and settle the lifetime allowance durably
+
+The V6 schema adds a retained allowance obligation independent of capture
+deletion. Raw persistence and reservation are atomic. Final chargeability joins
+the definitive saved outcome, then an identity journal settles each chain key
+at most once. Shared nonblocking admission locking rechecks duplicate delivery
+inside the critical section. Both readable journal replicas are repaired before
+the obligation becomes charged; an unreadable legacy identity cannot seed zero.
+Tutorial typing recovery preserves practice source. Pro, practice, replacement
+and successful operation-only exemptions are recorded rather than inferred from
+the surviving capture count. Keychain accessibility stays AfterFirstUnlock and
+explicitly non-synchronizable, matching the legacy counter's backup eligibility.
+
+Native evidence: 18 allowance and two external-writer methods passed, followed
+by 30 affected checks with zero failures/skips, including all schema migration
+checks. This closes the demonstrated transaction/retry gaps in these fixtures;
+physical protected-file, Keychain, reinstall and backup/restore checks remain.
+
+
+## 2026-10-14 — keep withdrawal and positive continuation ownership consistent
+
+The partial-admission experiment remains excluded: local discovery missed the
+expected Bert/Lorraine Memory, and no model approval experiment followed. A
+supplied stale Post proposal survived actual save/retry/reopen after an explicit
+same-action withdrawal. This demonstrated an acceptance-boundary gap, not an
+observed SDK generation failure. Executed temporary support is retained as
+evidence and removed from the review branch.
+
+A bounded current-source veto now withholds every earlier complete literal
+matching action without choosing among duplicates. It grants no saved-row
+mutation, timing, or resolved cancellation/Memory exemption. One typed withdrawal
+reading carries a proved positive continuation boundary and its shared
+actionability through routing, segmentation and source voice. Exact source-bound
+coordinator metadata preserves an addressed command's quoted payload without
+turning its embedded words into a separate task. Head containment, tail-end
+bounds and nested rebasing keep that exception tied to its original occurrence.
+The agreement-denial guard remains unchanged.
+
+Initial file-backed withdrawal controls and the strengthened final native
+continuation method passed on their recorded snapshots; failed intermediate
+receipts remain in the integration milestone. The final method requires exactly
+one Text task addressed to Sam in both tagger modes. The latest Release predates
+these changes. A prior baseline is labelled requested rules-only: empty runtime
+events do not prove that legacy model calls were disabled. No overall accuracy
+or device qualification follows from these focused safety checks.
+
+
+## 2026-10-14 — preserve local object, target and audio ownership
+
+A proved communication artifact owns its complete nominal object, including
+compound modifiers. Only strict interior boundaries receive that protection;
+explicit clause linkers, finite message roots and fresh commands retain their
+existing scope. Described task targets use the same per-segment predicate for
+routing and nil-person Memory fallback, while explicit stored names remain
+authoritative. Focused checks cover compound command order and fresh-context
+persistence without borrowing a contact from another segment.
+
+Capture audio activation and cleanup belong to a capture lease on the serial
+owner. Revoked or late cleanup cannot deactivate a newer capture. Final/error
+handoff waits for admitted buffers to drain and consumes the completion once.
+Four controlled lifecycle methods and the separately corrected endpoint selector
+passed on identical source hashes. The first invocation's unmatched selector
+is retained as not executed. These checks do not measure phone capture quality,
+OS-call duration or physical routing.
+
+Artifact, described-target and audio receipts qualify their recorded affected
+scopes. Earlier failures remain retained. The single exposed20 file-backed
+replay completed create, duplicate retry, fresh open and both recovery passes
+with intelligence disabled in both repositories and no invariant errors.
+Independent field audit confirms 18 corrected purchase intentions in five
+exposed captures, with the five earlier purchase matches unchanged. The model's
+95 supplied match references remain provisional: several changed judgments
+concern unchanged rows, and its prose total of 105 is an arithmetic error.
+No capture was wholly correct. This remains development evidence below the
+release gate. The exact frozen source passes unsigned Release compilation and
+one signed simulator capture/allowance UI journey; the prior audio main-thread
+warning did not recur in that journey. Physical capture remains unqualified.
+
+
+## 2026-10-14 — keep retailer and replacement context on their acquisition
+
+A recognized fronted retailer and a literal acquisition form a source-local
+metadata relation. It names no products and grants no execution, timing or
+condition authority. A conflicting recognized inner destination declines the
+relation. Quoted products use the same exact occurrence-bound direct-matrix
+lead; reports, owned collections, people and later commands retain their gates.
+Held shopping parents may retain their retailer without becoming executable.
+
+A unique final new object in an already executable untimed list can own a
+terminal "the old one" completed-state explanation. The existing closed state
+predicate grammar is shared unchanged. Product analysis excludes that fact;
+the final product source quote and disjoint word IDs retain it exactly once.
+Unproved ownership, other conjuncts, conditions, quotations, multiple new
+objects and timed acquisition prefixes decline this shortcut.
+
+The initial three-method check retained one failed method/three assertions.
+After the explanation fix, that strengthened method and the affected shared
+predicate opposite passed; the earlier held/voice controls are not relabeled
+as executions on this newer source. One affected two-capture file-backed
+replay then passed save, duplicate retry, fresh open and both recovery passes
+with intelligence disabled. Local final-field audit confirms five store-label
+corrections, three complete Canadian Tire purchase matches, and nineteen
+unrelated rows unchanged. One orphan retailer note is removed and one previous
+Memory quote loses only its stolen retailer header. LCBO dinner-derived timing
+and the washing-jerseys/Season defects remain; no whole-capture or population
+accuracy claim follows. These receipts qualify source freeze c20a7210, which
+has not yet received a new Release/UI pass. No shipping build was created.
+
+
+## 2026-10-14 — distinguish a service result from an acquired product
+
+An owned get/have action with a complete object and post-object productive
+result vetoes Shopping without granting new action authority. The shared
+result morphology reuses existing imperative stems and irregular forms. A
+lowercase common temporal genitive such as last season's no longer supplies
+a person; real names and existing person evidence retain their roles. An
+existing person phrase followed by a complete determined service object and
+final result can supply beneficiary metadata, without contact lookup or a
+name vocabulary. Separate purchase clauses retain their own person scope.
+
+A bounded original acquisition object can rescue a prenominal physical product
+from the old first-verb refusal. Definite/owned objects, administrative cards,
+known result-state documents, quotations and unconsumed tails decline the new
+rescue. Unknown packaged cores require native nominal evidence. This extends
+the existing unowned get acquisition default; grammar does not eliminate the
+get/retrieve ambiguity. No lexical assets means the unknown path declines.
+
+Actual Claude Opus 5.5 reviews identified the package and source-span risks
+before application. Three final affected methods pass with explicit native
+asset preparation; the earlier beneficiary method passes on identical app
+source. An unknown-package expectation first failed and then passed without
+production changes, so this is prepared-native coverage, not cold-start or
+all-device qualification. Newly authored parser assertions were corrected to
+the existing negative cancellation contract; exact prohibition, negative
+operation and strong held saved-result assertions remain. No production
+negation behavior changed to satisfy those tests. Failed receipts are retained.
+
+One unchanged LCQ007 replay passes create/retry/fresh-open/recovery with
+intelligence disabled. Its jerseys row is now a resolved Today task without
+Season or a Shopping group; original wording and November 25 date-only
+metadata are preserved. All eleven nonfocus rows and presentations are
+semantically identical, including the three Canadian Tire purchases and their
+carrier explanation once. Strict-before deadline semantics, unrelated row
+correctness, cold native asset behavior and whole-capture qualification remain
+open. Freeze 7af0c1ec has focused native and file-backed evidence; Release/UI
+results remain on earlier source. No shipping build was created.
+
+
+## 2026-10-14 — keep purchase-event timing and report subjects in their scopes
+
+An exact current physical acquisition may own a separately timed nominal event
+as purpose. The local range proof requires complete product and event readings;
+unknown event modifiers, open places, quotations, reports, conditions and
+residual commands decline. Ambiguous get/grab/pick-up frames reject owned or
+definite members and product-core genitives, including possessive brands, in
+this shortcut only. Explicit buy/purchase/order retains existing authority.
+Raw and normalized proofs must agree on ordered products, event and complete
+acquisition words, preserving own timing and removing only recognized fronted
+retailer metadata. Dotted AM/PM folding handles the final dot trimmed from an
+event range. Both timing inputs exclude the event's date, clock and daypart;
+literal event context is attached after product expansion without changing
+source occurrences or quantities.
+
+Actual Claude Opus 5.5 review caught source-clock drift and owned-item gaps
+before application. Five of seven initial methods passed; the dotted-clock
+method passes after its source fix without changed assertions. One LCQ020
+replay then removes the inherited Saturday 8 PM execution moment from both
+LCBO products, retaining literal dinner context. Eleven nonfocus rows and
+presentations are unchanged, including the spare-key task; complete states
+match across create/retry/fresh-open/recovery. Nil own dates do not satisfy the
+separate Saturday-errands date-only expectation. No actual alert was removed:
+the previous reminderDate and pending requests were already empty.
+
+The remaining failed method exposed an existing leading-conditional ownership
+error. The report reader admitted If Pat as a two-word speaker before confirms;
+the reported-owner override then silently replaced the condition hold with a
+resolved Memory note. Its subject guard now reuses the existing fileprivate
+conditional opener followed by a separate subject word. It grants no action
+authority and does not recursively invoke conditional/action interpretation.
+Ordinary two-word reporters and whole-token name opposites retain report scope.
+Homograph names such as Till Lindemann may conservatively decline reporting;
+controls require that they never become an executable instruction.
+
+Six affected methods pass, including the original unchanged failing method,
+source controls under native/disabled tags, file-backed reopen, reports,
+adoption and outgoing-message regressions. Only failed synthetic PPD001 was
+then replayed through the full lifecycle: exact original, identity and all five
+complete states are retained as unsupported-condition review. Its unsupported
+TemporalIntent still retains the dinner clock; no dueDate or alert executes,
+and this is not credited as fully organized conditional timing. Failed
+receipts remain. Later evidence hashes all bundled Mach-O code, including
+SpeakIt.debug.dylib; launcher-only hashes in older preparer receipts are not
+a complete implementation fingerprint. Source freezes, controlled builds and
+actual assertions remain separately recorded. No shipping build was created.
+
+## 2026-10-14 — distinguish declared list framing and portable message finiteness
+
+A source-local grocery/shopping-run certificate now owns its exact destination,
+comma entries, quantity envelope and a bounded deictic object-relative “I like”
+before analysis can add a purchase verb. It preserves complete entries, full
+parent quotes and disjoint original word IDs. Ordinary product and store readers
+keep their existing gates; the new header cannot absorb a temporal/conditional
+adjunct, an independent command, a report or quoted material. The object-gap
+distinction is supported by [Cambridge Grammar](https://dictionary.cambridge.org/grammar/british-grammar/defining-and-non-defining)
+and [UD English relative-clause guidance](https://universaldependencies.org/en/dep/acl-relcl.html);
+this bounded subset is not a general dependency parser or physical-product proof.
+
+The native-dependent version remains limited. Five of six first affected methods
+passed; the unfamiliar-core method first failed actual English preparation and
+then passed with added diagnostics and unchanged production code. The exact
+long capture first retained one unsplit Shopping parent, not five products.
+A separate whole-capture diagnostic returned OtherWord for every observed token
+on iOS 27 despite advertised lexical schemes; an iOS 26.5 comparison had no
+English lexical schemes and also failed. These failures remain retained.
+Apple documents [checking and requesting tagging assets](https://developer.apple.com/documentation/naturallanguage/nltagger/requestassets%28for%3Atagscheme%3Acompletionhandler%3A%29);
+our observed scheme/tag disagreement is a qualification limit, not a documented
+Apple guarantee or a fixed cold-start issue. Missing tags are not replaced by
+plural spelling, capitalization or new product words.
+
+The original-capture audit also exposed a portable message-role gap: “Text Mom
+that I'm taking the train home on December eighteenth” acquired a December 18
+contact date when lexical evidence was unavailable. The existing finite-body
+reader now recognizes only closed pronominal am/are/have/will contractions with
+a following word. It returns Boolean evidence without rewriting any source or
+range. Named possessives, ambiguous 's/'d expansion and missing apostrophes keep
+their existing behavior. A separate failed control exposed curly “we’ll” being
+cut before “take”; the existing structural continuation lookup now folds curly
+apostrophes only for lookup and includes the missing it-will pronoun form.
+The original transcript and all boundary guards remain intact.
+
+Actual Claude Opus 5.5 reviewed both source changes. Three initial focused
+methods passed, including file-backed Mom save/retry/reopen and two adjacent
+communication controls; the remaining method failed four unchanged assertions.
+Only that method was rerun after the lookup fix and passes, including stronger
+it'll and negative-message controls under native/forced-missing settings. No
+assertion was removed to accept a split message or incorrect deadline.
+
+One subsequent unchanged LCQ003 lifecycle replay completed in 2.561 seconds
+(2.280 seconds for its simulator create call). Mom has no execution date or
+alert. This observed run also saved five exact Zehrs entries, with quantities
+and the complete dumplings description; all fourteen nonfocus semantic rows
+and presentations match the original fifteen-row baseline. All five complete
+post-create states are identical, duplicate IDs are retained and the immutable
+original is exact. Creation-order millisecond offsets are disclosed separately.
+The grocery recovery and stats split are not attributed to the contraction fix: the
+native-dependent grocery code did not change between those two replays and
+lexical availability varied. No absent-asset list reliability, whole-capture
+accuracy, model improvement or phone latency claim follows. Professor-question,
+recipient grouping and deadline-relation defects remain. Full suite/corpus and
+Release/UI evidence is older; no distributed build or version changed.
+
+
+## 2026-10-14 — declared Shopping membership survives missing tags and refinement
+
+An explicit source-local grocery/shopping-run declaration supplies literal list
+membership, matching the existing manual Add Items contract. This is distinct
+from physical-product inference: declared entries retain their own wording
+without a synthesized Buy verb. Existing acquisition readers keep their gates.
+The bounded frame owns its store label, quantities, comma boundaries and one
+supported object-relative description. Quotation, reports, Memory, conditions,
+corrections, independent action heads and timing residue retain their guards.
+Opaque brand words and verb-shaped product modifiers do not need a native noun
+tag. Adjacent numeric commas decline instead of creating false item boundaries.
+Unpunctuated mixed commands and richer literal product forms remain limited.
+
+Final rules rows emit a transient source-role witness only after speaker,
+independence, group, review, correction and operation checks. It binds complete
+original component words to disjoint literal inert Shopping children; every
+other final row must be disjoint. Optional interpretations pass one shared guard
+after ordinary shopping shaping. Exact repair ancestry converts creation-word
+IDs to original-word IDs before mixing outputs. Overlapping proposals are
+rejected whole; a finite overlap closure restores affected outside baseline
+rows while allowing genuinely disjoint refinements. Missing/invalid witnesses
+can retain actual declared baseline rows, never create Shopping authority from
+Memory or a header. No clipping, persistent flag, new schema, second capture or
+quota event is introduced.
+
+Actual Claude Opus 5.5 reviews identified Buy fall-through and witness-overlap
+safeguards. Local review removed a communication-context predicate veto that
+would reject body wash soap, shoe polish cream and screen print ink. Ten of
+eleven initial focused methods passed, including all four supplied-response
+model-acceptance/persistence methods. The original long-capture method failed
+ten unchanged raw-quote assertions because a filler repair elsewhere activated
+a word-envelope provenance reader that omitted the final period. Shared
+provenance stays unchanged. A declared-only exact contiguous ancestry proof now
+copies actual adjacent original punctuation and reparses the component; the
+same span feeds children and witness. Only that failed method was rerun and
+passed with added final-witness assertions, under both lexical modes.
+
+One unchanged original LCQ003 file-backed replay then passed in 2.500 seconds
+(2.222 seconds for its simulator create call). All five Zehrs entries are
+literal, resolved, untimed Shopping rows; all fourteen nonfocus semantic rows
+and presentations match the immediate nineteen-row baseline. Retry/fresh-open/
+two recovery states are identical, original UTF8 and UUID identity are retained,
+and invariant errors are empty. The prior native run already had five entries;
+new reliability credit is the forced-missing proof, not recovery from a stale
+fourteen-row snapshot. Earlier failed receipts remain. Supplied proposals prove
+acceptance guards, not generation quality. Full suite/corpus, final Release/UI,
+fresh long-capture qualification and real-phone checks remain separate. No new
+distribution or population accuracy claim follows.
+
+## 2026-10-14 — complete titled recipient before delegated question body
+
+A bare relationship match consumed Professor before its spoken surname, hiding
+the existing to-ask delegated question behind Lindqvist. Prefer the existing
+title-plus-one-name original range only in the same anchored communication
+argument slot and with the same body suffix. Existing relationship/name fallbacks
+retain their order. The pure local PersonMention helper grants no new task,
+message, person or clock authority. It uses original substring indices and
+existing person/title guards; possessed relations retain their prior reading.
+No weekday vocabulary, question exception or Organizer override is added.
+
+Actual Claude Opus 5.5 reviewed the authorized ClauseStructure diff and a
+technical description of the unshared helper. Six focused methods passed on one
+source freeze (9.165 seconds), including native/forced-missing title boundaries,
+outer timing, real conditions and file-backed retry/reopen/recovery. One original
+LCQ003 replay passed in 2.485 seconds (2.194 seconds for simulator create): the
+Professor follow-up is resolved, usable in Today when there is time, and carries
+no invented date, reminder or unsupported condition. All eighteen other semantic
+rows and presentations, including five literal groceries, remain unchanged; all
+five complete lifecycle states match and the immutable original survives.
+
+The evidence binds 120 source/project files and all ten app-bundled Mach-O files;
+it does not instrument the runtime load set. Title-plus-one-name is bounded
+coverage, not universal name/question accuracy. Shared Jordan/Aisha recipients
+and assignment deadline ownership remain open. Full suite/corpus, final
+Release/UI, fresh qualification and real-phone/model checks remain outstanding.
+No new distribution or population accuracy claim follows.
+
+## 2026-10-14 — keep a shared transfer object with its coordinated targets
+
+An actual direct send frame with two bounded literal target slots and an
+immediately determined object protects only its first bare and coordinator.
+These are unresolved argument labels, not new contact identities. Later spoken
+commands retain ordinary boundaries. No synthetic Send, product/name lexicon,
+capital/POS proof, global communication verb or whole-source atomic return is
+added. Unknown verb-shaped labels remain ambiguous. A bounded own will-not/ASCII
+won't send sibling retains the same arguments under the existing negated-own
+commitment rule, preventing a dated headless actionable fragment.
+
+A separate existing regression exposed a native verb gate after an addressed
+question. A literal direct communication matrix, exact coordinated ask-question
+gap, completed finite question and comma-separated known noncommunication
+command can now establish that boundary. Quoted/report/conditional/correction
+content and empty/calendar-only commands retain their guards. This branch uses
+pure source checks, with no dependency/instructionText recursion.
+
+Actual Claude Opus 5.5 reviewed both mechanisms. Initial four methods produced
+two passes and two failures (nine assertions): six unsupported expectations in
+a new test, two negative-fragment assertions and one unchanged existing question
+assertion. Only the new test's unsupported count expectations changed to direct
+guard-decline checks; original assertions remain. Only the failed two methods
+were rerun, both passing (4.844 seconds), with positive negative-grouping proof.
+The two preceding passes remain on the earlier freeze, not one all-four-green
+run. One original LCQ003 replay passes in 2.600 seconds (2.280 simulator create):
+the send pair becomes one usable task retaining both targets/object/project/
+purpose and its Tuesday20:00 deadline. All seventeen other semantic rows and
+presentations and all five complete lifecycle states remain unchanged.
+
+The first saved-row audit incorrectly demanded no timed presentation for a
+due-only task. Its failed result remains. The corrected audit requires exact
+old timed-tail presentation/trigger parity, delivery.none, nil actual reminder
+and existing nil scheduling-request checks; no app/test/gold change or rerun
+was used to correct that audit assumption. Source/project120 and all10 bundled
+Mach-O files are bound, not instrumented as a runtime load set. Richer target
+forms, gapping, more negative matrices and assignment deadline ownership remain
+limited. No whole-capture/model/phone/population or release qualification claim.
+
+## 2026-10-14 — literal members of a recognized retailer need list
+
+A recognized at/from retailer plus an actual I/we need frame and a complete
+comma list can supply literal checkable membership. Each unknown member needs
+a closed article/demonstrative, quantity or explicit container envelope;
+some/more alone do not supply individuation. This is not physical purchase
+proof. All-known lists decline this fallback and retain their existing Buy
+semantics. Bare needs, unknown places and richer timing/need forms remain
+ordinary. Articled service/abstract nouns can be checkable list noise, a disclosed
+limit rather than a hidden physical-product claim.
+
+ShoppingGroups factors the existing declaration scope/entry reader and adds a
+transient frame kind and exact need range. Existing run-header behavior and the
+generic nominal envelope stay unchanged. The same value reaches pre-comma
+segmentation, explicit-Memory-first organization, literal expansion, final
+source witness and optional-response preservation; no other consumer or
+persistent field changes. No noun/brand lookup, synthetic Buy or native-tag
+permission is added. Actual Claude Opus 5.5 reviewed the design, core diff and
+the final some/more tightening.
+
+Four focused methods pass on one source freeze (12.656 seconds): exact original
+four-item Home Depot members with quantities/size in both lexical modes,
+opposed scopes and old known/run/store compatibility, supplied hostile
+collapse/metadata rejection with disjoint outside refinement, and file-backed
+save/retry/reopen/recovery. One original LCQ004 replay passes in 2.135 seconds
+(1.889 seconds for simulator create). The former Memory parent becomes four
+literal checkable Home Depot rows; all ten other semantic rows/presentations
+and five complete lifecycle states remain unchanged, with original UTF8/UUID
+identity retained. Fourteen rows do not mean the whole renovation capture is
+correct. Source/project 120 files and all ten bundled Mach-O files are bound,
+not observed as a runtime load set. No generation, fresh production/phone
+qualification, population accuracy or distribution claim follows.
+
+## 2026-10-14 — keep regression and independent accuracy evidence distinct
+
+After the retailer-need change, the app semantic corpus ran once: 1,434 cases,
+1,427 clean and seven cosmetic findings, with zero blocking findings. The
+canonical gate initially stopped before that scan because heldout C101 exactly
+overlapped tuned PersonMentionTests source without a contamination record.
+Both metadata registries now disclose and exclude that case from clean claims;
+the additive registry checks pass (8 tests) and only the failed leakage
+preflight was rerun (1 pass). All 389 legacy captures, gold, historical scores
+and scoring thresholds remain unchanged; clean eligibility is now 377 cases,
+with 12 excluded. This is provenance reconciliation, not retirement or a new
+accuracy score, and the full canonical gate has not yet been rerun.
+
+Actual Claude Opus 5.5 independently reviewed the current saved results of two
+already-exposed synthetic long captures. It matched 17 of 25 expected
+intentions; neither complete capture was correct. The four recent local gains
+were confirmed, while argument preservation and temporal role binding remain
+priorities. These results do not establish unseen or population accuracy.
+
+One isolated local monthly StoreKit test now passes purchase/replay/restore but
+fails its two expiry assertions: SKTestSession reports the same transaction
+expired while verified StoreKit entitlement/latest reads retain that same ID
+and its future expiry. No new renewal period is demonstrated. Production
+entitlement logic and original assertions remain unchanged; this local SDK
+disagreement does not prove a production expiry defect or physical purchase
+qualification. Do not repeatedly rerun it without a changed test condition.
+
+## 2026-10-14 — preserve coordinated objects with their shared destination
+
+A source-only first-AND grouping veto keeps bounded determined objects under
+an existing positive movement command with one into/onto destination. It keeps
+all literal arguments and does not infer nouns, people, place metadata, dates,
+operations or a missing verb. Later independent commands use ordinary parsing.
+Known action stems and their finite/result morphology after a possible subject
+refuse grouping; unknown predicates remain ambiguous and nominal homographs
+can conservatively decline. Richer prepositions, object counts and matrices
+remain outside this bounded mechanism.
+
+Actual Claude Opus 5.5 reviewed the design and core diff and caught a missing
+bare-predicate refusal before application. The suggested fix and two opposed
+controls were included. Two focused methods pass once (2.186 seconds), covering
+normal/forced-missing tagging, multiword and opaque objects, later commands,
+source IDs and file-backed retry/reopen/recovery. One original LCQ004 replay
+passes (2.220 seconds; 1.993 simulator create): two incomplete fragments become
+one complete untimed Today task. Twelve other semantic rows and presentations
+and all five complete lifecycle states remain unchanged, preserving original
+UTF8 and retry UUIDs. Source/project 120 and all ten bundled Mach-O files match
+the execution receipts. This is a local development gain, not whole-capture,
+unseen, model, phone or release qualification.
+
+## 2026-10-14 — keep a prepositional file object with its constraint
+
+ClauseJuxtaposition now refuses an implicit-object File instruction boundary
+inside a current-piece for+determiner+one/two-modifier object when the next
+words have the existing closed condition shape. Literal File, current source
+ranges and structural/finite/repair refusals bound the decision; it certifies
+no generic noun or execution. Own File objects, explicit separators and later
+commands remain ordinary. Pure isStandaloneCondition becomes internal without
+logic changes; global File/schedule valency and nominal grammar stay unchanged.
+Immediate comma repairs retain correction ownership, while repairs after a
+semicolon or explicit later coordinated command cannot deprive this object
+of ownership. Condition shape/word count is not universal clause proof.
+
+Actual Claude Opus 5.5 reviewed the design/core. Root narrowed correction scope
+and verified the existing self-grouped internal clitic pattern and pure call
+graph. The first compile caught a new test using the wrong recurrence accessor;
+it was corrected to RecurrenceStore with the same nil assertion before any
+test ran. Two focused methods pass once (2.952 seconds) in both tagging modes,
+including fresh one/two-modifier objects, genuine File/Call commands, correction
+scope, source occurrence coverage and file-backed retry/reopen. One original
+LCQ004 replay passes (2.213 seconds; 1.977 simulator create). The photos and false
+File rows become one complete untimed task with the insurance-file object and
+before constraint. Eleven other semantic rows/presentations and all five full
+lifecycle states stay unchanged, preserving original UTF8 and retry UUIDs.
+Source/project 120 and all ten bundled Mach-O files match execution receipts.
+An intended implicit-object File in the same unpunctuated frame remains
+ambiguous; other prepositions/heads remain outside scope. No whole-capture,
+unseen, model, physical-phone or release qualification is claimed.
+
+## 2026-10-14 — distinguish a dated enrollment session from signup timing
+
+A bounded comma-delimited dated event appositive under affirmative sign up /
+register / enrol identifies the enrollment object rather than the execution
+day. Both normalized and supplied original source must prove the same role
+and exact remainder before timing-only projection is allowed. Original words,
+visible event date and before-fills condition remain intact. Competing own
+clocks, correction/report/negative scopes and richer unproved forms decline.
+Existing booking and midnight contracts remain unchanged.
+
+Actual Claude Opus 5.5 reviewed the approved helper and failure adjudication.
+The initial two focused methods failed ten assertions: a real leading-condition
+grouping defect plus unsupported new-test expectations about descriptive
+weekly class and isolated leading And. The grouping guard now removes only
+the independently proved appositive for boundary testing, then returns original
+source and condition. The actual fixture date/calendar is forwarded through
+four private segmentation helpers and their 33 calls. Only newly added invalid
+assumptions were corrected; original assertions and the byte-identical complete
+CaptureSession invariant remain. Weekly class has positive untimed/nonrecurring
+coverage, and conditional signup stays held without invented execution timing.
+
+Only the two failed methods were rerun: two passes, zero skips/failures,
+3.441 seconds. The original LCQ003 rules-only replay passes in 4.520 seconds
+(4.203 simulator repository create). Signup is untimed and usable; all seventeen
+other semantic rows/presentations and five complete lifecycle states remain
+stable, including original UTF8 and retry UUID identity. Source/project120 and
+all ten app-bundled Mach-O files match the final execution receipts. This one
+timing sample is not a latency qualification. Optional-response protection is
+the next separate milestone; no model, unseen, phone, population, whole-capture
+or release qualification follows. Initial failed evidence is retained.
+
+## 2026-10-14 — retain owned call questions and isolate call timing
+
+A source-proved finite Call/Phone purpose retains the complete proposition and
+anaphoric question. Its literal execution prefix alone supplies call timing;
+worker/start clocks remain context. Independently proved raw/normalized roles
+allow a timing-only execution-scope comparison (body nine/9 may differ); full
+literal comparison still governs non-timing ownership. A native coordinator vote
+cannot sever an already-proved adjacent anaphoric question. No global finite
+grammar, persistent schema, model response flag or generic noun permission is added.
+
+Optional interpretation guards protect final source-proved question, enrollment
+and inline contact rows using exact monotonic singleton source-word mapping,
+contiguous independently proved original intervals and due/reminder/intent plus
+visible payload equality. Disjoint good refinements survive; uncertain overlaps
+restore the baseline. Supplied proposals test this; real model generation is not
+qualified. Actual Claude Opus 5.5 reviewed each approved core and source-boundary
+repair. Original assertions remain; unsupported newly added assumptions about
+trace edges and pinned bare-at-eight reminder behavior were corrected explicitly.
+
+Three focused methods pass across successive source freezes: lifecycle0.912s,
+supplied-model guard11.391s, native/unavailable-language parser4.866s. Passing
+methods were not repeated. Stage diagnostics established the final split was
+native-language dependent. This is not one all-green latest-freeze suite.
+
+One original LCQ004 replay passes all call focus checks and preserves original
+UTF8, retry UUIDs and all five full lifecycle states (2.373s repository create).
+Ten other rows/presentations remain stable, but the condo email splits into
+email task and reason Memory: total12 becomes13. The integration milestone is
+therefore unresolved. Both Email parser branches are observed; direct causation
+by the Call-only change is not established. Durable evidence/ledger retain all
+failed runs and distinguish prepared-but-unexecuted replay versions. No overall
+accuracy rescore, unseen/phone/model/release qualification or distribution follows.
+
+## 2026-10-15 — source-own an outgoing artifact's dispatch deadline
+
+A transient positive Email source role keeps its exact artifact, quantified
+notice/warning reason and singular mandatory go-out BY-calendar restatement
+together before generic splitting. Independently matching raw/normalized
+source certificates allow only the request plus own BY span into existing
+timing readers. The notice duration stays literal context. Global speech-act,
+finite grammar, conjunction rules, storage and model schemas stay unchanged.
+
+The role refuses quoted/repair/foreign/conditional/negative/competing-artifact
+frames and own clocks hidden in artifact or recipient material. Literal
+calendar/number refusals grant no positive generic noun/entity authority.
+Unknown reduced-relative ambiguity and richer forms remain outside a universal
+accuracy claim. Parallel exact singleton-source bridge and disjoint-row guards
+protect full payload and timing from supplied optional interpretations while
+retaining an unrelated good refinement.
+
+Actual Claude Opus5.5 reviewed approved core twice: it caught the hidden
+relative-clock artifact before application; final recipient-range conditional
+was also closed. Root rejected opaque notice reasons and event-relative/
+recurring suffix authority before application. A new test's recurrence storage
+accessor compile error was corrected with the same nil assertion; no test had
+run. Three focused methods then pass once, zero failures/skips,6.234s. One
+original LCQ004 replay passes2.092s (1.827s create),13rows become12, and all
+eleven other rows/presentations plus five full lifecycle states/original UTF8/
+retry UUIDs remain stable. Source/project120 and all10 bundled Mach-O files
+match fresh compile/execution receipts.
+
+Morning resolves under existing9AM convention, not newly spoken precision or
+a dedicated stored strict-BY relation. Raw48/forty-eight drift conservatively
+declines the shortcut. This exposed rules-only result is not an aggregate
+accuracy rescore, unseen/model/physical-phone/full-suite/Release qualification.
+No new distribution was produced. The next milestone is partial numbered-work
+object/deadline ownership; midnight and booking behavior remain unchanged.
+
+## 2026-10-15 — preserve a numbered work object's completion and deadline
+
+A closed source role binds problem set/questions or assignment/exercises to
+its own partial-progress range and same-actor positive adjacent finish range.
+The complete literal sentence/IDs remain one component; its visible title
+uses only the stated finish verb, noun, remaining range and artifact. Exact
+raw/current source-role matching permits only the stated due span into existing
+timing, keeping numeric question labels out of clock parsing. Unsupported
+forms hold or use ordinary parsing; no generic noun or nearest-date authority
+is added. The existing singleton/disjoint optional-proposal guard protects
+resolved final rows while allowing good unrelated refinements.
+
+Root rejected arbitrary due nouns using a library-book return counterexample,
+caught private numeric-reader access before compilation, and pinned parsing
+fixtures to Toronto. Actual Claude Opus5.5 reviewed approved source/guard.
+Final title gating requires resolved/nonclarifying/due task, source determiners
+are lowercased only when moved inside the title, and competing calendar
+coordinators decline. Private organizer's held result is unclear; no observed
+held-task title bug is asserted from Claude's conditional concern.
+
+Three focused methods pass once, zero failures/skips,5.332s. One original
+LCQ003 replay passes2.517s (2.252s repository create):18rows become16, with
+one complete questions5-through9 task replacing three fragments. All fifteen
+other semantic/presentation rows, full professor question, coaddress send and
+untimed enrollment remain stable. All five full lifecycle states/original
+UTF8/retry UUIDs stay equal. Source/project120 and all10 bundled Mach-O files
+match execution receipts. No failed-method rerun was needed.
+
+This proves ownership only: current Wednesday00:00 is carried forward, not
+the unchanged gold23:59 expectation. Midnight semantics and booking target
+versus execution remain explicit contract questions. It is exposed rules-only
+development evidence, not unseen/model/phone/full-suite/Release qualification
+or an aggregate accuracy rescore. No distribution was produced.
+
+## 2026-10-15 — source-own a recognized retailer's cart label
+
+A literal own acquisition whose object is in my/our recognized retailer cart
+may supply that retailer's shopping-list metadata. Optional literal shopping
+before cart belongs to the same role. Exact closed merchant data supplies the
+name; capitalization, unknown names and physical-cart modifiers grant none.
+Wayfair, Etsy, eBay, Chewy and Amazon were added to the shared merchant data
+after primary-source verification, with no merchant-specific grammar branch.
+
+Only an existing resolved Shopping row changes group. Independently matching
+raw/current source roles and one exact literal raw occurrence in the current
+capture bind the label to that row. A complete temporal tail and optional one
+causal reason retain the original own timing and delivery context; they grant
+no new date, title, item, contact or execution authority. No last-store or
+capture-wide inheritance is added. An exact proved merchant span alone is
+excluded from this role's correction-cue lookup, so No Frills is not a repair;
+the unchanged correction grammar still checks every word outside that span.
+
+The existing singleton original-word bridge and disjoint-row optional-response
+guard protects a final source-proved cart row against clipping, dropping,
+regrouping and date drift. It conservatively restores the complete baseline
+row when visible wording or behavioral fields disagree; genuinely disjoint
+good refinements remain possible. No schema or persistent provenance flag is
+added. Actual qualification is recorded under ownedRetailCartMilestone: it
+is a union across the initial focus freeze and the parser-only correction
+freeze, with the initial failed run retained rather than relabeled green.
+
+This grouping-only milestone changes no booking or midnight contract. The
+exposed independent 22/25 review belongs to earlier per-case freezes and is
+not automatically incremented. A later semantic review is needed for a new
+score. Supplied proposals are not actual app model generation; no population,
+unseen, physical-phone, full-suite, Release or distribution claim follows.
+
+
+## 2026-10-15 — literal midnight at the end of an owned deadline day
+
+A source-proved deadline on a resolved Task may retain the named day with
+explicit endOfNamedDay boundary metadata. Wednesday at midnight then records
+spoken Wednesday and time 00:00, with the exclusive endpoint Thursday 00:00 in
+the intent's calendar. The endpoint is the next local day boundary, including
+DST; no 23:59 precision is invented. Today and deadline captions retain the
+spoken day until that endpoint. Ordinary midnight clocks keep their existing
+contract.
+
+Authority comes from the complete numbered-work due relation, or a bounded
+own action with governing BY/NO LATER THAN or a primary IS DUE matrix. The
+calendar read uses only its exact single-day span; a scoped current-weekday
+option preserves Wednesday at 00:30 while explicit next Wednesday still
+advances. Matching original/current words and role ranges are required. The
+proved NO LATER THAN occurrence alone is exempt from correction-cue lookup;
+all source outside that marker remains authoritative. No action or type is
+promoted. A primary assignment IS DUE currently routed as Event remains an
+Event with no new boundary metadata.
+
+Final rows require resolved positive Task, no alert, recurrence, location or
+held condition. Numeric 12 AM or 11:59 PM, start qualifiers, mixed days, zones,
+quotes, reports, negation and unsupported argument syntax decline this optional
+projection. The exact singleton/disjoint optional-result guard preserves the
+complete date, boundary and source; unproved final ownership keeps the rules
+baseline, while independently disjoint good refinements remain possible.
+
+midnightDeadlineBoundaryMilestone records actual focused results across their
+distinct freezes and the separate original-capture audit. The initial failed
+run remains evidence; it is not relabeled as an all-green latest-source suite.
+The final source-casing correction has a compile-only binding and a second
+strict original audit; the two focused passes remain on their earlier binding.
+The unchanged exposed gold 23:59 differs from exact next-day 00:00 by 60 seconds;
+this contract decision is not an accuracy pass. Independent 22/25 remains its
+earlier different-freeze review. Corpus/gold/thresholds stay unchanged. UI
+layout evidence, complete gates, Release and physical-device checks require
+their own qualification. Booking target versus booking execution remains the
+next separate contract question, with no implementation implied here.
+
+
+## 2026-10-15 — deadline layout and native toolbar interaction verified
+
+Today exposes the full absolute end-of-day deadline as its Edit button's
+accessibility value and places the wrapping caption below the task title.
+At accessibility text sizes, the Today title expands fully; normal text keeps
+its existing two-line limit. A screenshot review caught the former title
+ellipsis after the interaction test passed; this visual failure is retained.
+
+Two earlier signed UI runs failed a 36-point native Cancel accessibility-frame
+assertion. That frame did not establish the actual hit region. The ineffective
+label-size change was removed. Claude reviewed fixed taps at the button's
+center y ±21.5 points, requiring each point inside the navigation bar/window
+and actual dismissal with the saved item unchanged. The final single affected
+UI method passed in 109.353 seconds with no failures or skips, including both
+edge taps in light/regular and dark/largest-text scenarios. All four Today and
+editor screenshots were inspected: the complete task title and midnight
+caption are readable, and a due-only deadline keeps reminders off. Native
+Cancel/Save actions remain unchanged.
+
+The evidence is signed-simulator UI evidence only. Physical touch, animation,
+microphone, notifications and purchases remain separate checks, as do complete
+gates and Release. Independent 22/25 and the unchanged gold's 60-second
+deadline difference remain historical. Booking target versus execution timing
+is the next separate semantic milestone.
+
+
+## 2026-10-15 — reservation FOR timing describes the target, not execution
+
+A positively source-owned Book/Reserve action may retain its literal FOR
+calendar/clock as reservation target context while keeping the task untimed.
+The object, full visible title, place, party and target wording remain intact.
+A separately owned matrix execution date still governs the action. This is a
+bounded role proof, not global FOR/date removal, noun/POS authority, an extra
+event or a notification. Unsupported, competing, negative, quoted or unmatched
+source roles decline or hold. Target timing remains transient proof and visible
+source context; no new persistent target-date schema field was added. Previously
+stored clocks are preserved by recovery/backfill rather than reinterpreted.
+
+This contract deliberately revises seven development corpus expectations:
+SemanticCorpusDataF.swift:321 (table for 7); DataR.swift:421 (hall/Sunday),
+55 (ticket/15th August), 439 (mandap/twelfth); DataE.swift:535,610,613
+(appointment/February 29, February 28, June 30). These are original fixture locations.
+Four old unit assertion locations intentionally change: TemporalFullPathTests
+:361 testTemporalQuantityObjectsDoNotAcquireClockMetadata, :4987
+testPurchasePurposeProjectionPreservesDirectAcquisitionAndBookingClocks,
+:8328 testDatedEnrollmentAppositiveKeepsMatrixTimingAndRequiresMatchingSourceRole;
+IntentConsolidationTests:573 testDiscourseOwnershipLeavesIndependentNeighboursAlone.
+Sealed gold, original LCQ inputs/expectations, harness and scoring are unchanged.
+Historical corpus totals are not directly comparable after these declared edits.
+
+bookingTargetMilestone records the initial two passing guard/lifecycle methods
+and failed parser separately from its corrected parser-only pass. The correction
+changed only the new Morning Glory expectation: the app already resolved that
+opaque name as an untimed reservation. It is not a new app fix or all-three
+latest-freeze run. The strict original LCQ003 audit retains 16 rows, all 15 sibling
+semantics/presentations, fixed midnight, original UTF8, retry IDs and five complete
+lifecycle states. Independent 22/25 stays historical and unchanged. Next is one
+frozen full-pipeline development checkpoint on 20 previously failed synthetic
+captures and 224 unchanged expectations, with saved/retry/reopen evidence and
+actual Claude scoring. Fresh, population and model qualification remain separate.
+Exact scorer disagreements and the unchanged gold's 60-second deadline difference
+remain explicit; no arbitrary score gate or repeated model campaign is adopted.
+
+
+## 2026-10-15 — one frozen development checkpoint, provisional semantic grading
+
+One rules-only saved/retry/reopen checkpoint used the same 20 previously failed
+synthetic captures and 224 unchanged expectations on a bound 126-source/10-code
+freeze. All 20 durability checks passed. Four actual Claude Opus 5.5 batches
+reported a provisional 115/224 matched intentions, zero whole captures correct,
+and 18 unsafe-or-silent-incomplete/2 safe-incomplete verdicts. Structural reference
+validation is complete; semantic disputes remain explicit. This is no population,
+model, phone or launch qualification, no validated change from a provisional 95
+baseline, and no score threshold or unchanged 20-case/model loop is adopted.
+Historical score objects and gold remain unchanged. Next: restore action-owned
+call timing context, then retail list membership, with each source change reviewed
+and checked separately.
+
+
+## 2026-10-15 — a call keeps its source-owned timing preference
+
+A bounded same-contact relation keeps a literal call-timing preference visible
+on its Call/Phone action. Only the action's own matrix date/clock is parsed:
+“before ten” remains context, not an exact-ten appointment or a new alert.
+Pronoun binding requires an existing single conventional kin relationship; bare
+names require literal subject repetition. This is no general preference or
+pronoun resolver. Quoted, reported, foreign-possessor, mismatched, plural and
+unproved scopes decline. Optional refinement cannot shorten, drop or re-date
+the positively proved final row, while disjoint unrelated refinement can survive.
+
+The original exposed LCQ001 replay returns 19 rows from the earlier 20: one full
+Grandma Ruth call with Saturday 9 AM and no reminder replaces the split call and
+preference note. All 18 sibling semantics/presentations and five complete durable
+states remain unchanged. Evidence combines two historical guard/lifecycle passes
+with a corrected parser-only pass; it is not an all-three latest-freeze rerun.
+The compile-only test API typo and initial two failed coordinator-ID assertions
+remain retained. Original input, gold and historical scores are unchanged. This
+scoped milestone adds no accuracy/readiness claim; next is bounded recognized
+retail membership. Latest Release and complete gates predate this source change.
+
+
+## 2026-10-15 — source-owned recognized retail membership
+
+Fronted GET/GRAB/PICK UP at an existing recognized retailer, or that retailer’s explicit colon list, can own literal members without requiring every product noun in a vocabulary. Exact raw roles keep quantities, packaging and bounded terminal purpose text visible. Existing collection/result/person refusals and all-known purchase paths stay separate; no new merchant, timing, model or schema authority is added.
+
+Focused parser and save/reopen/refinement checks pass on unchanged production source; only the failed parser fixture’s IKEA casing expectation was corrected and rerun. Original exposed captures 008/009/016 now produce 3/4/2 correct literal Shopping entries. All five durable states pass. Of 39 siblings, 38 are exactly unchanged; one loses only the preceding sentence’s stray leading period, with every word, visible title, semantic field and presentation unchanged. The raw strict audit remains false and retained alongside this explicit punctuation disposition. No gold or historical score is regraded; next is coordinated task-object ownership.
+
+
+## 2026-10-15 — preserve literal original-sentence lexical context
+
+Independent-conjunct splitting now projects the existing lexical tags of one uniquely matching original sentence onto its exact literal part. UTF-16 mapping, token boundaries and full word coverage must agree; normalized, repeated or unproved parts keep the previous fallback. This preserves native evidence rather than adding noun or verb rules. Projection is lazy after early guards.
+
+Claude Opus 5.5 reviewed the source. Both new focused methods passed on their first execution, including actual simulator noun evidence, negative controls and disk retry/reopen/recovery. One execution of original exposed LCQ008 now saves the whole barbecue/patio-set task: 18 rows become 17, all 16 other rows are exactly unchanged, and all five complete durable states and immutable original words agree. An unexecuted audit-helper absent-operation serialization typo was corrected before auditing; no app, test or gold was changed for that correction. No broader accuracy or physical-phone claim follows. Next is the actual shipping-model failure and routing milestone; no unchanged broad model rerun.
+
+
+## 2026-10-15 — shipping model input/output contract, capability remains open
+
+Object declaration group labels now map by exact nonempty UTF-8 bytes to small internal labels. They are equivalence tags only; unit position supplies source evidence. Compact legacy numeric labels remain unchanged, and all purpose, metadata, reconciliation and whole-meaning validators remain required. The existing abbreviation and titled-name readers also keep Dr. Patel and Mrs. Abernathy together in runtime source units, without adding action, person or timing authority. No prompt, schema or bank changed.
+
+Claude Opus 5.5 reviewed both patches. Seven focused checks passed first execution, including semantic renaming invariance, byte-distinct Unicode labels, retained invalid-output rejection, legacy strict decoding and literal name/boundary controls. One actual bundled-bank LCQ002 observation confirms 11→9 complete source units, but the model still cancelled at the existing 20-second work deadline after 12.2225 seconds awaiting the SDK. The simulator repository call took 22.3796 seconds and saved one complete verbatim Needs Review item. All five states, original words, retry identity and zero effects are verified. This is safe incomplete, zero of ten intentions organized, and no accuracy/speed win. Historical scores and gold remain untouched; no unchanged generation rerun follows.
+
+
+## 2026-10-15 — booking party-size regression closure
+
+A single bare FOR cardinal immediately followed by AT clock now declines the optional booking-target reader, restoring the unchanged ordinary clock parser. Multiple FOR slots, explicit FOR clocks and ambiguous competing times retain their previous path. Claude Opus 5.5 reviewed the fix; four affected parser/persistence methods passed first execution, including native/missing tagger, retry and disk reopen. Only the one original failed corpus utterance was replayed and passed; the full1434 was not repeated. One contradictory recent held-test example was explicitly moved to stronger19:00 coverage, while original corpus and gold remain unchanged. This closes this regression, not full-unit, dense-model, population or physical-device qualification.
+
+
+## 2026-10-15 — reuse exact complete-source field scope
+
+Quotation and denied-cited-subject ranges are computed once per saved-field sentence scan, and child operation detection reuses only the identical complete-source field check already proved false by its partitioner. Public direct detection remains fully checked; no grammar, regex, cap or semantic permission changed. Claude Opus5.5 reviewed the approved diffs; private caller binding and shared quote ranges were checked locally. Five differential/guard methods passed (.333sec), including Unicode/CRLF/strict endpoints and failed-field prefix containment. The original own-SDK admission diagnostic passed once at11.117sec, without generation. Retained full-run evidence shows its earlier duration13.207sec; the1560sec belonged to the whole partial suite. These observations do not constitute a controlled performance benchmark or a25minute capture speedup. Full launch/product/device qualification remains open.
+
+
+## 2026-10-15 — independent fact after complete communication
+
+An existing declared-fact frame may close an inferred message only when its exact preceding communication independently has a complete direct action and supplied object. Explicit message markers, finite message prefixes, reporting and quotation retain their earlier scope. The original email/form plus cabinet fact now has separate Today and Memory rows with exact original source and stable retry/reopen identity. Claude Opus5.5 reviewed the mechanism. Original and disk tests passed first; the new varied-name parser test exposed a development switch retaining organization tags while suppressing person tags. Its one-line parity correction leaves default production behavior and private person rules unchanged; original assertions were retained and only that failure plus the parity test reran. Four unique focused methods pass across the two explicit adjacent source states, not a repeated final-source fullsuite. Routine and broader launch/model/device qualification remain open.
+
+
+## 2026-10-15 — cited hypothetical words preserve coherent Memory
+
+The last unresolved quotation-owner branch now recognizes one complete hypothetical saying plus explicit negative action classification as cited source. One balanced quotation, full matrix/suffix consumption and a bounded descriptive nominal adjunct are required; unknown predicates or extra actions decline. Earlier communication/report attribution, SourceVoicePlan, Actionability and all-resolved Memory merge stay unchanged. Claude Opus5.5 reviewed the source-only proof. Four affected checks passed first execution in4.229sec: original routine, exact source/word IDs and independent call controls, native/missing modes, file-backed duplicate/reopen/two recoveries with stable identities. A new-test property typo was corrected before any tests ran; no app fix or assertion was weakened. This is strict-frame regression evidence, not general quotation, long-model, population or physical-device qualification.
+
+
+## 2026-10-16 — bounded reference and regression evidence
+
+Four independently reviewed synthetic reference records now have exact complete-record digests for object-format adaptation. Original input, solution and lifecycle stay intact; no bank approval/status, eligibility or semantic guard changes. Two affected production projection checks pass. One actual no-generation clinic prompt admits three aligned references within4031/4096 reserved tokens. One subsequent changed shipping observation still returns zero model responses before the existing work deadline:22.7647seconds repository elapsed and14.6540seconds in the SDK await. Five durable states retain the complete original and zero effects, but zero of ten intentions are individually organized. This is safe incomplete, not accuracy or speed success; no unchanged generation rerun follows.
+
+Previously omitted mechanical coverage was executed once:1100 methods,1091pass,8fail,1skip. Failures are repaired individually. The first date-owner failure and its added boundary test pass (two methods,1.524seconds): the native communication reader no longer borrows a later independent buy action as the earlier call's finite body. Claude Opus5.5 reviewed the scoped evidence-range correction. Prior full-suite/corpus failures remain historical; neither these checks nor transcript durability qualify fresh population accuracy or physical phones.
+
+
+## 2026-10-16 — close omitted regressions and distinguish incomplete organization
+
+The eight original failed methods from the one omitted1100-method execution now have passing affected results, across explicitly recorded source freezes. Root fixes cover fronted date ownership, missing-object completion, complete owned-question components and literal coordinator provenance, complete nominal timing restatements, weak retailer versus explicit run membership, paired call-detail ownership and denial closure, and terminal wh-object gaps. The packing object-label failure was a test-contract correction: opaque equivalence labels are accepted while foreign source pointers remain rejected. Existing assertions, original captures and historical scores stay intact. New opposite controls exposed further coordinator and paired-detail failures; each is retained separately and only the affected methods were rerun after repair. This is regression closure, not a new full-suite or population score.
+
+Processing fallbacks now record append-only `organizationIncomplete` in the existing semantic-gap string field. They retain the complete original, one non-actionable held row and no operation/reminder effects. New receipts say **Words saved** / **Needs organization**; they do not ask for another recording or allow grouping alone to clear unfinished organization. Genuine split reasons and legacy stored reasons keep their prior behavior. There is no model-property, numbered schema or migration change.
+
+Eight focused core/presentation/storage methods passed first execution. The one dark/accessibility-XXXL typed recovery flow then exposed two real layout issues: recovery actions followed the whole long preview, and Edit followed a second full fallback title. Existing recovery actions now precede the preview for this reason; non-tutorial recovery items without pending/saved changes come first in Capture details with a three-line visual title preview. The unlimited immutable Original remains available and has a dedicated accessibility identifier. Tutorial, ordinary and operation receipt order remains unchanged. The same failed UI method subsequently passed all20 assertions, including exact original UTF8,44pt controls and retained reason after Cancel. The two earlier failures are preserved. Final unsigned Release compilation passes; existing warnings are retained.
+
+Claude Opus5.5 reviewed the authorized parser/core diffs and natural-language UI proposals. Private UI/model/repository/test sources remained local and were reviewed locally. Exact source/code bindings, raw results, review limits and screenshots are retained in the integration ledger's `organizationIncompleteSavedReviewMilestone`. No release number, distribution, phone installation or merge follows. Dense model responsiveness, fresh qualification and real-phone/Apple-service evidence remain open.
+
+
+### 2026-10-16 — exact instruction-count reuse and scoped model timing
+
+The complex-capture admission path now reuses its own exact instruction token count. The optional grouping helper returns the count paired with its admitted caution instructions; every omission uses the caller's already counted unchanged base instructions. This removes one duplicate SDK operation and its redundant failure opportunity within one invocation. It introduces no cross-request token cache or capacity credit and changes no source, schema, reserve, reference priority, deadline or validator. The existing admission-boundary and exact-request identity methods pass with six additional count assertions; current unsigned Release compilation passes.
+
+A single instrumented exposed LCQ002 shipping observation took 22.648 seconds and ended with no complete model response. Rules took 1.990 seconds, retrieval 1.960, saved-context loading 0.0116, and staged preparation through respond entry 4.557. The SDK wrapper waited 13.525 seconds before cancellation; it does not expose first token, queueing or pure inference. All five saved states preserved the exact original words, stable identity and zero effects. This is safe incomplete, with zero of ten expected intentions individually organized, not product correctness.
+
+An existing preparation-only diagnostic, executed once without generation, recorded a 3.360-second first token-counter capability call and a 0.102-second later schema count. Its explicit warm-up and different retrieval order prevent treating those durations as a reconstruction of the shipping gap. The complete request remains 4,031/4,096 tokens with the same four fitted references. No measured speed or completion gain is claimed.
+
+Claude Opus 5.5 reviewed the count reuse and the possible prewarm design. Early session warming was not implemented: current final instructions depend on capture/admission, and a benefit from a separate preparatory session is unproved. Apple's [prewarm documentation](https://developer.apple.com/documentation/foundationmodels/languagemodelsession/prewarm%28promptprefix%3A%29) does not guarantee immediate resource loading. Existing source guards, deadline and session behavior remain intact. Evidence: primary output integration ledger keys `denseCaptureCurrentShippingTimingMilestone`, `denseCapturePreparationProfileMilestone`, `exactInstructionCountReuseMilestone` and `denseCapturePreparationVerifiedReleaseMilestone`.
+
+
+## 2026-10-16 — strict text transformation and source-owned heading actions
+
+The existing compact object-declaration route now uses the general Foundation Models model with Apple's text-transformation guardrails and a String JSON response. Other routes keep guided generation. The complete source, reference selection, output reserve, deadline and downstream meaning/effects validators remain required. Original String JSON is checked for duplicate decoded keys, malformed/trailing content and contract-derived excessive container depth before conversion; a refusal or invalid response cannot trigger a second generation. Apple documents that this guardrail mode changes String responses; it is not equivalent to the default checks and can still produce a textual refusal. No generated content gains action authority from this setting.
+
+One actual no-generation LCQ002 admission fits at3,967/4,096 tokens, including the unchanged768-token output reserve and the same four complete projected references. Both offline String bridge methods pass. A separate checked whole-unit proposal remains rejected by the unchanged source-action guard: the nominal clinic heading obscures its subsequent command. This is a source-reader capability gap, not permission to remove that guard or treat a hand-authored proposal as a successful model response. No complete native String response, speed gain or whole-capture accuracy is measured yet.
+
+A positive category/list heading can now supply context to its complete adjacent literal command. The supported determined opaque topic and optional this/next-week window retain exact source ranges and word IDs. Only the command supplies contact, due date, reminder or other action metadata; a heading window is not a task clock. Reporting, negation, quotation, unresolved conditions, independent Memory and conflicting windows decline this proof. The first focused method passes native and missing-assets modes, original supplier wording and a fresh opaque heading with independent timed Print action. The complete Call-and-reorder action retains Henry Schein in both modes. Claude's initial partial-name concern came from a different, shorter baseline fragment; its subsequent actual review closes only that specific blocker. General entity classification, intention count and complete LCQ002 remain open.
+
+Evidence: integration ledger keys compactStringCompleteAdmissionMilestone, compactStringOfflineValidationMilestone, compactStringSourceAuthorityCausalMilestone and headingActionAuthorityMilestone. Historical failed proposals and scores are retained unchanged. No schema, distribution or phone-installation change follows.
+
+
+## 2026-10-16 — source-owned preparation before a pickup
+
+An unchanged proposed task can use a complete literal pickup/preparation role: one object and dispatch purpose, one affirmative external pickup clock, and a direct same-object imperative explicitly due before then. The task uses that cutoff and retains BEFORE plus full object, purpose and pickup context visibly. It does not acquire an alert or an extra pickup event. All existing source, state and effects guards remain; the general before/after relationship is still represented by the literal title/source and due cutoff, without a new temporal field. This is a validator capability, not a new whole-capture fast path.
+
+The original 11 a.m. case and two varied source components pass exact cutoff/day/time, complete source/word IDs and zero-alert checks in native and missing-assets modes. Twelve opposed shapes passed in the first run. The varied uppercase2PM case initially exposed a real existing clock-reader bug: a case-insensitive regex fed a case-sensitive meridiem comparison. Folding the captured meridiem fixes it. Only the failed positive method reran, and passes; the opposed method's passing result remains on the immediately preceding source freeze. A resolver-name compile typo was corrected before execution; both failed compile and failed affected result are retained.
+
+Claude Opus5.5 reviewed the authorized source proof. The private clock comparison was checked locally; Claude reviewed its synthetic failure and proposed repair concept in prose, without receiving private Organizer source. This proves the bounded source/metadata component, not general deadlines, entity recognition, complete LCQ002, model completion, phone presentation or population accuracy. Evidence: pickupPreparationInitialAffectedMilestone and pickupPreparationDeadlineClosureMilestone in the integration ledger.
+
+
+## 2026-10-16 — shopping-trip ownership, written closure content and local call context
+
+The complete planned-trip acquisition frame now gives its literal products the stated retailer and day. Its refinement bridge accepts an omitted initial AND only when the actual disfluency trace proves that exact single original word was removed; creation-text and original-text ledgers keep their distinct namespaces. No invented word ID or general provenance relaxation is permitted. Both affected methods pass after the retained initial failure: original Costco/Saturday and fresh Staples/Friday quantities remain correct, a hostile store/date change is restored, and an independently supplied Print roster title survives. Sixteen opposed forms decline.
+
+An affirmative Update/Print/Reprint instruction with a complete written closure notice keeps closure dates as document content. Only a separately proved execution date can time the task. Both focused methods pass, including original/fresh notice content, fronted and trailing Tuesday execution dates, opposed forms and raw-source mismatches. Full sign/placement/closure wording and original word identities remain intact.
+
+A complete local apposition plus reported reminder-call request and explicit resulting call day can bind the local recipient. The app keeps appointment/report wording as context, uses only the call's own calendar day, and creates no alert from a third party's request. Both focused methods pass with Mrs. Abernathy, Professor Leto and Dr. Neris, an earlier Dr. Patel control, sixteen opposed forms and four raw-source drifts. The existing complete-person reader supplies the name; no name/title catalog, prior-contact lookup or G19 permission changes.
+
+Claude Opus 5.5 reviewed the authorized source changes and synthetic reports. Private Organizer and tests stayed local; their integration and raw-source invariants were reviewed locally. These six affected methods pass across their explicit successive source freezes in native and missing-tagger modes. They establish component behavior, not a complete model response, final complete-capture grade, fresh population accuracy or physical-phone qualification. Evidence: plannedRetailTripClosureMilestone, writtenArtifactContentClosureMilestone and appositionalCallClosureMilestone in the integration ledger.
+
+
+## 2026-10-16 — terminal organization failure precedes optional refinement pinning
+
+The actual compact String deadline run exposed a regression at the final Engine boundary: a canonical whole-original processing review has no invented word IDs, so the planned-shopping preservation guard rejected it at G26 and restored fifteen ordinary resolved parser rows. The incomplete organization was unmarked. The original failed run and its stable-but-wrong durable states are retained.
+
+After the existing complete operation handoff, an exact canonical factory-item match with empty baseline and result operations now terminates before optional refinement/shopping/list preservation. The returned items are freshly constructed from the actual immutable transcript, retaining the original bytes and processing-review reason; the runtime method is preserved. Arbitrary held proposals do not gain this route. G26 and all provenance/action/timing/effects guards stay unchanged. Three focused methods pass first execution: actual Engine with both factories/native and missing-tagger modes, file-backed create/retry/reopen/two recoveries with one inert Needs organization row and stable identity, and existing operation precedence. No new SDK generation was used for this closure.
+
+The complete unchanged singleton communication now retains its independently proved ordinary recipient at final metadata projection. Full original UTF8 ownership, exact existing argument/recipient ranges and labels, resolved source personFollowUp and non-low confidence are required; conflicting supplied contact rejects the proposal. This changes person metadata only. Two new methods and the original failed complete-capture method pass: ten shaped items now pass all thirteen retained field checks, including Dr. Patel. It is a checked proposal, not a successfully generated model result.
+
+Claude Opus 5.5 reviewed both authorized Extractor deltas. Private repository/test sources stayed local. The exact source bindings and historical failures are recorded under terminalProcessingReviewHandoffClosureMilestone and completeOriginalRecipientMetadataClosureMilestone. Dense model completion, fresh qualification and physical-phone/Apple-service evidence remain open.
+
+
+## 2026-10-16 — bounded optional-reference experiment did not close completion
+
+An optional whole-record correction-teacher eligibility experiment reduced the exposed clinic request from 2,418 to 2,151 prompt tokens. Two admission methods passed before one changed native observation; the same six records were selected automatically and exactly the prior fitted set minus the correction teacher remained. Instructions (786 tokens), complete current source/context, schema transport (zero), response reserve (768), validators and twenty-second runtime deadline stayed unchanged. No teacher text was clipped. Absence of a recognized correction junction is only a relevance heuristic; it does not prove the absence of implicit corrections.
+
+The actual model still returned no complete response. Repository creation took 23.041 seconds and SDK awaiting took 14.170 seconds. The terminal handoff fix now preserves one inert full-original Needs organization row through retry, cold open and two recoveries, with stable identity and no effects. This is safe incomplete, zero of ten organized intentions, not an accuracy or speed improvement. The mechanical lifecycle test passed; the semantic result failed. Stop reference tuning and unchanged generation; review the next root-cause step with Claude. Source126, compiled MachO10, bank, input and gold post-binding passed. Evidence: optionalCorrectionTeacherNativeOutcomeMilestone.
+
+
+## 2026-10-16 — retain guided structure after one closed streaming diagnostic
+
+One explicitly opt-in synthetic DEBUG streaming observation exposed an 825-byte partial with a Markdown fence, malformed declaration arrays, an invented heading task and structural unit IDs in rewritten meaning. Cancellation ended iteration, and the explicit post-EOF cancellation check prevented return, decoding or effects. All five saved states retained one complete-original inert Needs organization row. Four diagnostic controls passed before that observation. Streaming differs from respond; this is not proof of the internal cause of prior respond timeouts. Temporary streaming code and its two temporary tests were then removed using exact beforeimages.
+
+With actual Claude Opus5.5 review, the existing schema-enforced object-unit route is restored: default model, canonical object instructions/schema, actual schema-token accounting and one guided request. Mandatory complete reconciliation and all source/effect guards are unchanged; schema shape does not grant meaning authority. Five existing affected controls pass, including the full checked clinic10items/13fields and real SDK26-unit Train/Garden admission (3,869 and4,071 reserved tokens of4,096). No generation occurred in these controls. Earlier guided timeouts remain failures. An independent retained-request comparison found only a small fallible personFollowUp hint changed; restoration alone does not justify another native generation. Stop that loop and continue general complete-source proof work. Evidence: outlineStreamActualPartialDiagnosticMilestone, guidedObjectUnitRestorationClosureMilestone and the anti-loop audit.
+
+
+## 2026-10-16 — complete addressed-choice questions own their content
+
+A bounded whole-source role now proves an own Ask/Check-with recipient, a fully consumed pronominal want/need question with two calendar alternatives, and an optional same-subject final-say clause. Exact ranges distinguish the asking day from dates in the question. Timing and the later unsettled-plan check use the same proved matrix span; unsupported sources retain whole-text checks. Check-with remains a task, and its literal recipient reaches final indexed metadata only for unchanged complete source whose ordinary organization equals the complete Short proof. Generated-contact conflicts, withdrawal, source ownership and actionability checks remain unchanged. No persistent schema or model-request changes.
+
+Actual Claude Opus5.5 reviewed the authorized deltas. Its initial metadata-inert claim lacked the final assignment; the corrected review retracts that claim, and its producer-provenance condition is enforced by semantic equality. Two initially failing affected methods now pass; the equality-only follow-up reran just its one affected method and passed. Controls retain original words/IDs, matrix-day ownership, unresolved matrix alternatives and conflicting recipients under native and forced-missing taggers. This closes the bounded question component, not dense automatic organization or launch qualification. Evidence: completeAddressedQuestionIntegrationFixInitialClosureMilestone and completeAddressedQuestionReviewedClosureMilestone.
+
+
+## 2026-10-16 — complete follow-up matter and reference context
+
+The portable complete-source certificate now recognizes an own Follow up with literal endpoint, one fully consumed determined/genitive document matter, and optional reference-number location in a determined file/folder phrase. The existing document/storage head data and byte-identical structural modifier exclusions supply bounded syntax; no company, surname or color catalog is added. Recipient metadata requires the complete original target occurrence. Source quote, raw transcript, analysis and all word IDs remain complete, and existing organizer guards must independently confirm resolved untimed/no-alert/no-location/no-repeat metadata. Unsupported tails and separate Memory requests decline this role; a separate complete second act remains a separate task. Whole indexed ownership, correction and G19 guards are unchanged.
+
+Actual Claude Opus5.5 conditionally approved the source; local compile and focused checks close its unit-count, metadata and purpose-caller conditions. The first portable/no-model method passed. The second method initially failed an incorrect new test oracle: optional generated wording is deliberately ignored for a whole unchanged row, so correct resolved full-original output need not be held. No product meaning-loss bug was demonstrated. The corrected method asserts full returned-item equality and original analysis/raw/title/IDs, and passes without changing product source. Both tagger modes, conflicting recipients and whole-capture withdrawal/duplicate controls remain covered. Historical failure and correction are retained in completeFollowUpInitialMeaningLossFailureMilestone and completeFollowUpReviewedClosureAndOracleCorrectionMilestone.
+
+## 2026-10-16 — fresh qualification exposure audit
+
+A metadata-only audit found no independently authored unseen October replacement for the retained September27 240-case set. That set is explicitly exposed development data after failed qualification and post-gate changes. Earlier shorthand describing a fresh240 not yet executed was insufficiently grounded and must not imply unseen qualification. After the final candidate freeze, independently author and audit a new 240/12x20 set, seal expectations before outputs, run once through the bundled production repository, and independently score whole captures. Mechanical lifecycle passes and old exposed sets cannot substitute for that measure. Evidence: freshQualificationExposureCorrectionMilestone.
+
+
+## 2026-10-16 — complete invoice before-day source role
+
+A complete optional-please Pay/document/BEFORE-one-calendar-day role now preserves exact object, deadline and day ranges before generic clock peeling. Its document subtree supplies nominal structure only; the Short wrapper independently requires an existing Pay-positive head/service reading. In the current data, the head intersection is invoice. No global verb, payment catalog, clock policy, reminder or money effect is introduced. Original full BEFORE wording reaches the existing organizer and independent clock equality checks; CompleteLiteral retains established rule alignment and all indexed ownership/G19 guards.
+
+Actual Claude Opus5.5 conditionally approved the patch; local vocabulary/constant checks and focused results close those conditions. Full indexed metadata passed initially. The new portable test's only initial failure required its canonical analysis to keep a final full stop; existing alignment intentionally keeps canonical analysis without that period while raw/source preserve it. The corrected affected method verifies exact canonical words and full immutable original/IDs and passes without a product change. Six positive owner/date forms, invalid/competing dates, conditions, extra acts, separate complete tasks and no-recipient/no-alert checks run under both tagger modes. Evidence: completePaymentInitialCanonicalAnalysisFailureMilestone and completePaymentReviewedClosureAndCanonicalOracleCorrectionMilestone.
+
+## 2026-10-16 — automatic composition still needs complete body proofs
+
+Manual whole-proposal acceptance is not automatic discovery or proof of intention count. headingActionFrame establishes action authority and context timing, but cannot by itself certify arbitrary body cardinality. Actual Claude recommends a fully consumed supplier-call/reorder transaction role before composing captures; quantity, size and same-product depletion context need independent positive ownership. Generic CompleteLiteral alignment must not be loosened to merge fragmented rows. A later composer requires unique complete original interval coverage followed by unchanged reconciliation, indexed meaning/effect checks and shopping shaping.
+
+FoundationModels enum API availability is an OS26.4 restriction, distinct from model hardware availability. Pure semantic helpers can be callable on an iPhone13 running a supported OS without model generation; identical iOS17+ behavior would require portable seams. Physical13 OS and actual-phone behavior remain unconfirmed. No new native model request is justified by unchanged transport alone.
+
+
+## 2026-10-16 — complete quantified phone-order transaction and scoped handoff
+
+A portable source-only role proves one Call/literal-endpoint AND reorder transaction: one positively supported product, a positive package quantity distributed across two distinct existing sizes, and optional same-product last-package context. Size aliases use the existing canonicalization; adjacent product families, duplicate size aliases, foreign/quoted/negative/conditional/corrected source and residual actions decline. The Short certificate independently checks the complete recipient occurrence, whole own voice and resolved untimed/no-effect organization. Full raw/source/analysis and every original word ID remain together; no global verb, company, product or reminder authority is added.
+
+The actual no-model Engine initially kept three old fragments because generic alignment disallowed one complete result replacing three guesses. A phone-only admission now accepts the fresh complete whole-original singleton only over unrepaired exact-owned baseline fragments with no existing timing, alerts, location, recurrence or shopping effects. Generic alignment and indexed/G19/G26 guards remain unchanged. Existing semantic alignment may retain a prior shopping group; the new assertion verifies retention rather than incorrectly requiring refusal.
+
+Actual Claude Opus5.5 conditionally approved the concrete delta. The one failed extraction method alone was rerun and passed (4.974 seconds for all assertions, not per-capture latency): no-model Engine, direct rules entry and configured runtime producer give identical whole meaning without loading context. Native and forced-missing taggers, four source-role variants, opposed guards and repaired/effectful-baseline checks pass. The earlier full indexed phone method remains passing evidence on its own freeze. Whole mixed-capture composition and fresh qualification remain open. Evidence: completePhoneReorderInitialPortableHandoffFailureMilestone and completePhoneReorderReviewedPortableHandoffClosureMilestone.
+
+## 2026-10-16 — unique complete-source composition and original capture evidence
+
+Compose only an unambiguous complete original-role cover, then require the existing staged reconciliation, indexed meaning/effects validation, shopping provenance and final Engine guards. Complete component proofs supply roles rather than a guessed answer count. The composer returns validated unshaped parents as rules output; configured and no-model entries use their normal shopping pass. Exact described-contact projection preserves source-proved Task/nil-person semantics, while inferred-contact clearing is confined to this producer. No persistent schema, reference eligibility or model request changes.
+
+The actual exposed clinic capture independently matches all ten unchanged sealed intentions and no prohibitions, beyond its thirteen field checks. Native and forced-missing taggers produce identical configured, no-model and direct-rules results; all 163 original word occurrences are owned exactly once. Create, retry, fresh open and two recoveries retain the same ten item IDs, exact 912-byte original, metadata and presentations, with no alerts or operations. Simulator Engine observations were 2.368/3.386 seconds and repository creation 4.225 seconds; these are observations, not physical capture or SDK inference latency.
+
+The initial varied/capacity failures remain retained. Only the failed method reran after the scoped described-contact handoff fix, and passes: eight positive runs (forward/reversed mixed captures with nine rows, then 25 and 30 tasks, each under both tagger modes) and twelve opposed composer declines. Direct supplied-contact rejection, noncomposer described Task/nil-person projection and named explicit reminder/source-clock controls also pass. Independent review of all eight actual output arrays finds complete literal meaning and metadata, without invented identities or missing tails. Only the explicit self-reminder retains notification metadata, using the pinned date-only default. Historical scores and gold remain unchanged. Evidence: automaticCompleteComposition ledger checkpoints 154–158 and both independent meaning audits.
+
+## 2026-10-16 — portable complete-source composition checkpoint
+
+Two affected methods pass: eight positive portable/modern/actual-Engine parity observations (9/9/25/30 rows in both tagger modes), twenty opposed declines and direct independent Sam calls with two owned dates. Original configured/no-model/direct outputs remain field-identical to the independently audited ten-intention result; the varied outputs likewise equal their earlier independently audited arrays. No historical score or gold changed.
+
+Actual Claude review remains conditional. Its disputed portable same-person/two-date concern was adjudicated locally from per-row evidence scope and is now covered by the passing direct control; this is not unconditional external approval of portable behavior. Compilation targets iOS 17, but these checks ran on iOS 27; available simulators are 26.5 and 27. Actual iOS 17 runtime and physical-phone behavior remain untested.
+
+The remaining nineteen exposed originals still need full-capture decisions. Their next checkpoint uses the real bundled shipping runtime, not the earlier rules-only diagnostic plan. Fresh independently authored/sealed240 follows known-failure decisions and final candidate freeze; final integrated gates and Apple/device evidence remain open. Evidence: ledger161–162 and the retained field-comparison audit.
+
+## 2026-10-16 — remaining nineteen bundled captures stop safely at the deadline
+
+One current bundled shipping checkpoint ran the nineteen previously failed exposed originals after portable composition. All nineteen reached the existing twenty-second runtime deadline and retained one inert full-original Needs organization row. Independent audit verifies exact original UTF8, stable identities and identical create/retry/fresh-open/two-recovery states, with no alerts or operations. Result: zero correct captures, nineteen safe incomplete, zero unsafe or silently incomplete. Mechanical lifecycle PASS is not organized-meaning PASS. Historical scores and gold stay unchanged.
+
+Simulator repository-create times were median 21.706 seconds, minimum 21.206 and maximum 26.510. These measure that call only, not ASR, physical responsiveness, TTFT or token throughput. The attempted profiler recording never started at privacy consent; it provides no telemetry. Work returns to a bounded completion/performance root-cause decision with Claude, with no unchanged native rerun. Fresh240 and final qualification wait.
+
+## 2026-10-16 — LCQ013 telemetry and bounded CPU measurement
+
+A later successful Foundation Models Instruments diagnostic for exposed LCQ013 records one request: 1,395 consumed tokens, 410 generated, zero cached; 4.735 seconds from request to response start and an 8.084-second response interval. Approximately 7.372 seconds of runtime work preceded SDK entry; no reference teachers were admitted. The existing twenty-second deadline still cancelled the SDK await; no outline was accepted, and the complete original stayed held through five saved states. Exported telemetry contains no response content. A response_complete signpost does not establish valid completed JSON, and these simulator observations establish neither physical-phone throughput nor the unlocalized preparation cause. The earlier failed recording remains failed history.
+
+The one pure ownership-batching check passes (zero failures/skips) with equivalent results and no SDK/token-counter/bank calls. Median measured work falls from .004901166 to .000221875 seconds, a .004679291-second difference. This narrow CPU saving is insignificant to the observed deadline failure; no native rerun is justified for it. The nineteen-capture result remains zero correct, nineteen safe incomplete. Completion-root work continues without changing gold or repeating an unchanged generation.
+
+## 2026-10-16 — preparation counterevidence and failed outline restoration
+
+One no-generation diagnostic measured 4.589 seconds of staged preparation, including a 3.362-second schema-count await. This does not prove a cold-start cause. Historical nineteen-capture evidence uses a different window: many post-cues-to-SDK intervals were already .65–.83 seconds, including .54–.61 seconds of fitting, yet organization still timed out. A prewarm experiment is deferred rather than treating the isolated slow await as the common cause.
+
+A materially changed first response, `{byUnit,rewriteGroups}`, passed four pure representation/guard checks. Its one LCQ013 shipping observation still cancelled the first outline at the unchanged twenty-second deadline: 22.714 seconds in the repository, no completed response, decoder or revision reached, and one full-original inert held row through all five states. Result: zero correct, one safe incomplete; no demonstrated improvement.
+
+After source126/code10 postbinding, the exact prior Extractor and test beforeimages were restored (c09bae/815aa2). Failed candidate, pure passes and whole-result evidence remain retained. Debug products still contain the rejected candidate and require rebuilding before future checks. No unchanged rerun or further format loop follows. All nineteen remain unresolved; next is source-grounded conditional retail availability parsing with Claude. Historical gold/scores and final/device qualification limits remain unchanged. Evidence: ledger170–174.
+
+
+### 2026-10-16 — availability belongs to a proved shopping member
+
+A direct buy/purchase/order list at a recognized fronted retailer may retain one closed availability suffix (if they have it, if available, or if in stock) on an interior comma-delimited member. This is visible manual checklist context, with no monitored condition, reminder, location trigger or operation. Original entry ranges, qualifiers and all occurrence identities survive ordinary shopping expansion. The source-only shortcut declines first/final/multiple qualifiers, alternative/negative conditions and competing acts or stores. Ambiguous bare unknown names decline; unfamiliar articulated, quantified or packaged items retain existing literal-envelope authority. Bare unknown compounds need existing product evidence. No product vocabulary was added.
+
+Only this independently proved family permits a confidence-only comparison adjustment when checking the complete rules result; all other fields remain exact and the actual rules result is returned unchanged. Whole-source composition and modern indexed validation retain complete coverage, ownership and exact metadata checks. Unanchored optional generated wording remains ignored under the existing policy, so it cannot replace the original retailer.
+
+
+## October 16, 2026 — preserve owned AFTER/BEFORE clock meaning
+
+Independent grading of the complete rules-only LCQ013 saved result demonstrated that Wednesday after six was stored as an exact 6 PM appointment and became overdue when its availability window opened. Literal wording alone did not repair that typed/presentation defect. The correction adds optional encoded clock-boundary metadata and preserves it through source-proof refinement, persistence, Today, brief/widget presentation and editing. No schema column, automatic alert, model-origin authority, legacy reinterpretation or arithmetic-clock change is introduced.
+
+The source producer requires a complete explicit-day execution role and agrees with original source ranges. AFTER uses the owned day-end policy; BEFORE uses its cutoff. Unsupported actionable bounds remain visibly unsettled, while inner message/report/quote clocks remain content. Requested reminders require an explicit exact-time choice. Stale notification snooze/tomorrow and lossy date-only moves cannot turn a bound into AT; an explicit full date plus AT replacement remains supported.
+
+Claude Opus 5.5 reviewed the design and authorized Extractor/Clause source guard changes; private model, Organizer, persistence, UI and test source stayed local. Sixteen independently authored development expectations were audited and sealed before application outputs. Verification results are recorded separately in the integration ledger; this decision does not claim final unit, population, native-model or physical-phone qualification.
+
+
+The initial ten focused methods yielded nine passes and one real month-date failure: November 20 after 7 PM was read as twenty minutes after seven. Parsing the exact owned clock adjunct after calendar/source-role separation fixes it; only the failed method reran, passing native and missing-asset modes with real arithmetic and conflicting/invalid date controls.
+
+Independent development evaluation then found two new unnecessary message holds. A timing-only THAT-message proof now reuses the existing recipient, determined nominal subject and descriptive schedule predicates to separate content from execution. It retains the whole original and classification/person decisions. A complete fronted temporal prefix owns an outer AT clock with or without a comma. Calendar-shaped recipient text is refused after a two-word fallback incorrectly captured Leo Friday as a name. Source/refinement/raw-role guards remain. The single failed method passes after the narrow refusal, including Unicode ranges and opposed scopes. Only the original two failed captures reran through actual saving/recovery, and independent Claude grading finds both correct. This is not a rolling sixteen-case accuracy percentage.
+
+The original long rules-only capture now preserves AFTER six in typed intent and captions. Its program/printer/300-copies/sponsor instructions remain together in one dated task, changing thirteen rows to twelve. A comparison note incorrectly called the other rows unchanged; integration checkpoint192 explicitly corrects that note and preserves the failed comparison. Claude permissively graded all eleven intentions correct, but root does not accept whole-capture qualification: Tonight still becomes an exact 8 PM contrary to the existing no-added-precision contract. The raw grade and this stricter product adjudication are both retained. Current configured-model completion, fresh evaluation and physical phones remain open. See integration checkpoints184–193.
+
+
+## 2026-10-16 — defer named dayparts and merge only completed scope
+
+The attempted one-off named-daypart candidate is deferred. Its focused checks initially passed fourteen of fifteen methods; the single failed method then passed after correction. Those results belong to the excluded candidate, not the restored shipping source. Actual independent Opus 5.5 review of its original exposed LCQ013 output found ten intentions correct, one safe incomplete and none unsafe, but the whole capture failed: thirteen rows exceeded the sealed maximum of twelve, the separate sponsor-logo task lost programs/deadline context, and an opening Memory note was not the explicitly tolerated Event. The review is development evidence, not a population score or launch qualification.
+
+All twenty-seven affected paths were restored to the exact pre-daypart completed clock/message source. No `NamedDayPart` field ships. The original Tonight-to-8-PM precision defect and whole-capture completion remain open. Completed source-proved AFTER/BEFORE clock boundaries, THAT-message timing ownership and bounded shopping-member availability remain in scope. Integration checkpoints 194–197 retain candidate results, the actual grade and restoration; earlier failures remain unchanged. Final canonical checks and merge results must be recorded from their actual outcomes.
+
+
+## 2026-10-16 — final completed-scope wrap verification
+
+The completed restored source was frozen across 126 Swift/project files. The canonical corpus gate passed: 1,434 cases, 1,425 clean, zero critical/behavioral failures, two metadata and seven cosmetic failures; zero blocking. The unsigned generic-device Release compile passed with existing warnings retained. The final canonical full unit run FAILED: 2,423 passed, 24 failed, 13 skipped and one expected failure across 2,461 reported tests. No replacement full run, assertion weakening or diagnostic suppression was performed. These are regression observations, not population accuracy.
+
+Read-only triage finds seven direct native lexical prerequisites failing with unavailable English tagging evidence, several assertions conflicting with intentional completed contracts, and the previously retained NR03 checked-five versus saved-eight incomplete handoff. Historical-message splitting, name/title metadata, the Train teacher admission budget and the measured semantic p95 of 313.611 ms against a 250 ms budget remain unresolved. The monthly StoreKit test failed only its expiry assertions: local Xcode state marked the transaction expired while all three SDK surfaces returned the same verified future-dated entitlement. Purchase/replay/restore assertions reached without failures; the whole test remains failed. No production expiry fix is justified by this evidence. No new unsafe clock/effect or withdrawn-action resurrection was demonstrated by the parser failure messages; this is not a no-regression guarantee.
+
+The one signed dark/AXXXL saved-review UI check also FAILED at its expected Words saved receipt. Retained video shows Saved on this iPhone / Organizing your thought; the final accessibility hierarchy shows organized clinic items on Today. The current fixture did not exercise the intended terminal incomplete-review journey, so that journey is not qualified by this run. Source/binary binding and failed attachments are retained. No test fixture or product code was changed to obtain a green result.
+
+The user explicitly requested wrapping and merging the completed source work, then asked to hurry and stop consuming usage. The merge records these red checks and unresolved launch limits rather than declaring the app launch-ready. The excluded daypart candidate remains excluded. Native dense completion, faithful Tonight precision, fresh unseen evaluation, physical speech/auto-finish, notification delivery, real purchase/restore and installed-build upgrades remain open. No distribution build, phone installation or App Store Connect change is included.

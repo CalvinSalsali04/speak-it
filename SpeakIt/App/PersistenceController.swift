@@ -8,13 +8,14 @@ enum SpeakItMigrationPlan: SchemaMigrationPlan {
             SpeakItSchemaV2.self,
             SpeakItSchemaV3.self,
             SpeakItSchemaV4.self,
-            SpeakItSchemaV5.self
+            SpeakItSchemaV5.self,
+            SpeakItSchemaV6.self
         ]
     }
 
     static var stages: [MigrationStage] {
         // Every stage is lightweight because every one of them only adds
-        // optional attributes. No existing value is read, rewritten, or at risk.
+        // optional attributes or a separate entity. No existing value is rewritten.
         //
         // What version 2's new columns *mean* for pre-existing rows is filled in
         // after the store opens, by an idempotent backfill that can safely run
@@ -41,6 +42,10 @@ enum SpeakItMigrationPlan: SchemaMigrationPlan {
             .lightweight(
                 fromVersion: SpeakItSchemaV4.self,
                 toVersion: SpeakItSchemaV5.self
+            ),
+            .lightweight(
+                fromVersion: SpeakItSchemaV5.self,
+                toVersion: SpeakItSchemaV6.self
             )
         ]
     }

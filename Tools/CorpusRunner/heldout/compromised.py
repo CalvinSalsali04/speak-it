@@ -36,6 +36,11 @@ written up. Check an id against this module, never with `grep -r`.
 IN_TUNED_MATERIAL = {
     "C049": "SemanticCorpusDataQ.swift; devsets/routed.tsv RC02; devsets/coordination.tsv RS04",
     "C100": "four SemanticCorpusData*.swift files and six hand-written test files",
+    # The legacy set/gold remain unchanged; this newly known row is not unseen.
+    "C101": ("Detected 2026-10-14: exact normalized overlap in "
+        "SpeakItTests/PersonMentionTests.swift; observed file SHA256 "
+        "55679be5a725548cf4e489c99c2721288901bf88151a8418b88c2c2f2338dcd5; "
+        "fixture line and introducing authorship unresolved."),
     "C342": "SpeakItTests/LocationReminderTests.swift",
 }
 
@@ -86,10 +91,10 @@ CATEGORIES = (
     ("exposed without inspection", EXPOSED_WITHOUT_INSPECTION),
 )
 
-# Calvin's "five compromised captures": the union of the two categories that
-# describe the state of the repository. Kept as its own name because it is the
-# number quoted in the baseline and in his instruction, and a reader has to be
-# able to get from that five to the exclusion set used here.
+# The union of the two categories describing the repository's state. The
+# initial 2026-09-11 cohort was Calvin's "five compromised captures", retained
+# in historical baseline figures. Later dated disclosures join this union
+# without rewriting those historical results or removing legacy captures.
 COMPROMISED = set(IN_TUNED_MATERIAL) | set(VERBATIM_IN_DOCUMENT)
 
 # What the clean sealed score excludes: every capture documented as not unseen,

@@ -16,24 +16,29 @@ enum SubscriptionPricing {
 /// can only ever move upward — reinstalling, restoring a backup, or clearing
 /// the defaults domain cannot mint a fresh allowance.
 ///
-/// Keychain failures are never fatal. If the item cannot be read or written the
-/// allowance simply falls back to `UserDefaults`, which is the behavior that
-/// shipped before, rather than blocking capture.
+/// Compatibility reads remain optional. Durable V6 migration distinguishes
+/// an absent counter from an unreadable one so it never seeds a smaller
+/// allowance baseline while the Keychain is temporarily unavailable.
 enum FreeCaptureLedger {
     private static let service = "com.calvinwak.SpeakIt.freeCaptures"
     private static let account = "lifetimeCaptureCount"
+    static let keychainAccessibility = kSecAttrAccessibleAfterFirstUnlock
 
-    static func storedCount() -> Int? {
+    static func storedCount() -> Int? { try? readCount() }
+
+    static func readCount() throws -> Int? {
         var query = baseQuery
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
 
         var result: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecItemNotFound { return nil }
+        guard status == errSecSuccess,
               let data = result as? Data,
               let text = String(data: data, encoding: .utf8),
               let count = Int(text) else {
-            return nil
+            throw CaptureAllowanceStorageError.unavailable
         }
         return count
     }
@@ -51,7 +56,7 @@ enum FreeCaptureLedger {
         insert[kSecValueData as String] = data
         // Readable after the first unlock so a capture arriving from a
         // Shortcut on a locked device can still be counted.
-        insert[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        insert[kSecAttrAccessible as String] = keychainAccessibility
         SecItemAdd(insert as CFDictionary, nil)
     }
 
@@ -212,7 +217,12 @@ final class SubscriptionStore: ObservableObject {
     @Published private(set) var isDeveloperCustomerJourneyActive: Bool
 #endif
 
+    private let defaults: UserDefaults
+    private let entitlementReader: @MainActor () async -> Set<String>
     private var updatesTask: Task<Void, Never>?
+    private var initialRefreshTask: Task<Void, Never>?
+    private var entitlementRefreshGeneration: UInt64 = 0
+    private var lastPublishedEntitlementRefreshGeneration: UInt64 = 0
     private var hasPrepared = false
 
     private static let freeCapturesUsedKey = "SpeakIt.freeCapturesUsed"
@@ -225,8 +235,25 @@ final class SubscriptionStore: ObservableObject {
     private static let developerJourneyKey = "SpeakIt.developerCustomerJourneyActive"
 #endif
 
-    init() {
-        let defaults = UserDefaults.standard
+    convenience init() {
+        self.init(defaults: .standard, entitlementReader: Self.verifiedEntitlementProductIDs,
+                  observesTransactions: true)
+    }
+
+#if DEBUG
+    /// A controlled reader exercises refresh ordering without StoreKit or purchases.
+    convenience init(defaultsForTesting: UserDefaults,
+                     entitlementReaderForTesting: @escaping @MainActor () async -> Set<String>) {
+        self.init(defaults: defaultsForTesting, entitlementReader: entitlementReaderForTesting,
+                  observesTransactions: false)
+    }
+#endif
+
+    private init(defaults: UserDefaults,
+                 entitlementReader: @escaping @MainActor () async -> Set<String>,
+                 observesTransactions: Bool) {
+        self.defaults = defaults
+        self.entitlementReader = entitlementReader
 #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--ui-testing-reset") {
             defaults.removeObject(forKey: Self.freeCapturesUsedKey)
@@ -240,6 +267,7 @@ final class SubscriptionStore: ObservableObject {
             // The Keychain deliberately survives reinstalls, so a UI test run
             // has to clear it explicitly or the allowance carries over.
             FreeCaptureLedger.reset()
+            CaptureAllowance.resetLiveJournal()
         }
         if ProcessInfo.processInfo.arguments.contains("--ui-testing-pro-preview") {
             defaults.set(DeveloperAccessOverride.free.rawValue, forKey: DeveloperAccessOverride.storageKey)
@@ -259,7 +287,7 @@ final class SubscriptionStore: ObservableObject {
         ) ?? .appStore
         isDeveloperCustomerJourneyActive = defaults.bool(forKey: Self.developerJourneyKey)
 #endif
-        Self.persistFreeUsage(normalizedUsage, defaults: defaults)
+        defaults.set(normalizedUsage.startedAt, forKey: Self.freeAllowanceStartedAtKey)
         // Start from what the last verified check concluded, rather than from
         // `.checking`. `hasProAccess` is false while checking, so a subscriber
         // who had spent their ten free captures before subscribing was told the
@@ -281,11 +309,14 @@ final class SubscriptionStore: ObservableObject {
         }
 #endif
         evaluateProMoments()
-        updatesTask = observeTransactionUpdates()
-        Task { await refreshEntitlements() }
+        if observesTransactions {
+            updatesTask = observeTransactionUpdates()
+            initialRefreshTask = Task { [weak self] in await self?.refreshEntitlements() }
+        }
     }
 
     deinit {
+        initialRefreshTask?.cancel()
         updatesTask?.cancel()
     }
 
@@ -322,35 +353,21 @@ final class SubscriptionStore: ObservableObject {
     }
 
     /// Re-reads what another process (the Siri intent, the share extension) may
-    /// have recorded since this store was last read. The free allowance never
-    /// renews, so this only ever moves the count forward.
+    /// have recorded since this store was last read. Committed usage never
+    /// decreases; pending reservations release when final results are exempt.
     func refreshFreeAllowance(now: Date = .now) {
-        let stored = Self.normalizedStoredUsage(defaults: .standard, now: now)
-        let usage = FreePlanAllowance.normalizedUsage(
-            captureCount: max(stored.captureCount, freeCapturesUsed),
-            startedAt: min(stored.startedAt, freeAllowanceStartedAt),
-            now: now
-        )
-        guard usage.captureCount != freeCapturesUsed || usage.startedAt != freeAllowanceStartedAt else {
-            return
-        }
-        freeCapturesUsed = usage.captureCount
-        freeAllowanceStartedAt = usage.startedAt
-        Self.persistFreeUsage(usage)
+        let allowance = CaptureAllowance.live(container: PersistenceController.shared)
+        try? allowance.reconcile { _ in nil }
+        guard let count = try? allowance.usageIncludingPending() else { return }
+        freeCapturesUsed = count
+        freeAllowanceStartedAt = min(freeAllowanceStartedAt, now)
         evaluateProMoments()
     }
 
+    /// Compatibility for observation-only test callers. The repository owns
+    /// debits; UI callbacks can only refresh their presentation.
     func recordSuccessfulCapture(now: Date = .now) {
         refreshFreeAllowance(now: now)
-        guard !hasProAccess else { return }
-        freeCapturesUsed = min(
-            FreePlanAllowance.lifetimeCaptureLimit,
-            freeCapturesUsed + 1
-        )
-        Self.persistFreeUsage(
-            .init(captureCount: freeCapturesUsed, startedAt: freeAllowanceStartedAt)
-        )
-        evaluateProMoments()
     }
 
     /// Whether an uninvited Pro sheet may be shown right now.
@@ -387,7 +404,7 @@ final class SubscriptionStore: ObservableObject {
     /// next in front of somebody.
     func consumeProMoment() {
         guard let moment = pendingProMoment else { return }
-        UserDefaults.standard.set(true, forKey: Self.proMomentDeliveredKey(moment))
+        defaults.set(true, forKey: Self.proMomentDeliveredKey(moment))
         pendingProMoment = nil
     }
 
@@ -397,13 +414,12 @@ final class SubscriptionStore: ObservableObject {
             return
         }
         pendingProMoment = ProMoment.due(
-            forCaptureCount: freeCapturesUsed,
-            alreadyDelivered: Self.deliveredProMoments()
+            forCaptureCount: Self.storedCaptureCount(defaults: defaults),
+            alreadyDelivered: Self.deliveredProMoments(defaults: defaults)
         )
     }
 
-    private static func deliveredProMoments() -> Set<ProMoment> {
-        let defaults = UserDefaults.standard
+    private static func deliveredProMoments(defaults: UserDefaults) -> Set<ProMoment> {
         return Set(ProMoment.allCases.filter { defaults.bool(forKey: proMomentDeliveredKey($0)) })
     }
 
@@ -414,12 +430,12 @@ final class SubscriptionStore: ObservableObject {
 #if DEBUG
     func setDeveloperAccessOverride(_ override: DeveloperAccessOverride) {
         developerAccessOverride = override
-        UserDefaults.standard.set(override.rawValue, forKey: DeveloperAccessOverride.storageKey)
+        defaults.set(override.rawValue, forKey: DeveloperAccessOverride.storageKey)
     }
 
     func startDeveloperCustomerJourney() {
         isDeveloperCustomerJourneyActive = true
-        UserDefaults.standard.set(true, forKey: Self.developerJourneyKey)
+        defaults.set(true, forKey: Self.developerJourneyKey)
         setDeveloperAccessOverride(.free)
         setDeveloperFreeCapturesUsed(0)
         customerMessage = nil
@@ -434,17 +450,18 @@ final class SubscriptionStore: ObservableObject {
     }
 
     func setDeveloperFreeCapturesUsed(_ captureCount: Int) {
+        CaptureAllowance.resetLiveJournal()
         freeCapturesUsed = min(max(0, captureCount), FreePlanAllowance.lifetimeCaptureLimit)
         freeAllowanceStartedAt = .now
         Self.persistFreeUsage(
             .init(captureCount: freeCapturesUsed, startedAt: freeAllowanceStartedAt),
-            allowingDecrease: true
+            defaults: defaults, allowingDecrease: true
         )
         // Moving the counter by hand is how the owner replays the customer
         // journey. Both moments have to come back with it, or the journey can
         // only ever be walked once per install.
         for moment in ProMoment.allCases {
-            UserDefaults.standard.removeObject(forKey: Self.proMomentDeliveredKey(moment))
+            defaults.removeObject(forKey: Self.proMomentDeliveredKey(moment))
         }
         evaluateProMoments()
     }
@@ -456,7 +473,7 @@ final class SubscriptionStore: ObservableObject {
 
     func endDeveloperCustomerJourney() {
         isDeveloperCustomerJourneyActive = false
-        UserDefaults.standard.set(false, forKey: Self.developerJourneyKey)
+        defaults.set(false, forKey: Self.developerJourneyKey)
         setDeveloperAccessOverride(.appStore)
         customerMessage = nil
     }
@@ -655,6 +672,9 @@ final class SubscriptionStore: ObservableObject {
     }
 
     func refreshEntitlements() async {
+        guard !Task.isCancelled else { return }
+        entitlementRefreshGeneration &+= 1
+        let generation = entitlementRefreshGeneration
 #if DEBUG
         if ProcessInfo.processInfo.arguments.contains("--simulate-pro") {
             accessLevel = .pro
@@ -662,8 +682,27 @@ final class SubscriptionStore: ObservableObject {
         }
 #endif
 
+        let activeProductIDs = await entitlementReader()
+        // Init, foreground refresh, restore and transaction updates can overlap.
+        // A cancelled newer read cannot invalidate valid work still in flight;
+        // an older read cannot overwrite a newer result already published.
+        guard !Task.isCancelled, generation > lastPublishedEntitlementRefreshGeneration else { return }
+        lastPublishedEntitlementRefreshGeneration = generation
+        activeProProductIDs = activeProductIDs
+        let foundProEntitlement = !activeProductIDs.isEmpty
+        accessLevel = foundProEntitlement ? .pro : .free
+        defaults.set(foundProEntitlement, forKey: Self.cachedProAccessKey)
+        // Both directions matter. Learning that this Apple Account is already
+        // subscribed withdraws a moment that `init` had queued while the check
+        // was still in flight; learning that it is not releases one that was
+        // suppressed for the same reason.
+        evaluateProMoments()
+    }
+
+    private static func verifiedEntitlementProductIDs() async -> Set<String> {
         var activeProductIDs: Set<String> = []
         for await result in StoreKit.Transaction.currentEntitlements {
+            guard !Task.isCancelled else { return [] }
             guard case .verified(let transaction) = result,
                   Self.entitlementProductIDs.contains(transaction.productID),
                   transaction.revocationDate == nil,
@@ -678,15 +717,7 @@ final class SubscriptionStore: ObservableObject {
             activeProductIDs.insert(transaction.productID)
             await ReferralClient.shared.verifyTransaction(result.jwsRepresentation)
         }
-        activeProProductIDs = activeProductIDs
-        let foundProEntitlement = !activeProductIDs.isEmpty
-        accessLevel = foundProEntitlement ? .pro : .free
-        UserDefaults.standard.set(foundProEntitlement, forKey: Self.cachedProAccessKey)
-        // Both directions matter. Learning that this Apple Account is already
-        // subscribed withdraws a moment that `init` had queued while the check
-        // was still in flight; learning that it is not releases one that was
-        // suppressed for the same reason.
-        evaluateProMoments()
+        return activeProductIDs
     }
 
     private func observeTransactionUpdates() -> Task<Void, Never> {
@@ -764,31 +795,16 @@ final class SubscriptionStore: ObservableObject {
         return backgroundFreeAllowance(defaults: defaults, now: now)
     }
 
-    static func recordBackgroundCapture(
-        defaults: UserDefaults = .standard,
-        now: Date = .now
-    ) {
-        guard !backgroundHasProAccess(defaults: defaults) else { return }
-        let usage = normalizedStoredUsage(defaults: defaults, now: now)
-        persistFreeUsage(
-            .init(
-                captureCount: min(
-                    FreePlanAllowance.lifetimeCaptureLimit,
-                    usage.captureCount + 1
-                ),
-                startedAt: usage.startedAt
-            ),
-            defaults: defaults
-        )
+    static func backgroundCapturePolicy(source: CaptureSource, defaults: UserDefaults = .standard) -> CaptureAllowancePolicy {
+        if source == .tutorial || source == .sample { return .practice }
+        return backgroundHasProAccess(defaults: defaults) ? .pro : .free
     }
 
-    private static func backgroundFreeAllowance(
-        defaults: UserDefaults,
-        now: Date
-    ) -> Bool {
-        let usage = normalizedStoredUsage(defaults: defaults, now: now)
-        persistFreeUsage(usage, defaults: defaults)
-        return FreePlanAllowance.remainingCaptures(after: usage.captureCount) > 0
+    private static func backgroundFreeAllowance(defaults: UserDefaults, now: Date) -> Bool {
+        let allowance = CaptureAllowance.live(container: PersistenceController.shared)
+        try? allowance.reconcile { _ in nil }
+        guard let count = try? allowance.usageIncludingPending() else { return false }
+        return FreePlanAllowance.remainingCaptures(after: count) > 0
     }
 
     private static func normalizedStoredUsage(

@@ -1,5 +1,29 @@
 # Held-out set
 
+## Provenance update — 2026-10-14
+
+The canonical leak check detected a new exact normalized overlap for **C101**
+in `SpeakItTests/PersonMentionTests.swift`. The observed source file SHA256 is
+`55679be5a725548cf4e489c99c2721288901bf88151a8418b88c2c2f2338dcd5`. The report identifies the file,
+not a fixture line or introducing author; neither is inferred here. Capture
+text is deliberately not reproduced.
+
+C101 is now recorded as tuned material in both `OVERLAP_DOCUMENTED` and
+`heldout/compromised.py`. It remains in the **389-capture legacy population**;
+no sealed capture, gold expectation, threshold, generation manifest or historical
+score has changed. The collision remains counted. The current clean-sealed
+population excludes twelve known-not-unseen captures and contains **377**;
+prior figures over 378 clean captures remain historical results over their
+then-declared population. These are capture counts, not recomputed correctness
+rates or per-measure denominators.
+
+This is an exposure/provenance correction, not retirement or a claim that the
+case is unseen again. Retiring a published sealed case remains Calvin's explicit
+new-generation decision, with the comparability record and manifests required
+by `../generations/README.md`. Generated readable-population figures remain the
+responsibility of `../baseline_figures.py`; do not hand-edit those blocks.
+
+
 389 utterances, scored separately from the corpus the rules are tuned against.
 What that separation is actually worth is set out in "What this set's history
 does and does not support" below — read it before quoting the number as

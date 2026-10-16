@@ -102,6 +102,61 @@ struct WallClockTime: Codable, Equatable, Sendable {
     }
 }
 
+/// A named deadline day can end at the following local day boundary without
+/// changing the calendar day the person actually named. Unknown present values
+/// remain invalid metadata; they must never be treated as an absent boundary.
+enum DeadlineBoundary: Codable, Equatable, Sendable {
+    case endOfNamedDay
+    case unrecognized(String)
+
+    init(from decoder: any Decoder) throws {
+        let value = try decoder.singleValueContainer()
+        guard let raw = try? value.decode(String.self) else {
+            self = .unrecognized("__invalid_deadline_boundary__")
+            return
+        }
+        self = raw == "endOfNamedDay" ? .endOfNamedDay : .unrecognized(raw)
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var value = encoder.singleValueContainer()
+        switch self {
+        case .endOfNamedDay: try value.encode("endOfNamedDay")
+        case let .unrecognized(raw): try value.encode(raw)
+        }
+    }
+}
+
+/// A spoken inequality on one owned calendar day's clock, not an exact
+/// execution appointment. Invalid present metadata stays present and invalid.
+enum ClockBoundary: Codable, Equatable, Sendable {
+    case after
+    case before
+    case unrecognized(String)
+
+    init(from decoder: any Decoder) throws {
+        let value = try decoder.singleValueContainer()
+        guard let raw = try? value.decode(String.self) else {
+            self = .unrecognized("__invalid_clock_boundary__")
+            return
+        }
+        switch raw {
+        case "after": self = .after
+        case "before": self = .before
+        default: self = .unrecognized(raw)
+        }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var value = encoder.singleValueContainer()
+        switch self {
+        case .after: try value.encode("after")
+        case .before: try value.encode("before")
+        case let .unrecognized(raw): try value.encode(raw)
+        }
+    }
+}
+
 /// What the person said about time, before it is resolved into an instant.
 ///
 /// Resolution happens *after* interpretation, and both are kept: the resolved
@@ -114,6 +169,11 @@ struct TemporalIntent: Codable, Equatable, Sendable {
     var day: CalendarDay?
     /// Inclusive last day of a stated calendar window. `day` is its first day.
     var windowEndDay: CalendarDay?
+    /// A positively owned deadline at the end of `day`, not a start-of-day clock.
+    /// Absence preserves every previously stored midnight interpretation.
+    var deadlineBoundary: DeadlineBoundary?
+    /// A lower/upper clock bound inside the explicitly owned day.
+    var clockBoundary: ClockBoundary?
     /// The time of day the person supplied, when they supplied one.
     var time: WallClockTime?
     var timeZoneIdentifier: String?
@@ -147,11 +207,15 @@ struct TemporalIntent: Codable, Equatable, Sendable {
         recurrence: RecurrenceRule? = nil,
         sourceText: String? = nil,
         unsupportedTrigger: UnsupportedTrigger? = nil,
-        isUserEdited: Bool = false
+        isUserEdited: Bool = false,
+        deadlineBoundary: DeadlineBoundary? = nil,
+        clockBoundary: ClockBoundary? = nil
     ) {
         self.kind = kind
         self.day = day
         self.windowEndDay = windowEndDay
+        self.deadlineBoundary = deadlineBoundary
+        self.clockBoundary = clockBoundary
         self.time = time
         self.timeZoneIdentifier = timeZoneIdentifier
         self.timeZoneBehavior = timeZoneBehavior
@@ -169,6 +233,12 @@ struct TemporalIntent: Codable, Equatable, Sendable {
         kind = try container.decodeIfPresent(TemporalKind.self, forKey: .kind) ?? .none
         day = try container.decodeIfPresent(CalendarDay.self, forKey: .day)
         windowEndDay = try container.decodeIfPresent(CalendarDay.self, forKey: .windowEndDay)
+        deadlineBoundary = container.contains(.deadlineBoundary)
+            ? try container.decode(DeadlineBoundary.self, forKey: .deadlineBoundary)
+            : nil
+        clockBoundary = container.contains(.clockBoundary)
+            ? try container.decode(ClockBoundary.self, forKey: .clockBoundary)
+            : nil
         time = try container.decodeIfPresent(WallClockTime.self, forKey: .time)
         timeZoneIdentifier = try container.decodeIfPresent(String.self, forKey: .timeZoneIdentifier)
         timeZoneBehavior = try container.decodeIfPresent(
@@ -227,6 +297,79 @@ struct TemporalIntent: Codable, Equatable, Sendable {
         )
     }
 
+    /// Resolves only the complete, valid end-of-named-day deadline shape.
+    /// An unknown or contradictory present boundary never falls back to 00:00
+    /// at the start of the named day. Calendar boundaries retain DST behavior.
+    func endOfDayDeadlineDate(calendar fallback: Calendar) -> Date? {
+        guard deadlineBoundary == .endOfNamedDay,
+              kind == .exactDateTime, clockBoundary == nil,
+              let day, time == WallClockTime(hour: 0, minute: 0),
+              windowEndDay == nil, recurrence == nil, relativeSeconds == nil,
+              unsupportedTrigger == nil, !isUserEdited else { return nil }
+        if timeZoneBehavior == .fixed {
+            guard let timeZoneIdentifier,
+                  TimeZone(identifier: timeZoneIdentifier) != nil else { return nil }
+        }
+        let calendar = calendar(default: fallback)
+        guard let start = day.startOfDay(in: calendar),
+              CalendarDay(from: start, calendar: calendar) == day,
+              let interval = calendar.dateInterval(of: .day, for: start),
+              interval.start == start, interval.end > start,
+              CalendarDay(from: interval.end, calendar: calendar) != day else { return nil }
+        return interval.end
+    }
+
+    /// An absolute label safe to copy into a shared snapshot. It never freezes
+    /// a relative Today/Tomorrow label or describes the following day as due.
+    func endOfDayDeadlineLabel(
+        calendar fallback: Calendar = .autoupdatingCurrent,
+        locale: Locale = .autoupdatingCurrent
+    ) -> String? {
+        guard let endpoint = endOfDayDeadlineDate(calendar: fallback),
+              let day else { return nil }
+        let calendar = calendar(default: fallback)
+        guard let start = day.startOfDay(in: calendar) else { return nil }
+        let style = Date.FormatStyle(locale: locale, calendar: calendar,
+            timeZone: calendar.timeZone).weekday(.wide).month(.abbreviated).day().year()
+        let zone = timeZoneBehavior == .fixed
+            ? " " + (calendar.timeZone.abbreviation(for: endpoint.addingTimeInterval(-1))
+                ?? calendar.timeZone.identifier) : ""
+        return "By end of \(start.formatted(style)) (midnight\(zone))"
+    }
+
+    /// The full owned day, validated without inventing a 24-hour duration or
+    /// moving a passed opening to another week. Consumers also compare the
+    /// resolved anchor to their stored dueDate before trusting this metadata.
+    func clockBoundaryDayInterval(calendar fallback: Calendar) -> DateInterval? {
+        guard clockBoundary == .after || clockBoundary == .before,
+              kind == .exactDateTime, let day, let time,
+              (0..<24).contains(time.hour), (0..<60).contains(time.minute),
+              deadlineBoundary == nil, windowEndDay == nil, recurrence == nil,
+              relativeSeconds == nil, unsupportedTrigger == nil, !isUserEdited else { return nil }
+        if timeZoneBehavior == .fixed {
+            guard let timeZoneIdentifier, TimeZone(identifier: timeZoneIdentifier) != nil else { return nil }
+        }
+        let calendar = calendar(default: fallback)
+        guard let start = day.startOfDay(in: calendar),
+              CalendarDay(from: start, calendar: calendar) == day,
+              let interval = calendar.dateInterval(of: .day, for: start),
+              interval.start == start, interval.end > start else { return nil }
+        return interval
+    }
+
+    /// This instant is an opening/cutoff, never permission to alert at it.
+    func clockBoundaryDate(calendar fallback: Calendar) -> Date? {
+        guard let interval = clockBoundaryDayInterval(calendar: fallback), let day, let time else { return nil }
+        let calendar = calendar(default: fallback)
+        guard let anchor = calendar.date(bySettingHour: time.hour, minute: time.minute, second: 0,
+                of: interval.start, matchingPolicy: .nextTime, repeatedTimePolicy: .first, direction: .forward),
+              CalendarDay(from: anchor, calendar: calendar) == day,
+              calendar.component(.hour, from: anchor) == time.hour,
+              calendar.component(.minute, from: anchor) == time.minute,
+              anchor >= interval.start, anchor < interval.end else { return nil }
+        return anchor
+    }
+
     /// The calendar this intent should be read in. A fixed zone travels with
     /// the request; a device-local one follows the person.
     func calendar(default fallback: Calendar) -> Calendar {
@@ -272,6 +415,15 @@ enum TemporalResolver {
         wantsReminder: Bool
     ) -> Resolution {
         let calendar = intent.calendar(default: fallbackCalendar)
+        if intent.clockBoundary != nil {
+            return Resolution(dueDate: intent.clockBoundaryDate(calendar: fallbackCalendar), reminderDate: nil)
+        }
+        if intent.deadlineBoundary != nil {
+            guard let instant = intent.endOfDayDeadlineDate(calendar: fallbackCalendar) else {
+                return Resolution(dueDate: nil, reminderDate: nil)
+            }
+            return Resolution(dueDate: instant, reminderDate: wantsReminder ? instant : nil)
+        }
 
         switch intent.kind {
         case .none, .calendarWindow:
@@ -343,6 +495,7 @@ enum TemporalResolver {
         after previous: Date,
         calendar fallbackCalendar: Calendar
     ) -> Date? {
+        guard intent.deadlineBoundary == nil, intent.clockBoundary == nil else { return nil }
         let calendar = intent.calendar(default: fallbackCalendar)
 
         switch intent.kind {

@@ -422,8 +422,8 @@ private struct TodayWidgetView: View {
                                 Text(item.title)
                                     .font(.caption.weight(.semibold))
                                     .lineLimit(1)
-                                if let dueDate = item.dueDate {
-                                    Text(dueText(dueDate))
+                                if let timing = item.timingText() {
+                                    Text(timing)
                                         .font(.caption2)
                                         .foregroundStyle(.white.opacity(0.5))
                                 }
@@ -448,11 +448,4 @@ private struct TodayWidgetView: View {
         .accessibilityElement(children: .contain)
     }
 
-    private func dueText(_ date: Date) -> String {
-        if Calendar.current.isDateInToday(date) {
-            return date.formatted(date: .omitted, time: .shortened)
-        }
-        if Calendar.current.isDateInTomorrow(date) { return "Tomorrow" }
-        return date.formatted(.dateTime.weekday(.abbreviated))
-    }
 }
