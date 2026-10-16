@@ -925,6 +925,8 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         tests; same literal walk, not accuracy.
         12454 -> 12458 on 2026-10-16 after the typed Memory note tests; same
         literal walk, not accuracy.
+        12458 -> 12466 on 2026-10-16 after the itemized place-list tests; same
+        literal walk, not accuracy.
         The equality check and both counting rules remain unchanged.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
@@ -935,7 +937,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 12458)
+        self.assertEqual(len(space), 12466)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
