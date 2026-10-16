@@ -7,6 +7,7 @@ Entries before September 2026 were reconstructed from the commit history and
 
 ## Unreleased — capture accounting, lists and message ownership
 
+- Split every spoken list into one row per item, including lists tied to a place ("when I get to Costco, get milk, eggs and cheese") and lists said with "go get"; a place list still sends one alert.
 - Type a note straight into Ideas, People, Reference or one person's page with the plus beside the microphone; it is filed where you added it.
 - Today lists its tasks under day headers, with each row showing only its time and a full, uncut title; the next task is an ordinary row instead of a large inverted card.
 - Preserve source-proved AFTER/BEFORE execution-clock relations; unsupported bounds stay in review without an invented alert.

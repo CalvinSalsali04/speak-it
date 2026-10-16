@@ -12526,6 +12526,19 @@ enum RuleBasedThoughtExtractor {
         return result
     }
 
+    /// "remind me to grab bread, butter and jam when I leave work" → "grab
+    /// bread, butter and jam". Only a trigger clause at the very end is cut,
+    /// and only after a comma or a space, so a product is never shortened.
+    private static func withoutTrailingPlaceTrigger(_ text: String) -> String {
+        var value = text.replacingOccurrences(
+            of: #"(?i)[\s,]+(?:when(?:ever)?|once|as\s+soon\s+as|(?:the\s+)?next\s+time|every\s+time)\s+(?:i|we)\b[^,;]*[.!]?\s*$"#,
+            with: "", options: .regularExpression)
+        value = value.replacingOccurrences(
+            of: #"(?i)^\s*(?:please\s+)?(?:remind|tell|ping|alert)\s+(?:me|us)\s+(?:to\s+)?"#,
+            with: "", options: .regularExpression)
+        return value
+    }
+
     private struct ShoppingEntry {
         enum Origin { case purchase(String), declaredList }
         let origin: Origin
@@ -12545,12 +12558,20 @@ enum RuleBasedThoughtExtractor {
         // A timed list splits like a plain one: every row carries the same
         // fire moment from the same capture, and the scheduler already
         // coalesces those into one notification, so the person gets separate
-        // checkable things and a single alert. A recurring or place-triggered
-        // list stays whole — splitting one would register several identical
-        // repeating series or monitored regions, which nothing coalesces.
+        // checkable things and a single alert. A place-triggered list splits
+        // the same way: its rows share one monitored region and one alert
+        // (`SwiftDataThoughtRepository.placeListCarriers`). A recurring list
+        // stays whole — iOS only repeats a single-row notification, so split
+        // rows would lose the series. So does a place list that also names a
+        // time (it waits in review) or "here" (each row would freeze its own
+        // snapshot of the current location).
         guard organization.itemType == .shopping,
-              organization.recurrenceRule == nil,
-              organization.locationIntent == nil else { return [] }
+              organization.recurrenceRule == nil else { return [] }
+        if let place = organization.locationIntent {
+            guard place.place != .currentLocation,
+                  organization.dueDate == nil, organization.reminderDate == nil,
+                  organization.temporalIntent.kind == .none else { return [] }
+        }
 
         // A still-resolved declaration retains its exact original boundaries.
         // It supplies literal membership, never an implicit purchase verb.
@@ -12578,9 +12599,17 @@ enum RuleBasedThoughtExtractor {
         // list stayed a single uncheckable row. The same fronted day defeated
         // `isBareTripPhrase` in `assigningShoppingGroups`; it is one bug
         // wearing two hats.
+        // The place trigger is the reminder's, not a product: "When I get to
+        // Costco, remind me to buy milk" lists from "buy milk". A trailing
+        // trigger ("grab bread and jam when I leave work") comes off the end.
+        let listText = organization.locationIntent == nil
+            ? item.analysisText
+            : LocationIntentParser.actionBody(in: item.analysisText)
+                ?? withoutTrailingPlaceTrigger(item.analysisText)
         var title = withoutLeadingTemporalContext(
-            ThoughtTitleFormatter.polished(canonicalizedListCommand(item.analysisText), itemType: .shopping)
-        )
+            ThoughtTitleFormatter.polished(canonicalizedListCommand(listText), itemType: .shopping)
+        ).replacingOccurrences(
+            of: ActionabilityReader.serialMotionBeforePurchase, with: "", options: .regularExpression)
             .replacingOccurrences(
                 of: #"(?i)^(?:please\s+)?(?:go(?:ing)?\s+to|head(?:ing)?\s+(?:over\s+)?to|stop(?:ping)?\s+(?:by|at)|swing(?:ing)?\s+by|run(?:ning)?\s+to|drive\s+to|driving\s+to)\s+(?:the\s+)?[\w'&.-]+(?:\s+[\w'&.-]+){0,2}?\s+(?:and\s+)?(?=(?:buy|order|get|grab|pick)\b)"#,
                 with: "",
