@@ -237,6 +237,45 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         XCTAssertEqual(added.first?.captureSession?.processingStatus, .complete)
     }
 
+    /// Typed Memory notes keep the destination the person chose, even when
+    /// the wording would otherwise read as an action or name someone else.
+    func testAddMemoryNoteFilesIntoTheChosenDestination() throws {
+        let idea = try repository.addMemoryNote(
+            "Call the podcast Second Draft", destination: .idea
+        )
+        XCTAssertEqual(idea.itemType, .idea)
+        XCTAssertTrue(idea.belongsInMemory)
+        XCTAssertFalse(idea.belongsInToday)
+        XCTAssertTrue(MemoryGroup.ideas.contains(idea))
+        XCTAssertNil(idea.reminderDate)
+        XCTAssertEqual(idea.captureSession?.originalTranscription, "Call the podcast Second Draft")
+        XCTAssertEqual(idea.captureSession?.processingStatus, .complete)
+
+        let reference = try repository.addMemoryNote(
+            "  Gate code is 4410  ", destination: .reference
+        )
+        XCTAssertEqual(reference.itemType, .note)
+        XCTAssertTrue(MemoryGroup.notes.contains(reference))
+        XCTAssertEqual(reference.originalTextSegment, "Gate code is 4410")
+
+        let person = try repository.addMemoryNote(
+            "Likes black coffee, no sugar tomorrow", destination: .person("Dad")
+        )
+        XCTAssertEqual(person.itemType, .note)
+        XCTAssertEqual(person.personName, "Dad")
+        XCTAssertNil(person.dueDate)
+        XCTAssertNil(person.reminderDate)
+        XCTAssertTrue(person.belongsInMemory)
+        XCTAssertEqual(MemoryPersonNameResolver.name(for: person), "Dad")
+        XCTAssertTrue(MemoryGroup.people.contains(person))
+    }
+
+    func testAddMemoryNoteRefusesEmptyWordsOrName() throws {
+        XCTAssertThrowsError(try repository.addMemoryNote("   ", destination: .idea))
+        XCTAssertThrowsError(try repository.addMemoryNote("Likes tea", destination: .person("  ")))
+        XCTAssertTrue(try container.mainContext.fetch(FetchDescriptor<CaptureSession>()).isEmpty)
+    }
+
     /// Deleting an item must not leak its list label.
     func testDeletingShoppingItemRemovesItsGroupLabel() throws {
         let added = try repository.addShoppingItems(["Milk"], group: "Groceries")

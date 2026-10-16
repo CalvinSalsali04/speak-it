@@ -1272,6 +1272,9 @@ private struct MemoryCollectionView: View {
     @State private var tutorialPersonName: String?
     @State private var errorMessage: String?
     @State private var libraryUndo: LibraryUndo?
+    @State private var composerMode: MemoryNoteComposer.Mode?
+    @State private var showsProGate = false
+    @EnvironmentObject private var subscriptionStore: SubscriptionStore
     @AppStorage("SpeakIt.memoryCompactRows") private var usesCompactRows = false
     @AppStorage(MemoryPinStore.key) private var pinnedMemoryIDsRawValue = ""
     @AppStorage(IdeaStageStore.key) private var ideaStagesRawValue = ""
@@ -1379,6 +1382,17 @@ private struct MemoryCollectionView: View {
         .toolbar(.visible, for: .navigationBar)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
+                if let mode = MemoryNoteComposer.Mode(collection), tutorialSpotlight == nil {
+                    Button {
+                        beginComposing(mode)
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel(mode.addLabel)
+                    .accessibilityHint("Type it instead of speaking")
+                    .accessibilityIdentifier("memory.add")
+                }
+
                 Button(action: onCapture) {
                     Image(systemName: "mic.fill")
                 }
@@ -1415,6 +1429,12 @@ private struct MemoryCollectionView: View {
         }
         .sheet(item: $selectedItem) { item in
             ItemEditorView(item: item)
+        }
+        .sheet(item: $composerMode) { mode in
+            MemoryNoteComposer(mode: mode)
+        }
+        .sheet(isPresented: $showsProGate) {
+            SpeakItProView(context: .freeLimit)
         }
         .sheet(item: $stagePickerItem) { item in
             IdeaStagePickerSheet(
@@ -1467,6 +1487,14 @@ private struct MemoryCollectionView: View {
                 isSearchPresented = false
             }
         }
+    }
+
+    private func beginComposing(_ mode: MemoryNoteComposer.Mode) {
+        guard subscriptionStore.canCreateCapture else {
+            showsProGate = true
+            return
+        }
+        composerMode = mode
     }
 
     private var collectionSearchField: some View {
@@ -1860,6 +1888,181 @@ private struct MemoryCollectionView: View {
     }
 }
 
+/// Typing a note straight into Memory, for when speaking is not the right
+/// tool. The destination is the screen the person was on, so nothing is
+/// reinterpreted: an idea typed under Ideas stays an idea.
+private struct MemoryNoteComposer: View {
+    enum Mode: Identifiable, Hashable {
+        case idea
+        case reference
+        case newPerson
+        case person(String)
+
+        init?(_ collection: MemoryCollection) {
+            switch collection {
+            case .ideas: self = .idea
+            case .reference: self = .reference
+            case .people: self = .newPerson
+            case .pinned, .archive: return nil
+            }
+        }
+
+        var id: String {
+            switch self {
+            case .idea: "idea"
+            case .reference: "reference"
+            case .newPerson: "newPerson"
+            case .person(let name): "person.\(name)"
+            }
+        }
+
+        var title: String {
+            switch self {
+            case .idea: "New idea"
+            case .reference: "New reference"
+            case .newPerson: "New person note"
+            case .person(let name): name
+            }
+        }
+
+        var addLabel: String {
+            switch self {
+            case .idea: "Add an idea"
+            case .reference: "Add a reference note"
+            case .newPerson: "Add a note about someone"
+            case .person(let name): "Add a note about \(name)"
+            }
+        }
+
+        var placeholder: String {
+            switch self {
+            case .idea: "What’s the idea?"
+            case .reference: "Something worth finding later"
+            case .newPerson: "What to remember about them"
+            case .person(let name): "Something to remember about \(name)"
+            }
+        }
+    }
+
+    private enum Field: Hashable {
+        case name
+        case note
+    }
+
+    @Environment(\.thoughtRepository) private var repository
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var subscriptionStore: SubscriptionStore
+
+    let mode: Mode
+
+    @State private var name = ""
+    @State private var note = ""
+    @State private var errorMessage: String?
+    @FocusState private var focusedField: Field?
+
+    private var trimmedName: String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var trimmedNote: String {
+        note.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var canSave: Bool {
+        guard !trimmedNote.isEmpty else { return false }
+        if case .newPerson = mode { return !trimmedName.isEmpty }
+        return true
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                if case .newPerson = mode {
+                    Section("Name") {
+                        TextField("Who is it about?", text: $name)
+                            .textContentType(.name)
+                            .textInputAutocapitalization(.words)
+                            .focused($focusedField, equals: .name)
+                            .submitLabel(.next)
+                            .onSubmit { focusedField = .note }
+                            .accessibilityIdentifier("memory.compose.name")
+                    }
+                }
+
+                Section {
+                    TextField(mode.placeholder, text: $note, axis: .vertical)
+                        .font(SpeakItTypography.itemTitle)
+                        .lineLimit(3...10)
+                        .focused($focusedField, equals: .note)
+                        .accessibilityIdentifier("memory.compose.note")
+                }
+            }
+            .navigationTitle(mode.title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        focusedField = nil
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save", action: save)
+                        .disabled(!canSave)
+                        .accessibilityIdentifier("memory.compose.save")
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+        .interactiveDismissDisabled(!trimmedNote.isEmpty)
+        .repositoryErrorAlert($errorMessage)
+        .onAppear {
+            if case .newPerson = mode {
+                focusedField = .name
+            } else {
+                focusedField = .note
+            }
+        }
+    }
+
+    private func save() {
+        guard canSave else { return }
+        guard let repository else {
+            errorMessage = "Local storage is unavailable."
+            return
+        }
+        let destination: MemoryNoteDestination
+        switch mode {
+        case .idea: destination = .idea
+        case .reference: destination = .reference
+        case .newPerson: destination = .person(trimmedName)
+        case .person(let name): destination = .person(name)
+        }
+        let plan: AnalyticsPlan = subscriptionStore.hasProAccess ? .pro : .free
+        do {
+            try repository.addMemoryNote(
+                trimmedNote,
+                destination: destination,
+                createdAt: .now,
+                allowancePolicy: subscriptionStore.hasProAccess ? .pro : .free
+            )
+            subscriptionStore.refreshFreeAllowance()
+            SpeakItAnalytics.track(.captureSaved(
+                source: .text,
+                itemCount: 1,
+                needsReviewCount: 0,
+                plan: plan
+            ))
+            focusedField = nil
+            dismiss()
+        } catch {
+            // Keep the sheet and the typed words for another attempt.
+            errorMessage = error.localizedDescription
+        }
+    }
+}
+
 private struct MemoryPersonProfileRow: View {
     let profile: MemoryPersonProfile
 
@@ -1908,6 +2111,9 @@ private struct MemoryPersonDetailView: View {
 
     @State private var selectedItem: CapturedItem?
     @State private var errorMessage: String?
+    @State private var composerMode: MemoryNoteComposer.Mode?
+    @State private var showsProGate = false
+    @EnvironmentObject private var subscriptionStore: SubscriptionStore
     @AppStorage(MemoryPinStore.key) private var pinnedMemoryIDsRawValue = ""
 
     private var pinnedMemoryIDs: Set<UUID> {
@@ -2001,7 +2207,24 @@ private struct MemoryPersonDetailView: View {
         .navigationBarTitleDisplayMode(.large)
         .toolbar(.visible, for: .navigationBar)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                // The unnamed "People notes" bucket has no name to file a
+                // typed note under, and the tutorial keeps its own path.
+                if let resolvedName, tutorialSpotlight == nil {
+                    Button {
+                        guard subscriptionStore.canCreateCapture else {
+                            showsProGate = true
+                            return
+                        }
+                        composerMode = .person(resolvedName)
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel("Add a note about \(resolvedName)")
+                    .accessibilityHint("Type it instead of speaking")
+                    .accessibilityIdentifier("memory.person.add")
+                }
+
                 Button(action: onCapture) {
                     Image(systemName: "mic.fill")
                 }
@@ -2011,6 +2234,12 @@ private struct MemoryPersonDetailView: View {
         }
         .sheet(item: $selectedItem) { item in
             ItemEditorView(item: item)
+        }
+        .sheet(item: $composerMode) { mode in
+            MemoryNoteComposer(mode: mode)
+        }
+        .sheet(isPresented: $showsProGate) {
+            SpeakItProView(context: .freeLimit)
         }
         .repositoryErrorAlert($errorMessage)
         .speakScreenStyle()

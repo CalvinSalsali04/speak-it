@@ -470,6 +470,18 @@ protocol ThoughtRepository: AnyObject, Sendable {
         allowancePolicy: CaptureAllowancePolicy?
     ) throws -> [CapturedItem]
 
+    /// Saves one typed note straight into a Memory destination, bypassing
+    /// semantic parsing: the person already chose where it goes, so the
+    /// organizer must not reread "Dad likes black coffee" as a task or move a
+    /// typed idea to Today. The words are kept as the capture's transcript.
+    @discardableResult
+    func addMemoryNote(
+        _ text: String,
+        destination: MemoryNoteDestination,
+        createdAt: Date,
+        allowancePolicy: CaptureAllowancePolicy?
+    ) throws -> CapturedItem
+
     func update(_ item: CapturedItem, with edits: ItemEdits) throws
     func setCompleted(_ item: CapturedItem, completed: Bool) throws
     func setArchived(_ item: CapturedItem, archived: Bool) throws
@@ -540,6 +552,15 @@ extension ThoughtRepository {
             performance: nil
         )
     }
+}
+
+/// Where a typed Memory note is filed. People notes always carry the name the
+/// person chose, so the note lands under that profile rather than wherever
+/// the mention parser would read it.
+enum MemoryNoteDestination: Equatable, Sendable {
+    case idea
+    case reference
+    case person(String)
 }
 
 enum RepositoryError: LocalizedError, Equatable {
