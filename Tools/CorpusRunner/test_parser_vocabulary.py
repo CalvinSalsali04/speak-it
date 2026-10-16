@@ -77,7 +77,9 @@ BETTER_SUBJECTS = {
 # the supported single-token `gotta` remains unchanged.
 # These are source-form counts: `i/we'll` remains one regex alternative here;
 # exposed_tail expands its two concrete tokens only for the boundary invariant.
-SIZES = {"split": 158, "route": 25, "whose": 9, "title": 24, "glue": 10}
+# #174 added the cliticized subject `it'll` beside `i'll`/`they'll`, so `split`
+# moved from 158 to 159 deliberately.
+SIZES = {"split": 159, "route": 25, "whose": 9, "title": 24, "glue": 10}
 
 #: Forms all four claimants agree are obligations.
 #:
