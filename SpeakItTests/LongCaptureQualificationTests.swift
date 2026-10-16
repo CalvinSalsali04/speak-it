@@ -4,6 +4,9 @@ import Foundation
 import SwiftData
 import UserNotifications
 import XCTest
+#if canImport(FoundationModels)
+import FoundationModels
+#endif
 @testable import SpeakIt
 
 /// A local, test-target-only runner for an independently authored sealed corpus.
@@ -121,6 +124,299 @@ final class LongCaptureQualificationTests: XCTestCase {
         }
     }
 
+    /// The shared unit-test scheme intentionally disables runtime examples.
+    /// Qualification must opt into the ACTUAL bundled bank explicitly, rather
+    /// than silently measuring a rules-only fixture and labeling it shipping.
+    private func withQualificationRuntime<Value>(
+        mode: String = "bundled", retrievalOverride: Bool? = nil,
+        operation: () async throws -> Value
+    ) async throws -> Value {
+        switch mode {
+        case "bundled":
+            var bundled = try XCTUnwrap(RuntimeExampleConfiguration.bundled,
+                "Qualification requires the actual bundled runtime configuration")
+            if let retrievalOverride {
+                let original = bundled
+                bundled = RuntimeExampleConfiguration(libraryURL: original.libraryURL,
+                    allowProposed: original.allowProposed, retrievalEnabled: retrievalOverride,
+                    expectedSHA256: original.expectedSHA256)
+                bundled.excludedBlueprints = original.excludedBlueprints
+                bundled.excludedIDs = original.excludedIDs
+                bundled.manualReferenceIDs = original.manualReferenceIDs
+                bundled.usesStagedOutline = original.usesStagedOutline
+                bundled.semanticRetrievalEnabled = original.semanticRetrievalEnabled
+                bundled.semanticIndexURL = original.semanticIndexURL
+                bundled.expectedSemanticSHA256 = original.expectedSemanticSHA256
+                bundled.compactRoutingEnabled = original.compactRoutingEnabled
+                bundled.compactRoutingURL = original.compactRoutingURL
+                bundled.expectedCompactRoutingSHA256 = original.expectedCompactRoutingSHA256
+            }
+#if DEBUG
+            return try await RuntimeExampleConfiguration.$testConfiguration.withValue(bundled) {
+                try await operation()
+            }
+#else
+            guard RuntimeExampleConfiguration.current?.expectedSHA256 == bundled.expectedSHA256
+            else { throw FixtureError.invalid("Qualification runtime differs from the bundled bank") }
+            return try await operation()
+#endif
+        case "rules-only":
+            guard RuntimeExampleConfiguration.current == nil else {
+                throw FixtureError.invalid("Explicit rules-only diagnostic requires disabled runtime")
+            }
+            return try await operation()
+        default:
+            throw FixtureError.invalid("Unknown qualification runtime mode: " + mode)
+        }
+    }
+
+    private static func pilotBundledRetrievalOverride() throws -> Bool? {
+        let env = ProcessInfo.processInfo.environment
+        guard let value = env["SPEAKIT_PILOT_BUNDLED_RETRIEVAL"] else { return nil }
+        guard env["SPEAKIT_PILOT_RETRIEVAL"] == nil, ["0", "1"].contains(value) else {
+            throw FixtureError.invalid("Bundled retrieval diagnostic must be 0/1 and cannot select the reviewed fixture")
+        }
+        return value == "1"
+    }
+
+    private static func runtimeConfigurationSnapshot() -> Any {
+        guard let config = RuntimeExampleConfiguration.current else { return NSNull() }
+        return ["libraryURL":config.libraryURL.path,"expectedSHA256":Self.json(config.expectedSHA256),
+            "allowProposed":config.allowProposed,"retrievalEnabled":config.retrievalEnabled,
+            "excludedBlueprints":config.excludedBlueprints.sorted(),"excludedIDs":config.excludedIDs.sorted(),
+            "manualReferenceIDs":config.manualReferenceIDs as Any? ?? NSNull(),
+            "usesStagedOutline":config.usesStagedOutline] as [String:Any]
+    }
+
+    func testQualificationExplicitlyUsesBundledBankAndRecordsActualConfiguration() async throws {
+        let bundled = try XCTUnwrap(RuntimeExampleConfiguration.bundled)
+        let prior = RuntimeExampleConfiguration.current
+        try await withQualificationRuntime {
+            let actual = try XCTUnwrap(RuntimeExampleConfiguration.current)
+            XCTAssertEqual(actual.libraryURL, bundled.libraryURL)
+            XCTAssertEqual(actual.expectedSHA256, bundled.expectedSHA256)
+            XCTAssertEqual(actual.allowProposed, bundled.allowProposed)
+            let trace = try XCTUnwrap(Self.runtimeConfigurationSnapshot() as? [String:Any])
+            XCTAssertEqual(trace["expectedSHA256"] as? String, bundled.expectedSHA256)
+            XCTAssertEqual(trace["allowProposed"] as? Bool, bundled.allowProposed)
+#if DEBUG
+            XCTAssertNotEqual(actual.expectedSHA256, RuntimeExampleTestFixtures.reviewed?.expectedSHA256,
+                "The reviewed 59-example fixture is not the shipping full-bank configuration")
+#endif
+        }
+        XCTAssertEqual(RuntimeExampleConfiguration.current?.expectedSHA256, prior?.expectedSHA256)
+    }
+
+    func testModelServiceCanary() async throws {
+        guard let path = ProcessInfo.processInfo.environment["SPEAKIT_MODEL_CANARY_TRACE_PATH"] else {
+            throw XCTSkip("Opt-in model-service diagnostic; not a product accuracy test")
+        }
+#if canImport(FoundationModels)
+        if #available(iOS 26.4, *) {
+            let model = SystemLanguageModel.default
+            var trace: [String:Any] = ["scope":"one tiny synthetic generation; no product accuracy or iPhone speed claim",
+                "availability":String(describing: model.availability),
+                "supportsLocale":model.supportsLocale(.current),"locale":Locale.current.identifier]
+            try retainTrace(trace, path: path, name: "SpeakIt-model-canary-preflight")
+            guard model.availability == .available, model.supportsLocale(.current) else {
+                throw FixtureError.invalid("Model canary unavailable")
+            }
+            let session = LanguageModelSession(model:model)
+            let start = ContinuousClock.now
+            let work = Task { try await session.respond(to:"Reply with the single word ready.",
+                options:GenerationOptions(sampling:.greedy, maximumResponseTokens:8)) }
+            let deadline = Task {
+                do { try await Task.sleep(for:.seconds(20)) } catch { return }
+                work.cancel()
+            }
+            defer { deadline.cancel() }
+            do {
+                let response = try await work.value
+                let duration = start.duration(to:ContinuousClock.now).components
+                trace["elapsedSeconds"] = Double(duration.seconds) + Double(duration.attoseconds)/1e18
+                trace["response"] = response.content
+                trace["responseTokens"] = try await model.tokenCount(for:response.content)
+                trace["completed"] = true
+                try retainTrace(trace,path:path,name:"SpeakIt-model-canary-completed")
+                XCTAssertFalse(response.content.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty)
+            } catch {
+                let duration = start.duration(to:ContinuousClock.now).components
+                trace["elapsedSeconds"] = Double(duration.seconds) + Double(duration.attoseconds)/1e18
+                trace["completed"] = false
+                trace["cancelled"] = work.isCancelled
+                trace["errorType"] = String(reflecting:type(of:error))
+                try retainTrace(trace,path:path,name:"SpeakIt-model-canary-failed")
+                throw error
+            }
+            return
+        }
+#endif
+        throw FixtureError.invalid("Model canary needs Foundation Models on iOS26.4+")
+    }
+
+    func testOptInCapturedModelRequestStreamingDiagnostic() async throws {
+        guard let inputPath = ProcessInfo.processInfo.environment["SPEAKIT_MODEL_REPLAY_REQUEST_PATH"],
+              let outputPath = ProcessInfo.processInfo.environment["SPEAKIT_MODEL_REPLAY_TRACE_PATH"] else {
+            throw XCTSkip("Opt-in captured SDK request diagnostic; not release qualification")
+        }
+#if canImport(FoundationModels)
+        if #available(iOS 26.4, *) {
+            struct Request: Decodable {
+                let id: String
+                let source: String
+                let instructions: String
+                let assembledPrompt: String
+                let schemaJSON: String
+                let outputLimit: Int
+                let timeoutSeconds: Int
+                let schemaVariant: String?
+            }
+            let inputData = try Data(contentsOf:URL(fileURLWithPath:inputPath))
+            let request = try JSONDecoder().decode(Request.self,from:inputData)
+            guard (1...60).contains(request.timeoutSeconds), (1...3072).contains(request.outputLimit) else {
+                throw FixtureError.invalid("Replay diagnostic budget is invalid")
+            }
+            let recordedSchema = try JSONDecoder().decode(GenerationSchema.self,from:Data(request.schemaJSON.utf8))
+            let schema: GenerationSchema
+            switch request.schemaVariant {
+            case nil: schema = recordedSchema
+            case "current-object-unit":
+                schema = try XCTUnwrap(RuntimeFoundationInterpreter.objectUnitDeclarationSchema(
+                    RuntimeIndexedSource(request.source)))
+            default: throw FixtureError.invalid("Unknown replay schema variant")
+            }
+            func canonical(_ data: Data) throws -> Data {
+                try JSONSerialization.data(withJSONObject:JSONSerialization.jsonObject(with:data),options:.sortedKeys)
+            }
+            XCTAssertEqual(try canonical(JSONEncoder().encode(recordedSchema)),try canonical(Data(request.schemaJSON.utf8)))
+            let model = SystemLanguageModel.default
+            guard model.availability == .available,model.supportsLocale(.current) else {
+                throw FixtureError.invalid("Captured model request replay unavailable")
+            }
+            let session = LanguageModelSession(model:model,instructions:request.instructions)
+            let start = ContinuousClock.now
+            func elapsed() -> Double {
+                let d=start.duration(to:ContinuousClock.now).components
+                return Double(d.seconds)+Double(d.attoseconds)/1e18
+            }
+            var trace:[String:Any] = ["id":request.id,"requestSHA256":Self.sha256(inputData),
+                "scope":"SDK-only exact captured request replay; excludes repository/preflight; no effect or accuracy claim",
+                "timeoutSeconds":request.timeoutSeconds,"outputLimit":request.outputLimit,
+                "schemaVariant":request.schemaVariant ?? "exact-recorded",
+                "usedSchemaSHA256":Self.sha256(try JSONEncoder().encode(schema)),
+                "availability":String(describing:model.availability),"snapshots":[]]
+            var snapshots:[[String:Any]]=[]
+            var latest:GeneratedContent?
+            var lastFlush = -1.0
+            func persist() throws {
+                trace["snapshots"]=snapshots
+                trace["elapsedSeconds"]=elapsed()
+                trace["latestPartialJSON"]=latest?.jsonString as Any? ?? NSNull()
+                try retainTrace(trace,path:outputPath,name:"SpeakIt-model-stream-\(request.id)")
+            }
+            try persist()
+            let work = Task {
+                let stream=session.streamResponse(to:request.assembledPrompt,schema:schema,
+                    includeSchemaInPrompt:true,
+                    options:GenerationOptions(sampling:.greedy,maximumResponseTokens:request.outputLimit))
+                for try await snapshot in stream {
+                    latest=snapshot.rawContent
+                    let t=elapsed()
+                    var entry:[String:Any]=["seconds":t,"jsonBytes":snapshot.rawContent.jsonString.utf8.count,
+                        "isComplete":snapshot.rawContent.isComplete]
+                    if #available(iOS 27.0,*) {
+                        entry["inputTokens"]=snapshot.usage.input.totalTokenCount
+                        entry["outputTokens"]=snapshot.usage.output.totalTokenCount
+                        entry["reasoningTokens"]=snapshot.usage.output.reasoningTokenCount
+                    }
+                    snapshots.append(entry)
+                    if snapshots.count == 1 { trace["firstSnapshotSeconds"]=t }
+                    // Bound diagnostic file I/O; no tokenCount call during decode.
+                    if t-lastFlush >= 1 { try persist();lastFlush=t }
+                }
+            }
+            let deadline=Task {
+                do { try await Task.sleep(for:.seconds(request.timeoutSeconds)) } catch { return }
+                trace["deadlineObservedSeconds"]=elapsed()
+                work.cancel()
+            }
+            defer { deadline.cancel() }
+            do {
+                try await work.value
+                trace["streamFinishedNormally"]=true
+                // Cancellation can end a snapshot sequence normally while
+                // leaving an incomplete object. That is never completion.
+                trace["completed"] = !work.isCancelled && latest?.isComplete == true
+                trace["cancelled"]=work.isCancelled
+                trace["latestContentComplete"] = latest?.isComplete as Any? ?? NSNull()
+                if let latest {
+                    let decoded=try RuntimeFoundationInterpreter.decodeObjectUnitDeclarations(latest,
+                        units:RuntimeIndexedSource(request.source))
+                    trace["productionOutlineDecoderAccepted"]=decoded != nil
+                    if let decoded {
+                        trace["outlineRows"]=decoded.rows.map {
+                            ["evidence":$0.evidence,"purpose":String(describing:$0.purpose),
+                             "requiresRewrite":$0.requiresRewrite,"needsReview":$0.needsReview] as [String:Any]
+                        }
+                        trace["inlineCompletions"]=decoded.completions
+                    }
+                }
+            } catch {
+                trace["completed"]=false
+                trace["errorType"]=String(reflecting:type(of:error))
+                trace["errorDomain"]=(error as NSError).domain
+                trace["errorCode"]=(error as NSError).code
+#if DEBUG
+                trace["failureReason"]=RuntimeFoundationInterpreter.observedFailureReason(error)
+                trace["errorIdentity"]=RuntimeFoundationInterpreter.observedErrorIdentity(error)
+#endif
+                trace["cancelled"]=work.isCancelled
+            }
+            trace["generationEndSeconds"]=elapsed()
+            if let latest { trace["serializedPartialTokens"]=try await model.tokenCount(for:latest.jsonString) }
+            try persist()
+            return
+        }
+#endif
+        throw FixtureError.invalid("Captured replay needs Foundation Models on iOS26.4+")
+    }
+
+    func testCanonicalGroupLabelDecoderKeepsThirtyIntentionsAndRejectsPurposeNames() throws {
+#if canImport(FoundationModels)
+        if #available(iOS 26.4, *) {
+            let units=RuntimeIndexedSource((0..<30).map { "Call person\($0)." }.joined(separator:" "))
+            XCTAssertEqual(units.units.count,30)
+            let valid:[String:Any] = ["byUnit":(0..<30).map { [["g":String($0),"p":"T"]] },"edits":[]]
+            let bytes=try JSONSerialization.data(withJSONObject:valid,options:.sortedKeys)
+            let decoded=try RuntimeFoundationInterpreter.decodeObjectUnitDeclarations(
+                GeneratedContent(json:String(decoding:bytes,as:UTF8.self)),units:units)
+            XCTAssertEqual(decoded?.rows.count,30)
+            // g is an opaque equality label; p owns the strict purpose vocabulary.
+            var opaqueLabels=valid
+            opaqueLabels["byUnit"]=(0..<30).map { [["g":$0 == 0 ? "task" : String($0),"p":"T"]] }
+            let opaqueBytes=try JSONSerialization.data(withJSONObject:opaqueLabels,options:.sortedKeys)
+            let renamed=try XCTUnwrap(RuntimeFoundationInterpreter.decodeObjectUnitDeclarations(
+                GeneratedContent(json:String(decoding:opaqueBytes,as:UTF8.self)),units:units))
+            XCTAssertEqual(renamed.rows.count,30)
+            XCTAssertEqual(renamed.rows.map(\.evidence),(0..<30).map { [$0] })
+            XCTAssertTrue(renamed.rows.allSatisfy { $0.purpose == .task })
+            var invalid=valid
+            invalid["byUnit"]=(0..<30).map { [["g":String($0),"p":$0 == 0 ? "task" : "T"]] }
+            let bad=try JSONSerialization.data(withJSONObject:invalid,options:.sortedKeys)
+            XCTAssertNil(try RuntimeFoundationInterpreter.decodeObjectUnitDeclarations(
+                GeneratedContent(json:String(decoding:bad,as:UTF8.self)),units:units))
+        }
+#endif
+    }
+
+    func testQualificationRejectsUnknownRuntimeModeWithoutCallingRepository() async throws {
+        var invoked = false
+        do {
+            try await withQualificationRuntime(mode: "typo") { invoked = true }
+            XCTFail("Unknown mode must fail before producing an apparently qualified trace")
+        } catch { XCTAssertFalse(invoked) }
+    }
+
     func testExposedDevelopmentPilotThroughShippingRepository() async throws {
         guard let path = ProcessInfo.processInfo.environment["SPEAKIT_PILOT_FIXTURE_PATH"],
               !path.isEmpty else {
@@ -140,6 +436,25 @@ final class LongCaptureQualificationTests: XCTestCase {
             }
             return records
         },checkKnown:Self.auditPilotCivilTimes)
+        let runtimeMode = ProcessInfo.processInfo.environment["SPEAKIT_PILOT_RUNTIME_MODE"] ?? "bundled"
+        let permitsOnDeviceIntelligence = runtimeMode != "rules-only"
+#if DEBUG
+        if ProcessInfo.processInfo.environment["SPEAKIT_PILOT_PREFLIGHT_ONLY"] == "1" {
+            guard runtimeMode == "bundled", records.count == 1,
+                  ProcessInfo.processInfo.environment["SPEAKIT_PILOT_EXPECTED_COUNT"] == "1" else {
+                throw FixtureError.invalid("Preflight-only diagnostic requires one explicit bundled pilot case")
+            }
+        }
+#endif
+        if !permitsOnDeviceIntelligence {
+            let environment = ProcessInfo.processInfo.environment
+            guard environment["SPEAKIT_RUNTIME_EXAMPLES"] == "0",
+                  RuntimeExampleConfiguration.current == nil,
+                  environment["SPEAKIT_PILOT_RETRIEVAL"] == nil,
+                  environment["SPEAKIT_PILOT_BUNDLED_RETRIEVAL"] == nil else {
+                throw FixtureError.invalid("Rules-only pilot requires disabled runtime and no retrieval override")
+            }
+        }
 
         let previousZone = NSTimeZone.default
         let previousPlaces = SavedPlaceStore.snapshot()
@@ -165,6 +480,9 @@ final class LongCaptureQualificationTests: XCTestCase {
         func envelope() -> [String:Any] {
             ["schemaVersion":1,"developmentOnly":true,"fixtureSHA256":Self.sha256(data),
              "shippingPath":"SwiftDataThoughtRepository.createCaptureResult","caseCount":traces.count,
+             "requestedRuntimeMode":runtimeMode,
+             "repositoryPermitsOnDeviceIntelligence":permitsOnDeviceIntelligence,
+             "rulesOnlyExecution":!permitsOnDeviceIntelligence,
              "reminderScheduling":"disabled for create/retry; recovery uses existing behavior; no delivery claim","cases":traces]
         }
         for record in records {
@@ -195,6 +513,7 @@ final class LongCaptureQualificationTests: XCTestCase {
             let url=FileManager.default.temporaryDirectory.appendingPathComponent("SpeakItPilotPhase-\(UUID().uuidString).store")
             func execute() async throws -> [String:Any] {
                 try await diskCasePhases(storeURL:url,text:input.text,referenceDate:referenceDate,calendar:calendar,
+                permitsOnDeviceIntelligence:permitsOnDeviceIntelligence,
                 declaredSeedIDs:Set(try input.context.existing_items.map { try Self.pilotSeedID(caseID:input.case_id,seedID:$0.id) }),
                 seed:{ try Self.seedPilot(input,in:$0,referenceDate:referenceDate) },flush:{ partial in
                     traces[index]=Self.compatibleTrace(metadata:metadata,packet:partial)
@@ -214,13 +533,17 @@ final class LongCaptureQualificationTests: XCTestCase {
                 guard input.excluded_blueprints == nil,input.excluded_ids == nil else {
                     throw FixtureError.invalid("Declared retrieval exclusions require explicit native comparison configuration")
                 }
-                packet=try await execute()
+                packet=try await withQualificationRuntime(
+                    mode: ProcessInfo.processInfo.environment["SPEAKIT_PILOT_RUNTIME_MODE"] ?? "bundled",
+                    retrievalOverride: try Self.pilotBundledRetrievalOverride(), operation: execute)
             }
 #else
             guard input.excluded_blueprints == nil,input.excluded_ids == nil else {
                 throw FixtureError.invalid("This test harness cannot apply exclusions outside its Debug TaskLocal boundary")
             }
-            packet=try await execute()
+            packet=try await withQualificationRuntime(
+                mode: ProcessInfo.processInfo.environment["SPEAKIT_PILOT_RUNTIME_MODE"] ?? "bundled",
+                retrievalOverride: try Self.pilotBundledRetrievalOverride(), operation: execute)
 #endif
             Self.cleanupCaseSidecars(packet)
             RecurrenceStore.restore(previousRecurrences);ShoppingGroupStore.restore(previousShoppingGroups)
@@ -389,7 +712,8 @@ final class LongCaptureQualificationTests: XCTestCase {
                 "dateOnlyAlertDefaultScope":"explicit harness fallback; original raw preference restored"]
             let index=traces.count;traces.append(metadata)
             let url=FileManager.default.temporaryDirectory.appendingPathComponent("SpeakItSealedPhase-\(UUID().uuidString).store")
-            let packet=try await diskCasePhases(storeURL:url,text:testCase.transcript,referenceDate:referenceDate,calendar:calendar,
+            let packet=try await withQualificationRuntime {
+                try await diskCasePhases(storeURL:url,text:testCase.transcript,referenceDate:referenceDate,calendar:calendar,
                 declaredSeedIDs:Set((testCase.seedItems ?? []).map(\.id)),
                 seed:{ context in
                     try Self.seed(testCase.seedItems ?? [],in:context,referenceDate:referenceDate)
@@ -398,6 +722,7 @@ final class LongCaptureQualificationTests: XCTestCase {
                     traces[index]=Self.compatibleTrace(metadata:metadata,packet:partial)
                     try retainTrace(envelope(),path:outputPath,name:"SpeakIt-sealed-\(testCase.id)-partial-phases")
                 })
+            }
             Self.cleanupCaseSidecars(packet)
             RecurrenceStore.restore(previousRecurrences);ShoppingGroupStore.restore(previousShoppingGroups)
             MemoryPinStore.restore(previousPins);IdeaStageStore.restore(previousIdeaStages);ICloudDeletionStore.restore(previousDeletions)
@@ -976,26 +1301,100 @@ final class LongCaptureQualificationTests: XCTestCase {
         XCTAssertTrue(ICloudDeletionStore.records().contains { $0.entity == .item && $0.id == seedID })
     }
 
+    func testPhaseEventTimelinePreservesEventsAndRepositoryClockOrigin() throws {
+        let start=ContinuousClock.now,events=PhaseEvents(start:start)
+        let original=["synthetic retained event", "second retained event"]
+        original.forEach(events.append)
+        let snapshot=events.snapshot()
+        XCTAssertEqual(snapshot.events,original)
+        XCTAssertEqual(snapshot.timeline.count,original.count)
+        XCTAssertEqual(snapshot.timeline.compactMap { $0["eventIndex"] as? Int },Array(original.indices))
+        let elapsed=try snapshot.timeline.map { try XCTUnwrap($0["elapsedSeconds"] as? Double) }
+        let end=start.duration(to:ContinuousClock.now).components
+        let maximum=Double(end.seconds)+Double(end.attoseconds)/1e18
+        XCTAssertTrue(elapsed.allSatisfy { $0.isFinite && $0 >= 0 && $0 <= maximum })
+        XCTAssertEqual(elapsed,elapsed.sorted())
+        XCTAssertTrue(snapshot.timeline.allSatisfy { Set($0.keys) == ["eventIndex","elapsedSeconds"] })
+        XCTAssertNoThrow(try JSONSerialization.data(withJSONObject:snapshot.timeline))
+    }
+
+    func testMeasuredGenerationTimelineRecordsSuccessAndThrowWithoutSDK() async throws {
+#if DEBUG && canImport(FoundationModels)
+        if #available(iOS 26.4,*) {
+            let events=PhaseEvents(start:ContinuousClock.now)
+            let answer=await RuntimeFoundationInterpreter.$developmentObserver.withValue({ events.append($0) }) {
+                await RuntimeFoundationInterpreter.measuredGeneration(phase:"diagnostic-success") { 7 }
+            }
+            XCTAssertEqual(answer,7)
+            enum ExpectedFailure:Error { case synthetic }
+            do {
+                let _:Int=try await RuntimeFoundationInterpreter.$developmentObserver.withValue({ events.append($0) }) {
+                    try await RuntimeFoundationInterpreter.measuredGeneration(phase:"diagnostic-throw") {
+                        throw ExpectedFailure.synthetic
+                    }
+                }
+                XCTFail("The fake operation must retain its thrown error")
+            } catch { XCTAssertTrue(error is ExpectedFailure) }
+            let snapshot=events.snapshot()
+            XCTAssertEqual(snapshot.events.count,4)
+            XCTAssertEqual(snapshot.events.first,"diagnostic boundary=sdk-respond-enter phase=diagnostic-success")
+            XCTAssertTrue(snapshot.events.dropFirst().first?.contains("completion=response-returned") == true)
+            XCTAssertEqual(snapshot.events.dropFirst(2).first,"diagnostic boundary=sdk-respond-enter phase=diagnostic-throw")
+            XCTAssertTrue(snapshot.events.last?.contains("completion=generation-threw") == true)
+            XCTAssertEqual(snapshot.timeline.compactMap { $0["eventIndex"] as? Int },Array(snapshot.events.indices))
+            let elapsed=try snapshot.timeline.map { try XCTUnwrap($0["elapsedSeconds"] as? Double) }
+            XCTAssertTrue(elapsed.allSatisfy { $0.isFinite && $0 >= 0 })
+            XCTAssertEqual(elapsed,elapsed.sorted())
+            XCTAssertTrue(snapshot.timeline.allSatisfy { Set($0.keys) == ["eventIndex","elapsedSeconds"] })
+            return
+        }
+#endif
+        throw XCTSkip("DEBUG measured-operation diagnostic requires iOS 26.4; no SDK call is made")
+    }
+
     private final class PhaseEvents: @unchecked Sendable {
         private let lock=NSLock()
+        private let start:ContinuousClock.Instant
         private var values:[String]=[]
-        func append(_ value:String) { lock.lock();defer { lock.unlock() };values.append(value) }
-        func snapshot() -> [String] { lock.lock();defer { lock.unlock() };return values }
+        private var timeline:[[String:Any]]=[]
+        init(start:ContinuousClock.Instant) { self.start=start }
+        func append(_ value:String) {
+            lock.lock();defer { lock.unlock() }
+            let elapsed=start.duration(to:ContinuousClock.now).components
+            timeline.append(["eventIndex":values.count,
+                "elapsedSeconds":Double(elapsed.seconds)+Double(elapsed.attoseconds)/1e18])
+            values.append(value)
+        }
+        func snapshot() -> (events:[String],timeline:[[String:Any]]) {
+            lock.lock();defer { lock.unlock() };return (values,timeline)
+        }
     }
 
     /// Test evidence only. All models live within one of the two function
     /// scopes below; only JSON values cross the disk-open boundary.
     private func diskCasePhases(storeURL:URL,text:String,referenceDate:Date,calendar:Calendar,
                                 readOnlyDiagnostic:Bool = false,
+                                permitsOnDeviceIntelligence:Bool = true,
                                 declaredSeedIDs:Set<UUID> = [],
                                 seed:(ModelContext) throws -> [String:String],
                                 flush:([String:Any]) throws -> Void) async throws -> [String:Any] {
+#if DEBUG
+        let preflightOnlyDiagnostic=ProcessInfo.processInfo.environment["SPEAKIT_PILOT_PREFLIGHT_ONLY"] == "1"
+        guard !preflightOnlyDiagnostic || (permitsOnDeviceIntelligence
+            && ProcessInfo.processInfo.environment["SPEAKIT_PILOT_RUNTIME_MODE"] == "bundled"
+            && ProcessInfo.processInfo.environment["SPEAKIT_PILOT_EXPECTED_COUNT"] == "1") else {
+            throw FixtureError.invalid("Preflight-only diagnostic requires one explicit bundled pilot case")
+        }
+#else
+        let preflightOnlyDiagnostic=false
+#endif
         let seedSidecars=SeedSidecarScope(ids:declaredSeedIDs)
         defer { seedSidecars.restore() }
         var packet:[String:Any]=["inputTranscript":text,"referenceDate":Self.iso(referenceDate),
             "timeZone":calendar.timeZone.identifier,"storeURL":storeURL.path,"phases":[[String:Any]](),
             "reminderScheduling":"disabled for create/retry; pending requests observed; no delivery or pixels claimed",
-            "displayAuthorization":"denied synthetic fixture; no permission request", "invariantErrors":[String]()]
+            "displayAuthorization":"denied synthetic fixture; no permission request", "invariantErrors":[String](),
+            "repositoryPermitsOnDeviceIntelligence":permitsOnDeviceIntelligence]
         packet["seedSidecarIsolation"]=["declaredItemIDs":declaredSeedIDs.map(\.uuidString).sorted(),
             "scope":"known seed item typed sidecars cleared before seed, restored after ALL phases; unrelated/session records preserved",
             "unsupportedExternalRecurrenceLinks":seedSidecars.externalRecurrenceLinks.map(\.uuidString).sorted()]
@@ -1094,8 +1493,9 @@ final class LongCaptureQualificationTests: XCTestCase {
             try retain(phase)
         }
         func attempt(_ repository:SwiftDataThoughtRepository,_ context:ModelContext,stage:String) async throws {
-            let events=PhaseEvents();var phase:[String:Any]=[:]
+            var phase:[String:Any]=[:]
             let observerID=UUID().uuidString,start=ContinuousClock.now,started=Date.now.timeIntervalSince1970
+            let events=PhaseEvents(start:start)
             do {
                 func create() async throws -> CaptureCreationResult {
                     try await repository.createCaptureResult(text:text,source:.inAppVoice,createdAt:referenceDate,schedulesReminders:false)
@@ -1104,13 +1504,44 @@ final class LongCaptureQualificationTests: XCTestCase {
                 func observedFoundationCreate() async throws -> CaptureCreationResult {
 #if canImport(FoundationModels)
                     if #available(iOS 26.4,*) {
-                        return try await RuntimeFoundationInterpreter.$developmentObserver.withValue({ events.append($0) }) { try await create() }
+                        return try await RuntimeFoundationInterpreter.$developmentObserver.withValue({ value in
+                            events.append(value)
+#if DEBUG
+                            if preflightOnlyDiagnostic, value.hasPrefix("budget prompt="), value.contains(" phase=outline ") {
+                                // Synchronous observer execution cancels only
+                                // the current runtime work task in the child
+                                // diagnostic. append already returned and
+                                // released its lock before cancellation can
+                                // synchronously invoke another logging handler.
+                                withUnsafeCurrentTask { currentTask in
+                                    precondition(currentTask != nil, "Budget observer requires a current diagnostic task")
+                                    currentTask?.cancel()
+                                }
+                                events.append("diagnostic boundary=preflight-budget-cancel taskCancelled=\(Task.isCancelled)")
+                            }
+#endif
+                        }) { try await create() }
                     }
 #endif
                     return try await create()
                 }
 #if DEBUG
+                if preflightOnlyDiagnostic {
+                    // The XCTest/repository caller remains uncancelled even
+                    // if a future observer runs before a nested work task.
+                    @MainActor final class PreflightResultBox { var value:CaptureCreationResult? }
+                    let box=PreflightResultBox()
+                    let child=Task<Void,Error> { @MainActor in
+                        box.value=try await RuntimeExampleLibrary.$developmentObserver.withValue({ events.append($0) }) {
+                            try await observedFoundationCreate()
+                        }
+                    }
+                    try await child.value
+                    guard let value=box.value else { throw FixtureError.invalid("Preflight child returned no repository result") }
+                    result=value
+                } else {
                 result=try await RuntimeExampleLibrary.$developmentObserver.withValue({ events.append($0) }) { try await observedFoundationCreate() }
+                }
 #else
                 result=try await observedFoundationCreate()
 #endif
@@ -1123,19 +1554,78 @@ final class LongCaptureQualificationTests: XCTestCase {
             phase["repositoryCallElapsedSeconds"]=Double(duration.seconds)+Double(duration.attoseconds)/1e18
             phase["timingScope"]="actual repository call only; SDK/service ID and memory unobserved; snapshots/writes excluded"
             observedIDs.formUnion(phase["resultItemIDs"] as? [String] ?? [])
-            phase["runtimeEvents"]=events.snapshot()
+            let observedEvents=events.snapshot()
+            phase["runtimeEvents"]=observedEvents.events
+            phase["runtimeEventTimeline"]=observedEvents.timeline
+            phase["runtimeEventTimelineScope"]="ContinuousClock seconds from repository-call start; locked observer reception order; indexes reference runtimeEvents; SDK internals unobserved"
+#if DEBUG
+            if preflightOnlyDiagnostic {
+                phase["preflightOnlyDiagnostic"]=true
+                phase["preflightParentTaskCancelled"]=Task.isCancelled
+                phase["parentTaskCancelledAfterCall"]=Task.isCancelled
+                let values=observedEvents.events
+                let budgets=values.filter { $0.hasPrefix("budget prompt=") && $0.contains(" phase=outline ") }
+                let sdk=values.filter { $0.hasPrefix("diagnostic boundary=sdk-respond-enter") }
+                let sessions=values.filter { $0.hasPrefix("diagnostic boundary=staged-session-create-enter") }
+                phase["preflightOutlineBudgetCount"]=budgets.count
+                phase["preflightAppGenerationEntrypoints"]=sdk.count
+                phase["preflightSessionCreationEntries"]=sessions.count
+                phase["diagnosticCancellationRequested"]=values.contains { $0.hasPrefix("diagnostic boundary=preflight-budget-cancel ") }
+                phase["noGenerationSessionEntry"]=sdk.isEmpty && sessions.isEmpty
+                if Task.isCancelled { fault("preflight diagnostic cancelled its parent task") }
+                if !sdk.isEmpty || !sessions.isEmpty { fault("preflight diagnostic reached session or generation") }
+                if stage == "create" {
+                    let expected=["staged-units-enter","staged-units-exit",
+                        "staged-atoms-enter","staged-atoms-exit",
+                        "staged-component-cues-enter","staged-component-cues-exit",
+                        "staged-fixed-eligibility-enter","staged-fixed-eligibility-exit",
+                        "staged-joint-calls-enter","staged-joint-calls-exit",
+                        "staged-context-projection-enter","staged-context-projection-exit",
+                        "staged-source-builders-exit","staged-schema-build-enter","staged-schema-build-exit",
+                        "staged-schema-count-enter","staged-schema-count-exit",
+                        "staged-fit-prework-enter","staged-fit-prework-exit",
+                        "staged-fit-enter","staged-fit-exit","preflight-budget-cancel",
+                        "staged-fitted-prompt-exit"]
+                    let indices=expected.compactMap { name in
+                        values.firstIndex { $0.hasPrefix("diagnostic boundary="+name+" ") || $0 == "diagnostic boundary="+name }
+                    }
+                    let ordered=indices.count == expected.count && indices == indices.sorted() && Set(indices).count == indices.count
+                    phase["preflightExpectedBoundaries"]=expected;phase["preflightBoundaryOrderPassed"]=ordered
+                    phase["preflightCancellationObserved"]=values.contains("diagnostic boundary=preflight-budget-cancel taskCancelled=true")
+                    if budgets.count != 1 { fault("preflight diagnostic did not reach exactly one outline budget") }
+                    if !ordered { fault("preflight diagnostic omitted or reordered expected boundaries") }
+                    if !values.contains("diagnostic boundary=preflight-budget-cancel taskCancelled=true") {
+                        fault("preflight diagnostic did not acknowledge current work cancellation")
+                    }
+                    if !values.contains(where: { $0.hasPrefix("call end phase=outline completion=not-started cancellation=observed reason=cancelled-before-sdk") }) {
+                        fault("preflight diagnostic did not use the existing pre-SDK cancellation guard")
+                    }
+                } else if !budgets.isEmpty {
+                    fault("preflight diagnostic repeated preparation during duplicate retry")
+                }
+            }
+#endif
             phase["observedLocale"]=Locale.current.identifier
-            if let config=RuntimeExampleTestFixtures.reviewed {
-                phase["runtimeConfiguration"]=["libraryURL":config.libraryURL.path,"expectedSHA256":Self.json(config.expectedSHA256),
-                    "allowProposed":config.allowProposed,"retrievalEnabled":config.retrievalEnabled,
-                    "excludedBlueprints":config.excludedBlueprints.sorted(),"excludedIDs":config.excludedIDs.sorted(),
-                    "manualReferenceIDs":config.manualReferenceIDs as Any? ?? NSNull(),"usesStagedOutline":config.usesStagedOutline]
-            } else { phase["runtimeConfiguration"]=NSNull() }
+            phase["runtimeConfiguration"]=Self.runtimeConfigurationSnapshot()
+            phase["runtimeInterpretationEnabled"]=RuntimeExampleConfiguration.current != nil
+            phase["repositoryPermitsOnDeviceIntelligence"]=permitsOnDeviceIntelligence
+#if targetEnvironment(simulator)
+            phase["executionEnvironment"]="iOS simulator; no physical microphone or phone-model qualification"
+#else
+            phase["executionEnvironment"]="iOS device"
+#endif
+#if canImport(FoundationModels)
+            if #available(iOS 26.0, *) {
+                phase["foundationModelAvailability"]=String(describing: SystemLanguageModel.default.availability)
+                phase["foundationModelSupportsLocale"]=SystemLanguageModel.default.supportsLocale(.current)
+            }
+#endif
             try await observe(context,stage:stage,extra:phase)
         }
         func initialScope() async throws {
             let container=try open(allowsSave:!readOnlyDiagnostic),context=container.mainContext
-            let repository=SwiftDataThoughtRepository(modelContext:context,requestsReminderAuthorization:false)
+            let repository=SwiftDataThoughtRepository(modelContext:context,requestsReminderAuthorization:false,
+                permitsOnDeviceIntelligence:permitsOnDeviceIntelligence)
             do {
                 let aliases=try seed(context);packet["seedAliases"]=aliases;observedIDs.formUnion(aliases.values)
             } catch {
@@ -1159,7 +1649,8 @@ final class LongCaptureQualificationTests: XCTestCase {
         }
         func freshScope() async throws {
             let container=try open(allowsSave:!readOnlyDiagnostic),context=container.mainContext
-            let repository=SwiftDataThoughtRepository(modelContext:context,requestsReminderAuthorization:false)
+            let repository=SwiftDataThoughtRepository(modelContext:context,requestsReminderAuthorization:false,
+                permitsOnDeviceIntelligence:permitsOnDeviceIntelligence)
             try await observe(context,stage:"fresh-open")
             for stage in ["recovery1","recovery2"] {
                 repository.recoverUnorganizedCaptures();try await observe(context,stage:stage)
@@ -1181,6 +1672,32 @@ final class LongCaptureQualificationTests: XCTestCase {
                 }
             }
         }
+#if DEBUG
+        if preflightOnlyDiagnostic {
+            let created=phases.first { $0["stage"] as? String == "create" }
+            let saved=created?["state"] as? [String:Any]
+            let ids=Set(created?["resultItemIDs"] as? [String] ?? [])
+            let items=(saved?["items"] as? [[String:Any]] ?? []).filter { ids.contains($0["id"] as? String ?? "") }
+            let sessions=saved?["sessions"] as? [[String:Any]] ?? []
+            let sessionID=created?["resultSessionID"] as? String
+            let session=sessions.first { ($0["id"] as? String) == sessionID }
+            let immutable=(session?["originalTranscription"] as? String)?.utf8.elementsEqual(text.utf8) == true
+            let held=items.count == 1 && items.allSatisfy { item in
+                (item["originalTextSegment"] as? String)?.utf8.elementsEqual(text.utf8) == true
+                    && item["semanticGap"] as? String == SemanticGap.organizationIncomplete.rawValue
+                    && item["needsClarification"] as? Bool == true
+                    && item["dueDate"] is NSNull && item["reminderDate"] is NSNull
+                    && item["locationIntent"] is NSNull && item["recurrenceRule"] is NSNull
+                    && item["personName"] is NSNull && item["pendingOperation"] is NSNull
+                    && item["belongsInToday"] as? Bool == false
+            } && (saved?["pendingRequests"] as? [[String:Any]])?.isEmpty == true
+                && (created?["operationOutcome"] as? [String:Any])?["kind"] as? String == "none"
+            packet["preflightImmutableOriginalRetained"]=immutable
+            packet["preflightWholeOriginalHeldWithoutEffects"]=held
+            packet["preflightGenerationScope"]="App outline session/response not entered; existing preflight token counts/retrieval unchanged; no complete organization or speed gain claimed"
+            if !immutable || !held { fault("preflight diagnostic did not retain one inert whole-original review") }
+        }
+#endif
         do { try flush(packet) }
         catch { fault("final trace write failed: "+String(describing:error))
             let evidence=XCTAttachment(data:try JSONSerialization.data(withJSONObject:packet,options:[.sortedKeys,.prettyPrinted]),uniformTypeIdentifier:"public.json")

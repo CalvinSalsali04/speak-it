@@ -12,6 +12,43 @@ import XCTest
 /// capture a sentence, then look under People for the human it named.
 @MainActor
 final class PersonMentionTests: XCTestCase {
+    func testDeterminedCausativeObjectSuppliesBeneficiaryRoleWithoutNameVocabulary() throws {
+        let source = "Get Willa a spare key cut."
+        let mention = try XCTUnwrap(PersonMentionResolver.primary(in: source))
+        XCTAssertEqual(mention.label, "Willa")
+        XCTAssertEqual(String(source[mention.sourceRange]), "Willa")
+        XCTAssertEqual(mention.role, .participant)
+        let result = ThoughtExtractionEngine.extractWithRules(source,
+            referenceDate: referenceDate, calendar: calendar)
+        XCTAssertEqual(result.items.count, 1)
+        XCTAssertEqual(result.items.first?.organization.itemType, .task)
+        XCTAssertEqual(result.items.first?.organization.personName, "Willa")
+        XCTAssertNil(result.items.first?.shoppingGroup)
+        for combined in ["Get Willa a spare key cut and buy milk.",
+                         "Buy milk and get Willa a spare key cut."] {
+            let split = ThoughtExtractionEngine.extractWithRules(combined,
+                referenceDate: referenceDate, calendar: calendar)
+            XCTAssertEqual(split.items.count, 2, combined)
+            let service = split.items.first { $0.analysisText.localizedCaseInsensitiveContains("spare key") }
+            XCTAssertEqual(service?.organization.itemType, .task, combined)
+            XCTAssertEqual(service?.organization.personName, "Willa", combined)
+            XCTAssertNil(service?.shoppingGroup, combined)
+            let purchase = split.items.first { $0.organization.itemType == .shopping }
+            XCTAssertNotNil(purchase, combined)
+            XCTAssertNil(purchase?.organization.personName, combined)
+        }
+        for opposed in ["Get a spare key cut.", "Get Willa ready.",
+                        "Get Willa. A spare key cut.",
+                        "Get Willa a spare key cut if she agrees.",
+                        "Never get Willa a spare key cut.",
+                        "Have Willa get a spare key cut.",
+                        "Get Willa washed.",
+                        "Get Willa a box of doughnuts.",
+                        "The phrase ‘Get Willa a spare key cut’ is printed on the poster."] {
+            XCTAssertFalse(PersonMentionResolver.mentions(in: opposed).contains { $0.role == .participant && $0.label == "Willa" }, opposed)
+        }
+    }
+
     private var container: ModelContainer!
     private var repository: SwiftDataThoughtRepository!
 
@@ -71,51 +108,80 @@ final class PersonMentionTests: XCTestCase {
             + "a Monday draft send or a print job."
 
     func testUniqueWithdrawnAntecedentIsVisibleInSurvivingActionTitle() {
-        let source = Self.withdrawnSendSource
-        let items = ThoughtExtractionEngine.extractWithRules(
-            source, referenceDate: referenceDate, calendar: calendar
-        ).items
-        XCTAssertEqual(items.count, 1, items.map { "\($0.analysisText) / \($0.organization.personName ?? "nil") / \($0.suggestedTitle ?? "nil")" }.joined(separator: " | "))
-        XCTAssertEqual(items[0].organization.personName, "Marcus")
-        XCTAssertTrue(items[0].suggestedTitle?.contains("send Marcus") == true,
-                      "title=\(items[0].suggestedTitle ?? "nil") analysis=\(items[0].analysisText)")
-        XCTAssertTrue(items[0].rawQuote.contains("send the draft to Marcus"))
+        let previousTaggerMode = SentenceContext.taggerDisabledForEvaluation
+        defer {
+            SentenceContext.taggerDisabledForEvaluation = previousTaggerMode
+            SentenceContextCache.invalidate()
+        }
+        for disabled in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disabled
+            SentenceContextCache.invalidate()
+            let source = Self.withdrawnSendSource
+            let items = ThoughtExtractionEngine.extractWithRules(
+                source, referenceDate: referenceDate, calendar: calendar
+            ).items
+            XCTAssertEqual(items.count, 1, items.map { "\($0.analysisText) / \($0.organization.personName ?? "nil") / \($0.suggestedTitle ?? "nil")" }.joined(separator: " | "))
+            XCTAssertEqual(items[0].organization.personName, "Marcus")
+            XCTAssertTrue(items[0].suggestedTitle?.contains("send Marcus") == true,
+                          "title=\(items[0].suggestedTitle ?? "nil") analysis=\(items[0].analysisText)")
+            XCTAssertTrue(items[0].rawQuote.contains("send the draft to Marcus"))
 
-        let short = ThoughtExtractionEngine.extractWithRules(
-            "Call Marcus tomorrow", referenceDate: referenceDate, calendar: calendar
-        ).items
-        XCTAssertEqual(short.count, 1)
-        XCTAssertEqual(short[0].organization.personName, "Marcus")
-        XCTAssertFalse(short[0].needsReview)
+            let short = ThoughtExtractionEngine.extractWithRules(
+                "Call Marcus tomorrow", referenceDate: referenceDate, calendar: calendar
+            ).items
+            XCTAssertEqual(short.count, 1)
+            XCTAssertEqual(short[0].organization.personName, "Marcus")
+            XCTAssertFalse(short[0].needsReview)
 
-        let embedded = ThoughtExtractionEngine.extractWithRules(
-            "Ask Marcus to email her tomorrow", referenceDate: referenceDate,
-            calendar: calendar
-        ).items
-        XCTAssertEqual(embedded.count, 1)
-        XCTAssertTrue(embedded[0].analysisText.contains("email her"))
+            let embedded = ThoughtExtractionEngine.extractWithRules(
+                "Ask Marcus to email her tomorrow", referenceDate: referenceDate,
+                calendar: calendar
+            ).items
+            XCTAssertEqual(embedded.count, 1)
+            XCTAssertTrue(embedded[0].analysisText.contains("email her"))
+        }
     }
 
     func testCurrentPlanRevisionDoesNotConsumeIndependentActsOrReportedPlans() {
-        func rows(_ text: String) -> [ExtractedThought] {
-            ThoughtExtractionEngine.extractWithRules(text, referenceDate: referenceDate, calendar: calendar).items
+        let previousTaggerMode = SentenceContext.taggerDisabledForEvaluation
+        defer {
+            SentenceContext.taggerDisabledForEvaluation = previousTaggerMode
+            SentenceContextCache.invalidate()
         }
-        let unrelated = rows("I said I would call Marcus on Monday, but ignore that timing. The final plan is to send Nora the reviewed version on Wednesday.")
-        XCTAssertEqual(unrelated.count, 2)
-        XCTAssertTrue(unrelated.contains { $0.sourceQuote.contains("call Marcus") })
-        XCTAssertTrue(unrelated.contains { $0.organization.personName == "Nora" && $0.organization.itemType.isActionable })
-        let report = rows("Asha said, 'My final plan is to send Ben the document on Wednesday.'")
-        XCTAssertTrue(report.allSatisfy { !$0.organization.itemType.isActionable && $0.organization.reminderDate == nil })
-        let physical = rows("Save the revised document in the shared folder.")
-        XCTAssertEqual(physical.count, 1)
-        XCTAssertTrue(physical[0].organization.itemType.isActionable)
-        let independent = rows("I was going to print the document, no, that makes no sense because it is shared. Buy eggs tomorrow.")
-        XCTAssertEqual(independent.filter { $0.organization.itemType.isActionable }.count, 1)
-        XCTAssertTrue(independent.contains { $0.analysisText.lowercased().contains("buy eggs") })
-        let fact = rows("I was going to print the document, no, that makes no sense, and the printer is broken.")
-        XCTAssertTrue(fact.contains { $0.sourceQuote.contains("printer is broken") })
-        let competing = rows("I said I would send the draft to Marcus and Ben on Monday, but ignore that timing. The final plan is to send him the reviewed version on Wednesday.")
-        XCTAssertFalse(competing.contains { $0.organization.itemType.isActionable && ["Marcus", "Ben"].contains($0.organization.personName ?? "") })
+        for disabled in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disabled
+            SentenceContextCache.invalidate()
+            func rows(_ text: String) -> [ExtractedThought] {
+                ThoughtExtractionEngine.extractWithRules(text, referenceDate: referenceDate, calendar: calendar).items
+            }
+            let unrelated = rows("I said I would call Marcus on Monday, but ignore that timing. The final plan is to send Nora the reviewed version on Wednesday.")
+            XCTAssertEqual(unrelated.count, 2)
+            XCTAssertTrue(unrelated.contains { $0.sourceQuote.contains("call Marcus") })
+            XCTAssertTrue(unrelated.contains { $0.organization.personName == "Nora" && $0.organization.itemType.isActionable })
+            let report = rows("Asha said, 'My final plan is to send Ben the document on Wednesday.'")
+            XCTAssertTrue(report.allSatisfy { !$0.organization.itemType.isActionable && $0.organization.reminderDate == nil })
+            let physical = rows("Save the revised document in the shared folder.")
+            XCTAssertEqual(physical.count, 1)
+            XCTAssertTrue(physical[0].organization.itemType.isActionable)
+            let independent = rows("I was going to print the document, no, that makes no sense because it is shared. Buy eggs tomorrow.")
+            XCTAssertEqual(independent.filter { $0.organization.itemType.isActionable }.count, 1)
+            XCTAssertTrue(independent.contains { $0.analysisText.lowercased().contains("buy eggs") })
+            let fact = rows("I was going to print the document, no, that makes no sense, and the printer is broken.")
+            XCTAssertTrue(fact.contains { $0.sourceQuote.contains("printer is broken") })
+            let competing = rows("I said I would send the draft to Marcus and Ben on Monday, but ignore that timing. The final plan is to send him the reviewed version on Wednesday.")
+            XCTAssertFalse(competing.contains { $0.organization.itemType.isActionable && ["Marcus", "Ben"].contains($0.organization.personName ?? "") })
+            let revision = "I said I would send the draft to Marcus on Monday, but ignore that timing. The final plan is to send him the reviewed version on Wednesday. "
+            let twoSends = rows(revision + "Send Nora the receipt. Save the revised send.")
+            XCTAssertTrue(twoSends.contains { $0.sourceQuote.contains("Save the revised send")
+                && !$0.sourceQuote.contains("final plan") })
+            XCTAssertTrue(twoSends.contains { $0.organization.itemType.isActionable
+                && $0.organization.personName == "Nora" })
+            let extra = rows(revision + "Save the revised send and buy eggs tomorrow.")
+            XCTAssertTrue(extra.contains { $0.organization.itemType == .shopping
+                && $0.analysisText.localizedCaseInsensitiveContains("buy eggs") })
+            let unowned = rows("Save the revised send, and preserve my correction in the source, but do not create a Monday draft send or a print job.")
+            XCTAssertTrue(unowned.contains { $0.sourceQuote.contains("preserve my correction") })
+        }
     }
 
     func testNamedGroupPurposeOwnsLaterPronounOnlyWithinThatGroup() {
@@ -388,6 +454,123 @@ final class PersonMentionTests: XCTestCase {
 
         let item = try repository.createCapture(text: "Call the dentist tomorrow at 9 AM")
         XCTAssertNotEqual(item.clarificationRequirement, .person)
+    }
+
+    func testDirectDescribedTaskTargetDoesNotBecomeItsPossessiveOwner() throws {
+        let previousTaggerMode = SentenceContext.taggerDisabledForEvaluation
+        defer {
+            SentenceContext.taggerDisabledForEvaluation = previousTaggerMode
+            SentenceContextCache.invalidate()
+        }
+        let observed = "Call the fire marshal's office to book the venue inspection, it has to happen before tech week."
+        for disabled in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disabled
+            SentenceContextCache.invalidate()
+            for source in [observed, "Call the fire marshal’s office."] {
+                XCTAssertEqual(PersonMentionResolver.followUpTarget(in: source),
+                               .described("the fire marshal's office"), source)
+                let reading = ThoughtExtractionEngine.extractWithRules(
+                    source, referenceDate: referenceDate, calendar: calendar)
+                XCTAssertTrue(reading.operations.isEmpty)
+                XCTAssertEqual(reading.items.count, 1, String(reflecting: reading))
+                let item = try XCTUnwrap(reading.items.first)
+                XCTAssertEqual(item.organization.itemType, .task, source)
+                XCTAssertNil(item.organization.personName, source)
+                XCTAssertEqual(item.rawQuote, source)
+                XCTAssertTrue(item.analysisText.localizedCaseInsensitiveContains("office"))
+            }
+            let titleCased = "Call The Fire Marshal’s Office."
+            let titleCasedReading = ThoughtExtractionEngine.extractWithRules(
+                titleCased, referenceDate: referenceDate, calendar: calendar)
+            XCTAssertEqual(titleCasedReading.items.count, 1, titleCased)
+            XCTAssertEqual(titleCasedReading.items.first?.organization.itemType, .task)
+            XCTAssertNil(titleCasedReading.items.first?.organization.personName)
+            let compounds: [(String, [String?])] = [
+                ("Call the fire marshal’s office. Text Marshal.", [nil, "Marshal"]),
+                ("Text Dave. Call the fire marshal’s office.", ["Dave", nil]),
+                ("Call the fire marshal’s office, then text Marshal the time.", [nil, "Marshal"]),
+                ("Text Dave the address; call the fire marshal’s office.", ["Dave", nil])
+            ]
+            for (source, expectedPeople) in compounds {
+                let reading = ThoughtExtractionEngine.extractWithRules(
+                    source, referenceDate: referenceDate, calendar: calendar)
+                XCTAssertTrue(reading.operations.isEmpty)
+                XCTAssertEqual(reading.items.count, 2, String(reflecting: reading))
+                XCTAssertEqual(reading.items.map(\.organization.personName), expectedPeople, source)
+                let officeItems = reading.items.filter {
+                    $0.analysisText.localizedCaseInsensitiveContains("office")
+                }
+                XCTAssertEqual(officeItems.count, 1, source)
+                XCTAssertEqual(officeItems.first?.organization.itemType, .task)
+                XCTAssertNil(officeItems.first?.organization.personName)
+            }
+            for (source, name) in [
+                ("Call Marshal", "Marshal"),
+                ("Call Dr. Patel", "Dr. Patel"),
+                ("Call Dave's mom", "Dave's mom")
+            ] {
+                let reading = ThoughtExtractionEngine.extractWithRules(
+                    source, referenceDate: referenceDate, calendar: calendar)
+                XCTAssertEqual(reading.items.count, 1, source)
+                XCTAssertEqual(reading.items.first?.organization.personName, name, source)
+                let legacyNil = CapturedItem(originalTextSegment: source,
+                    displayTitle: source, itemType: .task)
+                XCTAssertEqual(MemoryPersonNameResolver.name(for: legacyNil), name, source)
+            }
+            let namedOffice = "Call Alex's office"
+            XCTAssertEqual(PersonMentionResolver.followUpTarget(in: namedOffice), .described("Alex's office"))
+            XCTAssertNil(person(namedOffice))
+            let embedded = "Summarize Alex's instructions to call the dentist"
+            let embeddedReading = ThoughtExtractionEngine.extractWithRules(
+                embedded, referenceDate: referenceDate, calendar: calendar)
+            XCTAssertEqual(embeddedReading.items.count, 1)
+            XCTAssertEqual(embeddedReading.items.first?.organization.personName, "Alex")
+            let embeddedNil = CapturedItem(originalTextSegment: embedded,
+                displayTitle: embedded, itemType: .task)
+            XCTAssertEqual(MemoryPersonNameResolver.name(for: embeddedNil), "Alex")
+        }
+    }
+
+    func testPersistedDescribedTaskDoesNotReappearAsAMarshalMemoryPerson() throws {
+        let previousTaggerMode = SentenceContext.taggerDisabledForEvaluation
+        defer {
+            SentenceContext.taggerDisabledForEvaluation = previousTaggerMode
+            SentenceContextCache.invalidate()
+        }
+        let source = "Call the fire marshal’s office."
+        for disabled in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disabled
+            SentenceContextCache.invalidate()
+            // Separate stores prevent the duplicate-capture shortcut from
+            // making the second tagger mode reuse the first mode's reading.
+            let localContainer = try ModelContainer(for: PersistenceController.schema,
+                migrationPlan: SpeakItMigrationPlan.self,
+                configurations: [ModelConfiguration(isStoredInMemoryOnly: true)])
+            let localRepository = SwiftDataThoughtRepository(modelContext: localContainer.mainContext,
+                requestsReminderAuthorization: false)
+            let saved = try localRepository.createCapture(text: source, source: .inAppText,
+                createdAt: referenceDate, schedulesReminder: false)
+            XCTAssertEqual(saved.itemType, .task)
+            XCTAssertTrue(saved.belongsInToday)
+            XCTAssertNotEqual(saved.clarificationRequirement, .person)
+            XCTAssertNil(saved.personName)
+            let freshContext = ModelContext(localContainer)
+            let reloaded = try XCTUnwrap(freshContext.fetch(FetchDescriptor<CapturedItem>())
+                .first { $0.id == saved.id })
+            XCTAssertEqual(reloaded.originalTextSegment, source)
+            XCTAssertEqual(reloaded.captureSession?.originalTranscription, source)
+            XCTAssertNil(reloaded.personName)
+            XCTAssertTrue(reloaded.displayTitle.localizedCaseInsensitiveContains("office"))
+            XCTAssertNil(MemoryPersonNameResolver.name(for: reloaded))
+            XCTAssertFalse(MemoryGroup.people.contains(reloaded))
+            XCTAssertTrue(MemoryGroup.notes.contains(reloaded))
+            // Existing explicit metadata is authoritative and is not migrated
+            // or silently corrected by this read-time fallback.
+            let explicitLegacy = CapturedItem(originalTextSegment: source,
+                displayTitle: source, itemType: .task, personName: "Marshal")
+            XCTAssertEqual(MemoryPersonNameResolver.name(for: explicitLegacy), "Marshal")
+            XCTAssertEqual(explicitLegacy.personName, "Marshal")
+        }
     }
 
     // MARK: - The consequence: does the person appear under People?

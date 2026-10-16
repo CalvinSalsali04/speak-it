@@ -132,7 +132,147 @@ enum ActionabilityReader {
     /// deliberately *not* in `actionVerb`: that list also opens new clauses
     /// mid-sentence, and "people tie the two together" must not be cut into
     /// a job. Noun-first words (draft, review, note, list, record) stay out.
-    static let headOnlyImperativeVerb = #"(?:archive|arrange|assemble|attach|bathe|boil|borrow|brush|carry|chill|chop|compare|count|cover|cut|deflate|delete|detach|double-check|drain|dry|fetch|fill|floss|flush|freeze|fry|glue|grease|greet|grill|harvest|heat|highlight|inflate|inform|inspect|introduce|lend|lift|loosen|lower|marinate|measure|microwave|notify|oil|paint|peel|plant|polish|postpone|pour|prune|pump|rearrange|rebook|reboot|remove|rename|reorganise|reorganize|repair|reschedule|reset|restart|restock|rinse|roast|rotate|sand|sew|shave|shut|soak|stack|stir|straighten|tape|teach|thank|thaw|tie|tighten|trim|unlock|unpack|unplug|untie|verify|warm|warn|weigh|welcome)"#
+    static let headOnlyImperativeVerb = #"(?:archive|arrange|assemble|attach|bathe|boil|borrow|brush|carry|chill|chop|compare|count|cover|cut|deflate|delete|detach|double-check|drain|dry|fetch|fill|floss|flush|freeze|fry|glue|grease|greet|grill|harvest|heat|highlight|hold|inflate|inform|inspect|introduce|lend|lift|loosen|lower|marinate|measure|microwave|notify|oil|paint|peel|plant|polish|postpone|pour|prune|pump|rearrange|rebook|reboot|remove|rename|reorganise|reorganize|repair|reschedule|reset|restart|restock|rinse|roast|rotate|sand|sew|shave|shut|soak|stack|stir|straighten|tape|teach|thank|thaw|tie|tighten|trim|unlock|unpack|unplug|untie|verify|warm|warn|weigh|welcome)"#
+
+    /// Productive result morphology shared with the current-source veto.
+    /// A regular suffix alone proves nothing: the restored stem must already
+    /// belong to the action grammar. Existing irregular forms remain bounded.
+    static func isResultParticiple(_ word: String, continuation: String = "") -> Bool {
+        let value = word.lowercased()
+        if ["done", "made", "sent", "paid", "taken", "brought", "put", "kept",
+            "given", "written", "cut", "built", "bought"].contains(value) { return true }
+        guard value.hasSuffix("ed"), value.count > 2 else { return false }
+        let base = String(value.dropLast(2))
+        var stems = [base, String(value.dropLast())]
+        if value.hasSuffix("ied") { stems.append(String(value.dropLast(3)) + "y") }
+        if base.count > 1, base.last == base.dropLast().last { stems.append(String(base.dropLast())) }
+        return stems.contains {
+            ($0 + continuation).range(of: "(?i)^(?:" + actionVerb + "|" + headOnlyImperativeVerb + ")\\b",
+                     options: .regularExpression) != nil
+        }
+    }
+
+    static let relativeTemporalGenitiveModifiers: Set<String> = [
+        "last", "next", "past", "previous", "this", "that"
+    ]
+
+    /// A temporal genitive selects a possessed plural noun phrase. This is
+    /// grammatical object evidence for a shopping veto, never action/purchase
+    /// permission. Keep this portable shape bounded when lexical assets lack
+    /// noun tags; unknown undetermined objects still decline.
+    static func isTemporalGenitiveObject(_ object: String) -> Bool {
+        let words = object.lowercased().split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        guard words.count >= 3,
+              relativeTemporalGenitiveModifiers.contains(words[0]),
+              words[1].range(of: #"^[\p{L}\p{M}-]+['’]s$"#, options: .regularExpression) != nil,
+              let head = words.last, head.count >= 4, head.hasSuffix("s"),
+              !["ss", "us", "is", "ous", "'s", "’s"].contains(where: head.hasSuffix),
+              !words.dropFirst(2).contains(where: { word in
+                  word.range(of: #"(?i)^(?:i|we|you|he|she|they|it|my|our|his|her|their|is|are|was|were|has|have|had|will|would|must|should|can|could|not|never|no|if|unless|when|while|once|and|or|but|then|also|to|from|at|on|by|for|of|because)$"#,
+                             options: .regularExpression) != nil
+                    || word.range(of: "(?i)^(?:" + actionVerb + "|" + headOnlyImperativeVerb + ")(?:s|es)?$",
+                                  options: .regularExpression) != nil
+              }) else { return false }
+        let context = SentenceContextCache.context(for: object)
+        return !context.hasSubjectPredicate(in: object.startIndex..<object.endIndex)
+            && !context.tokens.contains(where: \.isVerb)
+    }
+
+    /// A post-object result changes/serves something already named. Read only
+    /// an owned clause's existing get/have head, not an arbitrary later verb.
+    /// This removes shopping authority and never grants current actionability.
+    static func hasCausativeResult(_ text: String) -> Bool {
+        guard QuotedSpeechScope.ranges(in: text).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(text) else { return false }
+        let body = actionBody(text).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let lead = body.range(of: #"(?i)^(?:get|have)\s+"#, options: .regularExpression),
+              let regex = NSRegularExpression.speakItCached(#"[\p{L}\p{M}\p{N}'’-]+"#) else { return false }
+        let tail = String(body[lead.upperBound...])
+        let words = regex.matches(in: tail, range: NSRange(tail.startIndex..., in: tail))
+        for (index, match) in words.enumerated() {
+            guard let result = Range(match.range, in: tail) else { return false }
+            let token = String(tail[result])
+            if token.range(of: #"(?i)^(?:and|or|but|then|also|if|unless|when|while|because|before|after|at|on|by|for|from|to)$"#,
+                           options: .regularExpression) != nil { break }
+            guard index > 0, isResultParticiple(token) else { continue }
+            let object = String(tail[..<result.lowerBound]).trimmingCharacters(in: .whitespaces)
+            let rest = String(tail[result.upperBound...])
+                .trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: ".!?")))
+            guard completeCausativeObject(object, in: body), completeResultTail(rest) else { continue }
+            return true
+        }
+        return false
+    }
+
+    private static func completeCausativeObject(_ source: String, in original: String) -> Bool {
+        guard source.range(of: #"[,;.!?]|(?i)\b(?:and|or|but|then|also|if|unless|when|while|because|to|from|at|on|by|for|not|never|no)\b"#,
+                           options: .regularExpression) == nil else { return false }
+        var object = source
+        // A real benefactive before a determined object is not another item.
+        // This reads only the object shape; it does not erase its named person.
+        if let recipient = source.range(of: #"(?i)^[\p{L}\p{M}'’-]+\s+(?=(?:a|an|the|my|our)\s+)"#,
+                                        options: .regularExpression) {
+            let label = String(source[recipient]).trimmingCharacters(in: .whitespaces)
+            if PersonMentionResolver.isCommonFirstName(label)
+                || original.range(of: label).map({ range in
+                    SentenceContextCache.context(for: original).tokens(in: range).contains(where: \.isPersonalName)
+                }) == true {
+                object = String(source[recipient.upperBound...])
+            }
+        }
+        if isTemporalGenitiveObject(object) { return true }
+        // Reuse the existing complete quantity/package reader around one
+        // concrete head, rather than let a known last noun hide a predicate.
+        let core = ShoppingGroupParser.productIdentity(object)
+        if core.split(whereSeparator: { $0.isWhitespace }).count == 1,
+           ShoppingGroupParser.namesProductHead(core) { return true }
+        guard let range = original.range(of: object) else { return false }
+        let context = SentenceContextCache.context(for: original)
+        let tokens = context.tokens(in: range)
+        guard let head = tokens.last, head.lexicalClass == .noun,
+              !context.hasSubjectPredicate(in: range),
+              tokens.allSatisfy({ token in
+                  token.lexicalClass == .noun || token.lexicalClass == .adjective
+                    || token.lexicalClass == .number || token.lexicalClass == .determiner
+                    || token.text.range(of: #"(?i)^[\p{L}\p{M}-]+['’]s$"#, options: .regularExpression) != nil
+              }) else { return false }
+        return true
+    }
+
+    private static func completeResultTail(_ tail: String) -> Bool {
+        if tail.isEmpty { return true }
+        // The coordinator closes this result, without consuming or granting
+        // authority to the independent following command.
+        if tail.range(of: "(?i)^(?:and|then|also)\\s+(?:" + actionVerb + "|" + headOnlyImperativeVerb + ")\\b",
+                      options: .regularExpression) != nil { return true }
+        guard tail.range(of: #"[,;.!?]|(?i)\b(?:i|we|you|he|she|they|it|if|unless|when|while|because|and|or|but|then|also|not|never)\b"#,
+                         options: .regularExpression) == nil else { return false }
+        let tokens = SentenceContextCache.context(for: tail)
+        guard !tokens.hasSubjectPredicate(in: tail.startIndex..<tail.endIndex),
+              tail.range(of: "(?i)\\b(?:" + actionVerb + "|" + headOnlyImperativeVerb + ")(?:s|es)?\\b",
+                         options: .regularExpression) == nil else { return false }
+        if let context = RuleBasedThoughtExtractor.leadingTemporalContext(in: tail),
+           context.caseInsensitiveCompare(tail) == .orderedSame {
+            if let bound = tail.range(of: #"(?i)^(?:before|after)\s+"#, options: .regularExpression) {
+                let date = String(tail[bound.upperBound...])
+                return RuleBasedThoughtExtractor.leadingTemporalContext(in: date)?.caseInsensitiveCompare(date) == .orderedSame
+            }
+            return true
+        }
+        // A named nominal event can carry its own calendar adjunct. Require
+        // both complete readings; a bare token after the result is a modifier.
+        guard tail.range(of: #"(?i)^(?:before|after)\s+"#, options: .regularExpression) != nil,
+              let calendar = tail.range(of: #"(?i)\s+(?=(?:on|at|by)\s+)"#, options: .regularExpression) else { return false }
+        let event = String(tail[..<calendar.lowerBound])
+        let date = String(tail[calendar.upperBound...])
+        guard ["day", "week", "month", "year", "morning", "afternoon", "evening", "night"]
+                .contains(event.split(separator: " ").last?.lowercased() ?? ""),
+              event.range(of: "(?i)\\b(?:" + actionVerb + "|" + headOnlyImperativeVerb + ")\\b",
+                          options: .regularExpression) == nil,
+              RuleBasedThoughtExtractor.leadingTemporalContext(in: event)?.caseInsensitiveCompare(event) == .orderedSame,
+              RuleBasedThoughtExtractor.leadingTemporalContext(in: date)?.caseInsensitiveCompare(date) == .orderedSame else { return false }
+        return true
+    }
 
     /// Ways of saying "this is on me". These frame an action rather than being
     /// one, so they are stripped before the head verb is read.
@@ -151,7 +291,7 @@ enum ActionabilityReader {
     static let obligationLead = #"(?:i\s+)?(?:really\s+)?(?:gotta|need\s+to|needs\s+to|have\s+to|has\s+to|had\s+to|got\s+to|['’]ve\s+got\s+to|must|should|ought\s+to|wanna|want\s+to|meant\s+to|(?:i|we)\s+mean\s+to|am\s+supposed\s+to|['’]m\s+supposed\s+to|hafta|oughta|needa|(?:i|we)\s+will|(?:i|we)['’]ll|(?:i|we)\s+better|['’]d\s+better|had\s+better)"#
 
     /// Past-tense verbs that report something already done.
-    private static let completedVerb = #"(?:bought|got|took|made|created|scanned|printed|wrote|prepared|recorded|called|phoned|texted|emailed|messaged|sent|submitted|handed\s+in|finished|completed|paid|booked|reserved|renewed|ordered|returned|packed|picked\s+up|dropped\s+off|did|met|saw|went|talked|spoke|asked|told|visited|attended|cancelled|canceled)"#
+    static let completedVerb = #"(?:bought|got|took|made|created|scanned|printed|wrote|prepared|recorded|called|phoned|texted|emailed|messaged|sent|submitted|handed\s+in|finished|completed|paid|booked|reserved|renewed|ordered|returned|packed|picked\s+up|dropped\s+off|did|met|saw|went|talked|spoke|asked|told|visited|attended|cancelled|canceled)"#
 
     /// A stated point on the calendar. Used only as *corroboration* — it can
     /// turn a sentence with nothing to do in it into an event, and it can never
@@ -396,6 +536,14 @@ enum ActionabilityReader {
         return value[label].lowercased().hasPrefix("idea") ? .idea : .note
     }
 
+    /// Complete descriptive change predicates already admitted by the
+    /// independent-frame fact reader. These are source states, not actions.
+    static let completedDescriptiveStateVerb = #"(?:dried|cracked|faded|broke|arrived|closed|opened)"#
+
+    static func isCompleteDescriptiveStatePredicate(_ text: String) -> Bool {
+        matches(text, #"\A\#(completedDescriptiveStateVerb)(?:\s+(?:unevenly|evenly|slowly|quickly|overnight|yesterday|already|early|late|again|last week))?\z"#)
+    }
+
     /// Past-tense verbs that report a change that already happened.
     ///
     /// Separate from `completedVerb` because those are things *the speaker*
@@ -404,7 +552,7 @@ enum ActionabilityReader {
     /// September" — where there is no "I" anywhere and the only other signal
     /// in the sentence is a month, which used to be enough to make it an
     /// appointment.
-    private static let pastReportVerb = #"(?:moved|relocated|started|began|joined|left|quit|resigned|retired|graduated|married|divorced|was\s+born|were\s+born|passed\s+away|died|switched|transferred|opened|closed|launched|sold|hired|fired|won|lost|used\s+to"#
+    static let pastReportVerb = #"(?:moved|relocated|started|began|joined|left|quit|resigned|retired|graduated|married|divorced|was\s+born|were\s+born|passed\s+away|died|switched|transferred|opened|closed|launched|sold|hired|fired|won|lost|used\s+to"#
         // "The parcel arrived Friday", "the package came in Tuesday": a thing
         // that has turned up is history however plainly the day is stated.
         + #"|arrived|landed|came\s+in|showed\s+up|turned\s+up|got\s+here|got\s+delivered)"#
@@ -484,6 +632,9 @@ enum ActionabilityReader {
 
     static func isUnadoptedAction(_ text: String) -> Bool {
         let pattern = #"(?i)^\#(unadoptedActionPrefix)\#(actionVerb)\b[^.!?]*[.!?]*$"#
+        if !matches(text, pattern) {
+            return namedActionWithdrawalReading(in: text)?.actionability == .knowledge
+        }
         guard matches(text, pattern),
               !RuleBasedThoughtExtractor.retentionModifierContainsIndependentClause(text),
               !matches(text, #"(?i)(?:[,;]|\b(?:and|but|also|separately))\s*(?:(?:i|we)\s+(?:will|shall|must|should|need\s+to|have\s+to|am\s+going\s+to|are\s+going\s+to)\b|\#(actionVerb)\b)"#)
@@ -491,10 +642,87 @@ enum ActionabilityReader {
         return true
     }
 
+    struct NamedActionWithdrawalReading {
+        /// Half-open indices in the exact caller string. A nil boundary means
+        /// the complete anchored negative frame has no proved positive tail.
+        let positiveContinuationBoundary: Range<String.Index>?
+        let actionability: Actionability
+    }
+
+    static func namedActionWithdrawalReading(in text: String) -> NamedActionWithdrawalReading? {
+        // The grammar and positive proof are shared by routing, voice ownership
+        // and segmentation. A nonmatching parent grants no reading at all.
+        let action = "(?:" + actionVerb + "|" + headOnlyImperativeVerb + ")"
+        let withdrawal = #"(?i)^(?:i|we)\s+no\s+longer\s+want\s+to\s+"#
+            + action + #"\b\s+(?=[^.!?]*[\p{L}\p{N}])[^.!?]+[.!?]*$"#
+        guard matches(text, withdrawal) else { return nil }
+        let boundaryPattern = #"(?i)(?:[,;]|\b(?:and|but|then|so|also|separately)\b)\s*"#
+        guard let boundaries = NSRegularExpression.speakItCached(boundaryPattern)
+        else { return nil }
+        for match in boundaries.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+            guard let boundary = Range(match.range, in: text),
+                  !QuotedSpeechScope.protects(boundary, in: text) else { continue }
+            let continuation = String(text[boundary.upperBound...])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            // Shared reading is strictly shorter and never enters extraction,
+            // segmentation or the organizer. The outer scan visits later
+            // boundaries itself rather than recursively re-reading negatives.
+            guard !continuation.isEmpty, continuation.count < text.count,
+                  !QuotedSpeechScope.hasUnclosedQuote(continuation) else { continue }
+            if matches(continuation, withdrawal) { continue }
+            let scope = ClauseScope.read(continuation)
+            let ownMatrix = matches(continuation, #"^(?:i|we)(?:\s|['’])"#)
+                && scope.act == .direct && scope.actor == .user
+            // An addressed command owns quoted message data through its full
+            // matrix. The embedded message action is not the positive head.
+            let command = (scope.act == .direct || scope.act == .communicating)
+                && matches(actionBody(continuation), "^" + action + #"\b\s+\S"#)
+            guard ownMatrix || command else { continue }
+            let prefix = String(text[..<boundary.lowerBound])
+                .trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: ",;")))
+            let negativeScope = ClauseScope.read(prefix)
+            guard matches(prefix, withdrawal), negativeScope.act == .direct,
+                  negativeScope.actor == .user,
+                  QuotedSpeechScope.ranges(in: prefix).isEmpty,
+                  !QuotedSpeechScope.hasUnclosedQuote(prefix),
+                  !RuleBasedThoughtExtractor.retentionModifierContainsIndependentClause(prefix)
+            else { return nil }
+            let positive = read(continuation)
+            // Do not absorb an earlier independent matrix into a later
+            // negative prefix when its full reading is not proved positive.
+            if positive.belongsOnToday {
+                return NamedActionWithdrawalReading(positiveContinuationBoundary: boundary,
+                                                    actionability: positive)
+            }
+            // The existing agreement-denial family is also a negative own
+            // continuation; it grants no positive boundary. Unknown own
+            // matrices decline rather than being absorbed into the prefix.
+            if isUnadoptedAction(continuation) { continue }
+            return nil
+        }
+        guard !RuleBasedThoughtExtractor.retentionModifierContainsIndependentClause(text)
+        else { return nil }
+        return NamedActionWithdrawalReading(positiveContinuationBoundary: nil,
+                                            actionability: .knowledge)
+    }
+
+    private static let unchosenActionTimeFrame = #"^(?:i|we)\s+(?:have\s+not|haven['’]?t)\s+(?:(?:said|specified|decided)\s+when\b|(?:given\s+(?:a|the|any)\s+(?:[\p{L}]+\s+){0,2}(?:day|date|time)|(?:chosen|picked|specified|selected|decided\s+on)\s+(?:a|the|any)\s+(?:day|date|time))(?:\s+or\s+(?:reminder\s+)?time)?\b)"#
+
+    /// A whole timing aside is stronger than the existing prefix reading.
+    /// Early segmentation may preserve it only when the actual frame match
+    /// leaves no words behind. This grants no action, target or date.
+    static func isCompleteUnchosenActionTimeFrame(_ text: String) -> Bool {
+        let value = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        guard isUnchosenActionTime(value),
+              let frame = value.range(of: unchosenActionTimeFrame, options: .regularExpression)
+        else { return false }
+        let remainder = value[frame.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+        return remainder.allSatisfy { ".!?".contains($0) }
+    }
+
     static func isUnchosenActionTime(_ text: String) -> Bool {
         let value = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        let frame = #"^(?:i|we)\s+(?:have\s+not|haven['’]?t)\s+(?:(?:said|specified|decided)\s+when\b|(?:given\s+(?:a|the|any)\s+(?:[\p{L}]+\s+){0,2}(?:day|date|time)|(?:chosen|picked|specified|selected|decided\s+on)\s+(?:a|the|any)\s+(?:day|date|time))(?:\s+or\s+(?:reminder\s+)?time)?\b)"#
-        guard value.range(of: frame, options: .regularExpression) != nil else { return false }
+        guard value.range(of: unchosenActionTimeFrame, options: .regularExpression) != nil else { return false }
         return value.range(
             of: #"(?i)(?:[,;]|\b(?:and|but|also))\s*(?:i|we)\s+(?:will|must|need\s+to|have\s+to|am\s+going\s+to|are\s+going\s+to)\b"#,
             options: .regularExpression
@@ -523,6 +751,11 @@ enum ActionabilityReader {
             .lowercased()
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty else { return .ambiguous }
+        // Carry the positive tail's already computed kind before a generic
+        // cross-clause discharge cue can demote an independent commitment.
+        if let withdrawal = namedActionWithdrawalReading(in: value) {
+            return withdrawal.actionability
+        }
         if retainedContentKind(value) != nil || retainedReportSpeaker(value) != nil
             || isUnchosenActionTime(value) || isAnaphoricTaskDeclaration(value)
             || isNegatedOutputOperationStatus(value) || isUnadoptedAction(value)
@@ -1399,10 +1632,14 @@ enum ActionabilityReader {
         matches(actionBody(text), #"^\#(actionVerb)\b"#)
     }
 
+    /// The existing nonpossessive -'s heads: contractions of is/has/us
+    /// cannot supply a possessive object determiner.
+    static let nonPossessiveSHead = #"(?:it|he|she|that|there|what|who|let|here|one)"#
+
     /// Verbs that take an object without asking anybody to do anything.
     /// "Love the new couch" has the grammar of an errand and none of the
     /// intent, so the shape rule below has to decline them by name.
-    private static let stativeVerb = #"(?:love|loved|like|liked|hate|hated|enjoy|enjoyed|miss|missed|prefer|preferred|trust|doubt|own|owns|deserve|want|wanted|need|needs|needed|know|knew|remember|regret|appreciate|resent|fancy)"#
+    static let stativeVerb = #"(?:love|loved|like|liked|hate|hated|enjoy|enjoyed|miss|missed|prefer|preferred|trust|doubt|own|owns|deserve|want|wanted|need|needs|needed|know|knew|remember|regret|appreciate|resent|fancy)"#
 
     /// An errand whose verb simply is not on the list.
     ///
@@ -1433,7 +1670,7 @@ enum ActionabilityReader {
         // second was read as an errand — the first went to Memory as a note
         // about Mom. Pronoun contractions are not possessives ("hope he's
         // okay" is a wish, not an instruction) and are kept out by name.
-        guard matches(body, #"^[\p{L}'-]+(?:\s+(?:up|out|off|down|in|on|over|back|around|with|to|for|at|into|through))?\s+(?:the|a|an|my|our|your|his|her|their|its|this|that|these|those|(?!(?:it|he|she|that|there|what|who|let|here|one)['’]s\b)\p{L}+['’]s)\s+\S"#) else {
+        guard matches(body, #"^[\p{L}'-]+(?:\s+(?:up|out|off|down|in|on|over|back|around|with|to|for|at|into|through))?\s+(?:the|a|an|my|our|your|his|her|their|its|this|that|these|those|(?!\#(nonPossessiveSHead)['’]s\b)\p{L}+['’]s)\s+\S"#) else {
             return false
         }
         // The head has to actually be a verb. Without this, "coffee with the
@@ -1580,6 +1817,12 @@ enum ActionabilityReader {
 
     /// A stated time with nothing to perform and nothing being described.
     private static func isCalendarCommitment(_ text: String) -> Bool {
+        // Closed-pronoun copulas have the same calendar meaning as their
+        // expanded form. Read them locally; never rewrite source wording or
+        // expand an arbitrary possessive such as "Maya's Monday meeting".
+        let text = text.replacingOccurrences(
+            of: #"\b(it|that)['’]s\b"#, with: "$1 is",
+            options: [.regularExpression, .caseInsensitive])
         // The gate is a stated point on the calendar: the cue list, a day the
         // resolver reads ("22 Sept" is not in the list; "22 September" is), or
         // a clock said the way people say clocks. Not `clockCue`: its bare

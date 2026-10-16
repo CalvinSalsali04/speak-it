@@ -260,9 +260,22 @@ final class CapturedItem: Identifiable {
     /// (see `LocationAuthorization`). Neither can be derived from the other, and
     /// either one means the item cannot act yet.
     @MainActor
-    func requiresReview(authorization: LocationAuthorization) -> Bool {
+    func requiresReview(authorization: LocationAuthorization,
+                        calendar: Calendar = .autoupdatingCurrent) -> Bool {
         guard !isArchived, !isCompleted else { return false }
-        return needsClarification || locationBlocker(authorization: authorization) != nil
+        return needsClarification || clockBoundaryNeedsReview(calendar: calendar)
+            || locationBlocker(authorization: authorization) != nil
+    }
+
+    /// Present boundary metadata must agree with the persisted instant. A
+    /// restored or travelling row cannot silently become an exact clock.
+    func clockBoundaryNeedsReview(calendar: Calendar = .autoupdatingCurrent) -> Bool {
+        guard let intent = temporalIntent, intent.clockBoundary != nil else { return false }
+        guard let anchor = intent.clockBoundaryDate(calendar: calendar),
+              anchor == dueDate,
+              intent.clockBoundaryDayInterval(calendar: calendar) != nil,
+              reminderDate == nil, locationIntent == nil else { return true }
+        return false
     }
 
     /// Today placement, judged against live device state.
@@ -271,8 +284,9 @@ final class CapturedItem: Identifiable {
     /// the person and ready to act, and computing the two from the same answer
     /// is what stops it appearing in two sections at once.
     @MainActor
-    func belongsInToday(authorization: LocationAuthorization) -> Bool {
-        belongsInToday && !requiresReview(authorization: authorization)
+    func belongsInToday(authorization: LocationAuthorization,
+                        calendar: Calendar = .autoupdatingCurrent) -> Bool {
+        belongsInToday && !requiresReview(authorization: authorization, calendar: calendar)
     }
 
     /// Whether this action should be visible on the actual Today surface now.
@@ -286,15 +300,23 @@ final class CapturedItem: Identifiable {
         calendar: Calendar = .autoupdatingCurrent
     ) -> Bool {
         guard itemType == .personFollowUp, dueDate != nil else { return true }
+        let intent = temporalIntent
+        let boundaryDay = intent.flatMap { intent -> CalendarDay? in
+            guard let endpoint = intent.endOfDayDeadlineDate(calendar: calendar),
+                  endpoint == dueDate else { return nil }
+            // Select the last included local day for presentation only. The
+            // persisted deadline remains the exact exclusive endpoint.
+            return CalendarDay(from: endpoint.addingTimeInterval(-1), calendar: calendar)
+        }
         guard let tomorrowDate = calendar.date(
                 byAdding: .day,
                 value: 1,
                 to: calendar.startOfDay(for: now)
               ),
               let tomorrow = CalendarDay(from: tomorrowDate, calendar: calendar),
-              let dueDay = isDateOnly
-                ? temporalIntent?.day ?? dueDate.flatMap({ CalendarDay(from: $0, calendar: calendar) })
-                : dueDate.flatMap({ CalendarDay(from: $0, calendar: calendar) })
+              let dueDay = boundaryDay ?? (isDateOnly
+                ? intent?.day ?? dueDate.flatMap({ CalendarDay(from: $0, calendar: calendar) })
+                : dueDate.flatMap({ CalendarDay(from: $0, calendar: calendar) }))
         else { return true }
 
         let due = (dueDay.year, dueDay.month, dueDay.day)
@@ -311,7 +333,7 @@ final class CapturedItem: Identifiable {
         relativeTo now: Date = .now,
         calendar: Calendar = .autoupdatingCurrent
     ) -> Bool {
-        belongsInToday(authorization: authorization)
+        belongsInToday(authorization: authorization, calendar: calendar)
             && isWithinTodayHorizon(relativeTo: now, calendar: calendar)
     }
 
@@ -328,8 +350,9 @@ final class CapturedItem: Identifiable {
     /// Every Memory surface must use this rather than the stored property, for
     /// the same reason Today does.
     @MainActor
-    func belongsInMemory(authorization: LocationAuthorization) -> Bool {
-        belongsInMemory && !requiresReview(authorization: authorization)
+    func belongsInMemory(authorization: LocationAuthorization,
+                         calendar: Calendar = .autoupdatingCurrent) -> Bool {
+        belongsInMemory && !requiresReview(authorization: authorization, calendar: calendar)
     }
 
     /// What is stopping this place reminder from working, or `nil` when nothing
@@ -357,7 +380,7 @@ final class CapturedItem: Identifiable {
     func locationMonitorRequest(
         authorization: LocationAuthorization
     ) -> LocationMonitorRequest? {
-        guard let locationIntent else { return nil }
+        guard temporalIntent?.clockBoundary == nil, let locationIntent else { return nil }
         return LocationReminderResolver.resolve(
             locationIntent,
             itemID: id,
@@ -439,6 +462,7 @@ final class CapturedItem: Identifiable {
     /// without a recorded state still get: a reason reconstructed from the
     /// item's own fields, which is a good guess rather than ground truth.
     var clarificationRequirement: ClarificationRequirement? {
+        if clockBoundaryNeedsReview() { return .time }
         guard needsClarification else { return nil }
 
         // A held broad cancel or complete is not a type/date/person gap at
@@ -571,6 +595,8 @@ enum ClarificationRequirement: String, CaseIterable, Sendable {
     /// The sentence stopped before it finished. Not a question about what was
     /// meant — nothing was said yet to mean anything.
     case incompleteThought
+    /// Saved words still need organization; the recording itself may be complete.
+    case organizationIncomplete
 
     /// Shown on the review row. Names the gap in the person's own terms.
     var listLabel: String {
@@ -592,6 +618,7 @@ enum ClarificationRequirement: String, CaseIterable, Sendable {
         case .ambiguousObject: "Which item?"
         case .ambiguousTemporalScope: "Time not settled"
         case .incompleteThought: "Unfinished thought"
+        case .organizationIncomplete: "Needs organization"
         }
     }
 
@@ -617,6 +644,7 @@ enum ClarificationRequirement: String, CaseIterable, Sendable {
         case .ambiguousObject: "Name what this action refers to"
         case .ambiguousTemporalScope: "Pick the day you meant"
         case .incompleteThought: "Finish the thought, or keep it as it is"
+        case .organizationIncomplete: "Your words are saved. Review this capture to organize it."
         }
     }
 
@@ -633,6 +661,7 @@ enum ClarificationRequirement: String, CaseIterable, Sendable {
         case .ambiguousPerson: .person
         case .missingAction, .ambiguousActor, .reportedSpeech, .incompleteThought: .type
         case .ambiguousObject: self
+        case .organizationIncomplete: .splitDecision
         case .time, .person, .type, .splitDecision, .confirmation,
              .unsupportedLocationTrigger, .unsupportedConditionTrigger,
              .locationTrigger, .combinedTimeAndPlace, .pendingOperation: self
@@ -655,6 +684,7 @@ enum ClarificationRequirement: String, CaseIterable, Sendable {
         case .ambiguousObject: self = .ambiguousObject
         case .ambiguousTemporalScope: self = .ambiguousTemporalScope
         case .incompleteThought: self = .incompleteThought
+        case .organizationIncomplete: self = .organizationIncomplete
         }
     }
 }

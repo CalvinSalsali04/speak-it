@@ -26,6 +26,8 @@ enum ShoppingListProjection {
             let items = buckets[name] ?? []
             let timed = items
                 .compactMap { item -> (item: CapturedItem, date: Date)? in
+                    if item.temporalIntent?.clockBoundary != nil,
+                       item.needsClarification || item.clockBoundaryNeedsReview() { return nil }
                     guard let date = item.reminderDate ?? item.dueDate else { return nil }
                     return (item, date)
                 }
@@ -385,8 +387,9 @@ struct ShoppingListView: View {
         guard !entries.isEmpty else { return }
 
         do {
-            try repository.addShoppingItems(entries, group: group)
-            subscriptionStore.recordSuccessfulCapture()
+            try repository.addShoppingItems(entries, group: group,
+                allowancePolicy: subscriptionStore.hasProAccess ? .pro : .free)
+            subscriptionStore.refreshFreeAllowance()
             SpeakItAnalytics.track(.captureSaved(
                 source: .text,
                 itemCount: entries.count,

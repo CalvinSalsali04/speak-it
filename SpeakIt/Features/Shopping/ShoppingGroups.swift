@@ -113,6 +113,752 @@ enum ShoppingGroupParser {
         return storeCandidate(from: value, allowsUncased: true, preposition: "from") != nil
     }
 
+    /// An attached own cart supplies only a recognized retailer label. It
+    /// never proves a product, commitment, condition, timing or contact role.
+    struct OwnedRetailCartContext {
+        let store: String
+        let productRange: Range<String.Index>
+        let cartRange: Range<String.Index>
+        let retailerRange: Range<String.Index>
+
+        func matchesOriginal(_ original: Self, source: String, originalSource: String) -> Bool {
+            func words(_ text: String) -> [String] { SourceUnitLedger(text).words.map(\.text) }
+            return store == original.store && words(source) == words(originalSource)
+                && words(String(source[productRange]))
+                    == words(String(originalSource[original.productRange]))
+                && words(String(source[cartRange]))
+                    == words(String(originalSource[original.cartRange]))
+        }
+    }
+
+    static func ownedRetailCartContext(in source: String) -> OwnedRetailCartContext? {
+        guard let head = source.range(
+            of: #"(?i)^\s*(?:please\s+)?\#(acquisitionHead)\s+"#,
+            options: .regularExpression),
+              source.count <= 12_000, QuotedSpeechScope.ranges(in: source).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(source),
+              safePurchaseObject(in: source) != nil,
+              let cart = NSRegularExpression.speakItCached(
+                #"(?i)\s+(?:(?:that['’]s|that\s+is|which\s+is)\s+(?:sitting\s+)?)?in\s+(?:my|our)\s+(.+?)\s+(?:shopping\s+)?cart\b"#)
+        else { return nil }
+        let matches = cart.matches(in: source, range: NSRange(head.upperBound..., in: source))
+        guard matches.count == 1, let match = matches.first,
+              let span = Range(match.range, in: source),
+              let retailer = Range(match.range(at: 1), in: source),
+              head.upperBound < span.lowerBound else { return nil }
+        let retailerText = String(source[retailer])
+        guard let known = retailerText.range(of: knownStorePrefixPattern, options: .regularExpression),
+              known == retailerText.startIndex..<retailerText.endIndex,
+              let store = storeCandidate(from: retailerText, allowsUncased: true, preposition: "from"),
+              isRecognizedStoreName(store)
+        else { return nil }
+        // Merchant words can resemble a repair cue (No Frills). Exempt only
+        // this independently proved complete name from correction lookup;
+        // the original source and every returned range remain unchanged.
+        let correctionScope = String(source[..<retailer.lowerBound]) + " "
+            + String(source[retailer.upperBound...])
+        guard !SelfCorrectionResolver.hasCorrectionJunction(in: correctionScope) else { return nil }
+        let product = head.upperBound..<span.lowerBound
+        let prefix = String(source[product])
+        let tail = String(source[span.upperBound...])
+        let outsideCart = prefix + " " + tail
+        // The cart must modify this one purchase object, not a rejected item,
+        // report, different cart owner, physical-cart modifier or later act.
+        // Known merchant words inside the proved cart remain exempt (No Frills,
+        // Stop and Shop). Unknown names never receive capitalization authority.
+        guard prefix.range(of: #"[\p{L}\p{N}]"#, options: .regularExpression) != nil,
+              prefix.range(of: #"(?i)\b(?:at|from|for|in|\#(ClauseScope.reportingVerb))\b|[,;.!?]"#,
+                options: .regularExpression) == nil,
+              outsideCart.range(
+                of: #"(?i)\b(?:if|unless|when|whenever|once|while|not|never|no|instead|rather|except|without|and|or|but|then|also|plus|so)\b"#,
+                options: .regularExpression) == nil,
+              tail.range(of: #"(?i)\b(?:\#(ActionabilityReader.actionVerb)|\#(ActionabilityReader.headOnlyImperativeVerb))\b"#,
+                options: .regularExpression) == nil
+        else { return nil }
+        // A tail may supply one own temporal adjunct and one causal reason.
+        // No destination/list or independent finite residue can hide beside it.
+        var timingTail = tail.trimmingCharacters(in: .whitespacesAndNewlines)
+        if timingTail.last == "." { timingTail.removeLast() }
+        guard let because = NSRegularExpression.speakItCached(#"(?i),\s*because\s+"#) else { return nil }
+        let reasons = because.matches(in: timingTail, range: NSRange(timingTail.startIndex..., in: timingTail))
+        guard reasons.count <= 1 else { return nil }
+        if let reasonMatch = reasons.first,
+           let boundary = Range(reasonMatch.range, in: timingTail) {
+            let reason = String(timingTail[boundary.upperBound...]).trimmingCharacters(in: .whitespaces)
+            guard !reason.isEmpty,
+                  reason.range(of: #"(?i)[.,:;!?]|\b(?:lists?|carts?)\b"#,
+                    options: .regularExpression) == nil else { return nil }
+            let reasonWords = SourceUnitLedger(reason.replacingOccurrences(of: "’", with: "'")).words.map(\.text)
+            let competingMerchant = knownStores.union(genericGroceryPlaces).contains { name in
+                let words = SourceUnitLedger(name).words.map(\.text)
+                guard !words.isEmpty, words.count <= reasonWords.count else { return false }
+                return (0...(reasonWords.count - words.count)).contains { start in
+                    Array(reasonWords[start..<(start + words.count)]) == words
+                }
+            }
+            guard !competingMerchant else { return nil }
+            timingTail = String(timingTail[..<boundary.lowerBound]).trimmingCharacters(in: .whitespaces)
+        }
+        guard timingTail.isEmpty || ClauseScope.isPureTemporalMatrixPrefix(timingTail) else { return nil }
+        return .init(store: store, productRange: product, cartRange: span, retailerRange: retailer)
+    }
+
+    /// Source ownership for list metadata only. This names no products and
+    /// grants no executable purchase, clock, or condition authority.
+    struct FrontedAcquisitionContext {
+        let store: String
+        let adjunctRange: Range<String.Index>
+        let boundaryRange: Range<String.Index>
+        let acquisitionRange: Range<String.Index>
+    }
+
+    /// A recognized retailer directly scopes a spoken acquisition after its
+    /// comma. Unlike a removable store adjunct, this relation does not require
+    /// the entire object to be an executable product list. The ordinary body
+    /// parser still owns collections, people, unknown objects and conditions.
+    static func frontedAcquisitionContext(in text: String) -> FrontedAcquisitionContext? {
+        let sentenceCheck = text.replacingOccurrences(of: #"(?i)\b([ap])\.m\."#,
+            with: "$1m", options: .regularExpression)
+        guard text.count <= 12_000, !QuotedSpeechScope.hasUnclosedQuote(text),
+              sentenceCheck.range(of: #"[.]\s+[\p{L}]|[;!?\n]"#,
+                                  options: .regularExpression) == nil,
+              let lead = text.range(of: #"(?i)^\s*(at|from)\s+(?:the\s+)?"#,
+                                    options: .regularExpression),
+              let boundaries = NSRegularExpression.speakItCached(
+                #"(?i),\s*(?=(?:please\s+)?\#(acquisitionHead)\s+\S)"#)
+        else { return nil }
+        for match in boundaries.matches(in: text, range: NSRange(lead.upperBound..., in: text)) {
+            guard let boundary = Range(match.range, in: text),
+                  QuotedSpeechScope.ranges(in: text).allSatisfy({ $0.lowerBound >= boundary.upperBound }),
+                  let name = storeCandidate(from: String(text[lead.upperBound..<boundary.lowerBound]),
+                    allowsUncased: true, preposition: "at"),
+                  isRecognizedStoreName(name),
+                  let object = acquisitionObject(in: String(text[boundary.upperBound...])),
+                  object.range(of: #"[\p{L}\p{N}]"#, options: .regularExpression) != nil
+            else { continue }
+            // A fronted label cannot overrule another positively recognized
+            // destination or arrival trigger within this acquisition body.
+            if let inner = storeName(in: String(text[boundary.upperBound...])),
+               isRecognizedStoreName(inner),
+               inner.caseInsensitiveCompare(name) != .orderedSame { return nil }
+            return FrontedAcquisitionContext(store: name,
+                adjunctRange: text.startIndex..<boundary.upperBound,
+                boundaryRange: boundary,
+                acquisitionRange: boundary.upperBound..<text.endIndex)
+        }
+        return nil
+    }
+
+    /// A literal declaration supplies list membership, like entries typed in
+    /// Add Items. It proves no physical noun, purchase verb, person or timing.
+    /// An actual run, own need, retailer acquisition, or recognized retailer's
+    /// explicit colon list supplies the frame; capitalization grants none.
+    struct DeclaredShoppingRun {
+        enum Frame {
+            case runHeader
+            case retailNeed(needRange: Range<String.Index>)
+            case retailAcquisition(verbRange: Range<String.Index>)
+            case retailHeader
+        }
+        struct Entry {
+            let range: Range<String.Index>
+            let antecedentRange: Range<String.Index>
+            let coreRange: Range<String.Index>
+            let attachedContextRange: Range<String.Index>?
+            /// A closed availability qualifier belongs only to this entry.
+            /// It is literal checklist context, never an observable trigger.
+            let availabilityRange: Range<String.Index>?
+        }
+        let frame: Frame
+        let frameRange: Range<String.Index>
+        let destinationRange: Range<String.Index>
+        let bodyRange: Range<String.Index>
+        let store: String
+        let entries: [Entry]
+
+        /// Match the complete original declaration and its entry boundaries.
+        /// Case/spacing normalization cannot add, drop or repartition words.
+        func matchesOriginal(_ original: Self, source: String, originalSource: String) -> Bool {
+            func words(_ value: String) -> [String] { SourceUnitLedger(value).words.map(\.text) }
+            let sameFrame: Bool
+            switch (frame, original.frame) {
+            case (.runHeader, .runHeader): sameFrame = true
+            case let (.retailNeed(need), .retailNeed(rawNeed)):
+                sameFrame = words(String(source[need])) == words(String(originalSource[rawNeed]))
+            case let (.retailAcquisition(verb), .retailAcquisition(rawVerb)):
+                sameFrame = words(String(source[verb])) == words(String(originalSource[rawVerb]))
+            case (.retailHeader, .retailHeader): sameFrame = true
+            default: sameFrame = false
+            }
+            return sameFrame && store == original.store
+                && words(source) == words(originalSource)
+                && entries.map { words(String(source[$0.range])) }
+                    == original.entries.map { words(String(originalSource[$0.range])) }
+                && entries.map { $0.availabilityRange.map { words(String(source[$0])) } }
+                    == original.entries.map { $0.availabilityRange.map { words(String(originalSource[$0])) } }
+        }
+    }
+
+    /// This optional link requires existing physical-product evidence for
+    /// every member. A trip alone never creates purchase or freeform-list authority.
+    static func plannedRetailPurchase(in source: String, referenceDate: Date,
+                                      calendar: Calendar) -> ClauseScope.PlannedRetailAcquisition? {
+        guard let frame = ClauseScope.plannedRetailAcquisition(in: source,
+                  referenceDate: referenceDate, calendar: calendar) else { return nil }
+        let command = String(source[frame.acquisitionRange])
+        guard let body = acquisitionObject(in: command),
+              let verb = command.range(of: #"(?i)^\#(acquisitionHead)\s+"#, options: .regularExpression),
+              let products = products(in: body, verb: String(command[verb]).trimmingCharacters(in: .whitespaces)),
+              products.count > 1, certifiesImplicitProducts(body),
+              ThoughtOrganizer.hasNoLiteralTiming(in: command,
+                  referenceDate: referenceDate, calendar: calendar),
+              storeName(in: command) == nil,
+              !ActionabilityReader.hasCausativeResult(command) else { return nil }
+        let explicitPurchase = command.range(of: #"(?i)^(?:buy|purchase|order)\s+"#,
+            options: .regularExpression) != nil
+        guard products.allSatisfy({ nominal in
+            guard hasKnownProductCore(nominal), !hasCollectionOrResultState(nominal) else { return false }
+            if explicitPurchase { return true }
+            let words = nominal.lowercased().split(whereSeparator: { $0.isWhitespace }).map(String.init)
+            guard !words.contains(where: { ["the", "my", "our", "your", "his", "her", "their", "its", "this", "that", "these", "those"].contains($0)
+                    || $0.range(of: #"['’]s$|s['’]$"#, options: .regularExpression) != nil }),
+                  let core = nominalCoreStart(words), core < words.count else { return false }
+            let head = String(command[verb])
+            return !isCollectionAcquisition(head + nominal)
+                && !isCollectionAcquisition(head + words[core...].joined(separator: " "))
+        }) else { return nil }
+        return frame
+    }
+
+    static func declaredShoppingRun(in source: String) -> DeclaredShoppingRun? {
+        guard source.count <= 2_000 else { return nil }
+        // Preserve the existing explicit header's membership authority.
+        if let header = NSRegularExpression.speakItCached(
+            #"(?i)^\s*(?:grocery|shopping)\s+run\s+(at|from)\s+(?:the\s+)?(.+?)\s*:\s*"#),
+           let match = header.firstMatch(in: source, range: NSRange(source.startIndex..., in: source)),
+           let frame = Range(match.range, in: source),
+           let preposition = Range(match.range(at: 1), in: source),
+           let destination = Range(match.range(at: 2), in: source) {
+            guard let store = storeCandidate(from: String(source[destination]), allowsUncased: true,
+                    preposition: String(source[preposition]).lowercased()),
+                  declarationScopeIsClean(source, destination: destination),
+                  let parsed = declaredEntries(in: source, after: frame.upperBound,
+                    requiresIndividuation: false, allowsDeclaredPair: true) else { return nil }
+            return .init(frame: .runHeader, frameRange: frame, destinationRange: destination,
+                bodyRange: parsed.body, store: store, entries: parsed.entries)
+        }
+        // A direct purchase at a recognized retailer can retain one closed
+        // availability qualifier on a medial comma-delimited list member.
+        // The purchase proves membership; its exact suffix never supplies
+        // calendar, reminder, contact or operation authority.
+        if let lead = source.range(of: #"(?i)^\s*(?:at|from)\s+(?:the\s+)?"#,
+               options: .regularExpression),
+           let context = frontedAcquisitionContext(in: source),
+           let command = NSRegularExpression.speakItCached(
+               #"(?i)^(?:please\s+)?((?:buy|purchase|order)\s+)"#),
+           let match = command.firstMatch(in: source, range: NSRange(context.acquisitionRange, in: source)),
+           let acquisition = Range(match.range, in: source),
+           acquisition.lowerBound == context.acquisitionRange.lowerBound,
+           let verb = Range(match.range(at: 1), in: source),
+           let parsed = declaredEntries(in: source, after: acquisition.upperBound,
+               requiresIndividuation: false, allowsRetailContext: true,
+               allowsMemberAvailability: true) {
+            let destination = lead.upperBound..<context.boundaryRange.lowerBound
+            let availability = parsed.entries.compactMap(\.availabilityRange)
+            if availability.count == 1,
+               parsed.entries.allSatisfy({ entry in
+                   let nominal = String(source[entry.antecedentRange])
+                   if entry.coreRange.lowerBound == entry.antecedentRange.lowerBound,
+                      !hasKnownProductCore(nominal) {
+                       let words = source[entry.coreRange].split(whereSeparator: { $0.isWhitespace })
+                       // A bare unknown name supplies no merchandise proof.
+                       // Retain only a compound with an existing product
+                       // component; articles, quantities and packages keep
+                       // their separate literal-envelope authority.
+                       guard words.count > 1,
+                             words.dropLast().contains(where: { namesProductHead(String($0)) })
+                       else { return false }
+                   }
+                   return String(source[entry.coreRange]).range(
+                       of: #"(?i)^(?:\#(PersonMentionResolver.communicationRelationPhrasePattern))$"#,
+                       options: .regularExpression) == nil
+                       && !hasCollectionOrResultState(String(source[entry.antecedentRange]))
+               }) {
+                // Rebuild only a guard view from ORIGINAL ranges. No original
+                // String.Index is used on this shorter string, and all source
+                // ranges/words remain unchanged in the returned certificate.
+                var guardSource = "", cursor = source.startIndex
+                for range in availability {
+                    guardSource += String(source[cursor..<range.lowerBound]) + " "
+                    cursor = range.upperBound
+                }
+                guardSource += String(source[cursor...])
+                if declarationScopeIsClean(guardSource,
+                    destinationText: String(source[destination])) {
+                    return .init(frame: .retailAcquisition(verbRange: verb),
+                        frameRange: source.startIndex..<acquisition.upperBound,
+                        destinationRange: destination, bodyRange: parsed.body,
+                        store: context.store, entries: parsed.entries)
+                }
+            }
+        }
+        // A fronted recognized retailer and an actual acquisition head own
+        // this literal list before generic clause splitting. The frame does
+        // not infer a Buy verb, physical noun, person or execution time.
+        // All-known antecedents, including their existing purpose handling,
+        // retain the purchase path. New-branch refusal falls through normally.
+        if let lead = source.range(of: #"(?i)^\s*(?:at|from)\s+(?:the\s+)?"#,
+               options: .regularExpression),
+           let context = frontedAcquisitionContext(in: source),
+           let command = NSRegularExpression.speakItCached(
+               #"(?i)^(?:please\s+)?((?:get|grab|pick\s+up)\s+)"#),
+           let match = command.firstMatch(in: source, range: NSRange(context.acquisitionRange, in: source)),
+           let acquisition = Range(match.range, in: source),
+           acquisition.lowerBound == context.acquisitionRange.lowerBound,
+           let verb = Range(match.range(at: 1), in: source) {
+            let destination = lead.upperBound..<context.boundaryRange.lowerBound
+            if declarationScopeIsClean(source, destination: destination),
+               let parsed = declaredEntries(in: source, after: acquisition.upperBound,
+                    requiresIndividuation: true, allowsRetailContext: true),
+               !parsed.entries.allSatisfy({ hasKnownProductCore(String(source[$0.antecedentRange])) }),
+               parsed.entries.allSatisfy({ entry in
+                   let nominal = String(source[entry.antecedentRange])
+                   // A quantity also individuates people. Refuse only a
+                   // complete existing human-relation core; a compound such
+                   // as "child safety seat" does not match this pure veto.
+                   return String(source[entry.coreRange]).range(
+                           of: #"(?i)^(?:\#(PersonMentionResolver.communicationRelationPhrasePattern))$"#,
+                           options: .regularExpression) == nil
+                       && !isCollectionAcquisition(String(source[verb]) + nominal)
+                       && !isCollectionAcquisition(String(source[verb]) + String(source[entry.coreRange]))
+                       && !hasCollectionOrResultState(nominal)
+               }) {
+                return .init(frame: .retailAcquisition(verbRange: verb),
+                    frameRange: source.startIndex..<acquisition.upperBound,
+                    destinationRange: destination, bodyRange: parsed.body,
+                    store: context.store, entries: parsed.entries)
+            }
+        }
+        // A known retailer plus literal colon/list punctuation declares
+        // membership. An unknown label cannot create shopping authority;
+        // all-known antecedents retain their existing Buy path unchanged.
+        if let header = NSRegularExpression.speakItCached(
+            #"(?i)^\s*(at|from)\s+(?:the\s+)?(.+?)\s*:\s*"#),
+           let match = header.firstMatch(in: source, range: NSRange(source.startIndex..., in: source)),
+           let frame = Range(match.range, in: source),
+           let preposition = Range(match.range(at: 1), in: source),
+           let destination = Range(match.range(at: 2), in: source),
+           isRecognizedStoreName(String(source[destination])),
+           let store = storeCandidate(from: String(source[destination]), allowsUncased: true,
+               preposition: String(source[preposition]).lowercased()),
+           declarationScopeIsClean(source, destination: destination),
+           let parsed = declaredEntries(in: source, after: frame.upperBound,
+               requiresIndividuation: false, allowsRetailContext: true),
+           !parsed.entries.allSatisfy({ hasKnownProductCore(String(source[$0.antecedentRange])) }),
+           parsed.entries.allSatisfy({ !hasCollectionOrResultState(String(source[$0.antecedentRange])) }) {
+            return .init(frame: .retailHeader, frameRange: frame, destinationRange: destination,
+                bodyRange: parsed.body, store: store, entries: parsed.entries)
+        }
+        // Only a recognized retailer plus an actual own present need can
+        // declare this weaker literal list. Other store adjuncts stay ordinary.
+        guard let header = NSRegularExpression.speakItCached(
+            #"(?i)^\s*(at|from)\s+(?:the\s+)?(.+?)\s*,?\s+((?:i|we)\s+(?:also\s+)?need\b(?!\s+to\b)\s+)"#),
+              let match = header.firstMatch(in: source, range: NSRange(source.startIndex..., in: source)),
+              let frame = Range(match.range, in: source),
+              let preposition = Range(match.range(at: 1), in: source),
+              let destination = Range(match.range(at: 2), in: source),
+              let need = Range(match.range(at: 3), in: source),
+              isRecognizedStoreName(String(source[destination])),
+              let store = storeCandidate(from: String(source[destination]), allowsUncased: true,
+                  preposition: String(source[preposition]).lowercased()),
+              declarationScopeIsClean(source, destination: destination),
+              let parsed = declaredEntries(in: source, after: frame.upperBound,
+                  requiresIndividuation: true),
+              !parsed.entries.allSatisfy({ hasKnownProductCore(String(source[$0.antecedentRange])) })
+        else { return nil }
+        // All-known needs retain the existing certified Buy path unchanged.
+        return .init(frame: .retailNeed(needRange: need), frameRange: frame,
+            destinationRange: destination, bodyRange: parsed.body,
+            store: store, entries: parsed.entries)
+    }
+
+    /// This is the existing acquisition collection veto, shared with type
+    /// inference so declared-list admission cannot bypass it. Veto only.
+    static func isCollectionAcquisition(_ source: String) -> Bool {
+        source.range(of: #"(?i)^(?:get|grab|pick\s+up)\s+(?:(?:the|my|our|a|an)\s+)?(?:rental|rented|hired|borrowed|reserved|pre[- ]?ordered)\s+"#,
+            options: .regularExpression) != nil
+    }
+
+    private static func hasCollectionOrResultState(_ nominal: String) -> Bool {
+        let words = productIdentity(nominal).split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        // Known state/result words only refuse this new literal shortcut.
+        // No suffix, native tag, or unknown noun supplies positive authority.
+        return words.contains(where: { ActionabilityReader.isResultParticiple($0) })
+            || words.dropLast().contains(where: { ["old", "existing"].contains($0) })
+    }
+
+    private static func declaredCoreStart(_ words: [String], allowsRetailContext: Bool) -> Int? {
+        // An indefinite package quantity belongs to the literal new frame,
+        // not to the global physical-product reader. Preserve every word.
+        if allowsRetailContext, words.count >= 5,
+           words[0] == "a", words[1] == "few",
+           productContainers.contains(words[2]), words[3] == "of",
+           let offset = nominalCoreStart(Array(words.dropFirst(2))) {
+            return offset + 2
+        }
+        return nominalCoreStart(words)
+    }
+
+    private static func declarationScopeIsClean(
+        _ source: String, destination: Range<String.Index>
+    ) -> Bool {
+        declarationScopeIsClean(source, destinationText: String(source[destination]))
+    }
+
+    private static func declarationScopeIsClean(
+        _ source: String, destinationText: String
+    ) -> Bool {
+        // A destination cannot absorb availability or calendar adjuncts.
+        let destinationWords = destinationText.split(whereSeparator: { $0.isWhitespace })
+        return destinationWords.allSatisfy({ token in
+            let word = token.lowercased()
+            return word.range(of: temporalCue, options: .regularExpression) == nil
+                && (!prepositions.contains(word) || word == "of")
+                && (!conjunctions.contains(word) || word == "and")
+                && !pronouns.contains(word) && !auxiliaries.contains(word)
+        }) && QuotedSpeechScope.ranges(in: source).isEmpty
+            && !QuotedSpeechScope.hasUnclosedQuote(source)
+            && !SelfCorrectionResolver.hasCorrectionJunction(in: source)
+            && ConditionalIntentScope.dependency(in: source) == nil
+            && ClauseScope.read(source).act == .direct
+            && source.range(of: #"[;!?\n]|[.]\s+[\p{L}]"#, options: .regularExpression) == nil
+    }
+
+    private static func declaredEntries(
+        in source: String, after bodyStart: String.Index, requiresIndividuation: Bool,
+        allowsRetailContext: Bool = false, allowsDeclaredPair: Bool = false,
+        allowsMemberAvailability: Bool = false
+    ) -> (body: Range<String.Index>, entries: [DeclaredShoppingRun.Entry])? {
+        func trimmed(_ span: Range<String.Index>) -> Range<String.Index> {
+            var start = span.lowerBound
+            var end = span.upperBound
+            while start < end, source[start].isWhitespace { start = source.index(after: start) }
+            while end > start, source[source.index(before: end)].isWhitespace {
+                end = source.index(before: end)
+            }
+            return start..<end
+        }
+        var bodyEnd = source.endIndex
+        while bodyEnd > bodyStart,
+              source[source.index(before: bodyEnd)].isWhitespace || source[source.index(before: bodyEnd)] == "." {
+            bodyEnd = source.index(before: bodyEnd)
+        }
+        let body = trimmed(bodyStart..<bodyEnd)
+        guard !body.isEmpty,
+              source.range(of: #"\d,\d"#, options: .regularExpression) == nil else { return nil }
+        let commas = source[body].indices.filter { source[$0] == "," }
+        var spans: [Range<String.Index>] = []
+        if commas.isEmpty {
+            // An explicit run or a retailer frame may declare a pair only
+            // where the right member starts its own article/quantity envelope.
+            // This boundary permission grants no weaker retailer context to
+            // the stronger run header's literal entries.
+            guard allowsDeclaredPair || allowsRetailContext,
+                  let coordinator = NSRegularExpression.speakItCached(#"(?i)\s+and\s+"#)
+            else { return nil }
+            let candidates = coordinator.matches(in: source, range: NSRange(body, in: source))
+            guard candidates.count == 1,
+                  let and = Range(candidates[0].range, in: source),
+                  source[body.lowerBound..<and.lowerBound].range(of: #"(?i)\s+for\s+"#,
+                      options: .regularExpression) == nil else { return nil }
+            let right = trimmed(and.upperBound..<body.upperBound)
+            let words = source[right].split(whereSeparator: { $0.isWhitespace }).map { $0.lowercased() }
+            guard let first = words.first, let offset = declaredCoreStart(words, allowsRetailContext: true), offset > 0,
+                  ["a", "an", "the", "this", "that", "these", "those"].contains(first)
+                    || quantityWords.contains(first)
+                    || first.range(of: #"^\d+(?:[./-]\d+)?$"#, options: .regularExpression) != nil
+            else { return nil }
+            spans = [trimmed(body.lowerBound..<and.lowerBound), right]
+        } else {
+            var start = body.lowerBound
+            for comma in commas {
+                spans.append(trimmed(start..<comma))
+                start = source.index(after: comma)
+            }
+            spans.append(trimmed(start..<body.upperBound))
+        }
+        var entries: [DeclaredShoppingRun.Entry] = []
+        for (index, span) in spans.enumerated() {
+            var entry = span
+            let literal = String(source[span])
+            if index == spans.count - 1,
+               let and = literal.range(of: #"(?i)^and\s+"#, options: .regularExpression) {
+                let end = source.index(span.lowerBound,
+                    offsetBy: literal.distance(from: literal.startIndex, to: and.upperBound))
+                entry = trimmed(end..<entry.upperBound)
+            }
+            guard !entry.isEmpty, source[entry].count <= 100 else { return nil }
+            var antecedent = entry
+            var attached: Range<String.Index>?
+            var availability: Range<String.Index>?
+            // Like is already an object-taking stative relation in
+            // ActionabilityReader. Here only its terminal first-person
+            // object gap, owned by a deictic nominal, is admitted. No complete
+            // I prefer tea/I like tea clause or arbitrary I-verb tail fits.
+            let entryText = String(source[entry])
+            if allowsMemberAvailability,
+               let suffix = entryText.range(
+                   of: #"(?i)\s+(if\s+(?:they\s+have\s+it|available|in\s+stock))$"#,
+                   options: .regularExpression) {
+                // A final list qualifier can govern every member. Only an
+                // interior entry with its own following comma is proved local.
+                guard index > 0, index < spans.count - 1 else { return nil }
+                let lower = source.index(entry.lowerBound,
+                    offsetBy: entryText.distance(from: entryText.startIndex, to: suffix.lowerBound))
+                guard let conditionStart = source[lower..<entry.upperBound].firstIndex(where: { !$0.isWhitespace }) else { return nil }
+                antecedent = trimmed(entry.lowerBound..<lower)
+                attached = lower..<entry.upperBound
+                availability = conditionStart..<entry.upperBound
+            }
+            if allowsRetailContext, index == spans.count - 1,
+               let purpose = entryText.range(of: #"(?i)\s+for\s+"#, options: .regularExpression) {
+                let lower = source.index(entry.lowerBound,
+                    offsetBy: entryText.distance(from: entryText.startIndex, to: purpose.lowerBound))
+                let objectStart = source.index(entry.lowerBound,
+                    offsetBy: entryText.distance(from: entryText.startIndex, to: purpose.upperBound))
+                let contextWords = source[objectStart..<entry.upperBound]
+                    .split(whereSeparator: { $0.isWhitespace }).map { $0.lowercased() }
+                // This is a bounded literal list-context slot, not a noun or
+                // event inference. Keep all words visible, never parse it for
+                // execution, contact, location, condition or reminder metadata.
+                guard (2...5).contains(contextWords.count),
+                      ["a", "an", "the", "my", "our", "this", "that", "these", "those"].contains(contextWords[0]),
+                      contextWords.dropFirst().allSatisfy({ word in
+                          word.range(of: #"^[\p{L}\p{M}'’-]+$"#, options: .regularExpression) != nil
+                              && !prepositions.contains(word) && !pronouns.contains(word)
+                              && !conjunctions.contains(word) && !auxiliaries.contains(word)
+                              && !determiners.contains(word)
+                              && !["not", "never", "no", "then", "also"].contains(word)
+                              && word.range(of: temporalCue, options: .regularExpression) == nil
+                              && word.range(of: #"(?i)^(?:\#(ActionabilityReader.actionVerb)|\#(ActionabilityReader.headOnlyImperativeVerb)|\#(ActionabilityReader.stativeVerb))(?:s|es)?$"#,
+                                  options: .regularExpression) == nil
+                      }) else { return nil }
+                antecedent = trimmed(entry.lowerBound..<lower)
+                attached = lower..<entry.upperBound
+            }
+            if attached == nil, let relative = entryText.range(of: #"(?i)\s+i\s+like$"#,
+                options: .regularExpression) {
+                let lower = source.index(entry.lowerBound,
+                    offsetBy: entryText.distance(from: entryText.startIndex, to: relative.lowerBound))
+                antecedent = trimmed(entry.lowerBound..<lower)
+                guard String(source[antecedent]).range(of: #"(?i)^(?:this|that|these|those)\s+\S"#,
+                    options: .regularExpression) != nil else { return nil }
+                attached = lower..<entry.upperBound
+            }
+            let nominal = String(source[antecedent])
+            // Retain the header's existing action-head refusal even when a
+            // native tag calls an independent command an adjective or noun.
+            if nominal.range(of: #"(?i)^(?:\#(ActionabilityReader.actionVerb)|\#(ActionabilityReader.headOnlyImperativeVerb))(?=\s|$)"#,
+                options: .regularExpression) != nil, !namesOneProduct(nominal) { return nil }
+            guard nominal.range(of: #"^[\p{L}\p{M}\p{N}'’ -]+$"#, options: .regularExpression) != nil,
+                  nominal.range(of: #"(?i)^(?:my|our|your|his|her|their|its)\b"#,
+                    options: .regularExpression) == nil,
+                  nominal.split(whereSeparator: { $0.isWhitespace }).allSatisfy({
+                    String($0).range(of: #"(?i)^[\p{L}\p{M}'’-]+(?:['’]s|s['’])$"#,
+                        options: .regularExpression) == nil
+                  }) else { return nil }
+            // A complete communication to a closed human relation is a
+            // separately owned command candidate, not a bare verb homograph.
+            // Decline the whole declaration; ordinary segmentation owns it.
+            let relationCommunication = #"(?i)\s+\#(ClauseScope.communicationVerb)\s+\#(PersonMentionResolver.communicationRelationPhrasePattern)(?=\s|$)"#
+            guard nominal.range(of: relationCommunication, options: .regularExpression) == nil else { return nil }
+            // Only the structural envelope is peeled. All remaining words
+            // are literal entry text, not a noun/POS or product inference.
+            let tokens = source[antecedent].split(whereSeparator: { $0.isWhitespace })
+            guard let offset = declaredCoreStart(tokens.map { $0.lowercased() },
+                    allowsRetailContext: allowsRetailContext),
+                  offset < tokens.count, let last = tokens.last else { return nil }
+            let first = tokens[0].lowercased()
+            let indefiniteArticles = ["a", "an"]
+            let articles = indefiniteArticles + ["the", "this", "that", "these", "those"]
+            // The weaker retailer frame cannot turn an unknown definite or
+            // deictic referent into merchandise. Known products retain their
+            // existing reading; explicit shopping-run declarations and own
+            // need frames keep their separately established admission.
+            if allowsRetailContext, articles.contains(first),
+               !indefiniteArticles.contains(first), !hasKnownProductCore(nominal) {
+                return nil
+            }
+            // A need statement is weaker than a run header. Some/more can
+            // be peeled by the general envelope reader but do not individuate
+            // an unknown member. Keep that reader and run headers unchanged.
+            if requiresIndividuation, !hasKnownProductCore(nominal) {
+                // Unknown definite/deictic objects in a retail acquisition
+                // may be people or existing collections. Only indefinite
+                // members, quantities or packages gain the new literal role.
+                // Keep the existing need frame's admission unchanged.
+                let article = (allowsRetailContext ? indefiniteArticles : articles).contains(first)
+                let quantity = quantityWords.contains(first)
+                    || first.range(of: #"^\d+(?:[./-]\d+)?$"#, options: .regularExpression) != nil
+                let compound = first.split(separator: "-").map(String.init)
+                let quantifiedContainer = compound.count == 2
+                    && (quantityWords.contains(compound[0]) || compound[0].allSatisfy(\.isNumber))
+                let containerHead = quantifiedContainer ? compound[1] : first
+                let container = tokens.count > 1 && tokens[1].lowercased() == "of"
+                    && productContainers.contains(containerHead)
+                guard offset > 0 && (article || quantity || container) else { return nil }
+            }
+            let coreTokens = tokens.dropFirst(offset)
+            let core = tokens[offset].startIndex..<last.endIndex
+            guard coreTokens.allSatisfy({ token in
+                let word = token.lowercased()
+                return token.contains(where: { $0.isLetter || $0.isNumber })
+                    && word.range(of: #"(?i)^(?:this|that|these|those|my|our|your|his|her|their|its|which|whose|no)$"#,
+                        options: .regularExpression) == nil
+                    && !prepositions.contains(word)
+                    && !pronouns.contains(word) && !conjunctions.contains(word)
+                    && !auxiliaries.contains(word)
+                    && !["not", "never", "one", "ones"].contains(word)
+                    && word.range(of: temporalCue, options: .regularExpression) == nil
+            }),
+                // A named stative proposition is not another list entry.
+                // Only the existing known relation family supplies this veto.
+                nominal.range(of: #"(?i)^[\p{L}\p{M}'’-]+\s+\#(ActionabilityReader.stativeVerb)(?:s|es)?\s+\S"#,
+                    options: .regularExpression) == nil
+            else { return nil }
+            entries.append(.init(range: entry, antecedentRange: antecedent,
+                coreRange: core, attachedContextRange: attached,
+                availabilityRange: availability))
+        }
+        return (body, entries)
+    }
+
+    /// Exact current acquisition and its separately timed nominal purpose.
+    /// This relation changes timing scope and display, never product authority.
+    struct PurchaseEventPurpose {
+        let acquisitionRange: Range<String.Index>
+        let productRange: Range<String.Index>
+        let purposeRange: Range<String.Index>
+        let eventRange: Range<String.Index>
+        let products: [String]
+
+        /// This guard grants no new parse authority. A normalized projection
+        /// must retain the raw acquisition's ordered words, including its own
+        /// leading and trailing timing. Only proved fronted retailer metadata
+        /// and dotted AM/PM spelling are omitted from this equality check.
+        func matchesOriginal(_ original: Self, normalizedSource: String,
+                             originalSource: String) -> Bool {
+            func orderedWords(_ literal: String) -> [String] {
+                // eventRange excludes terminal punctuation, including the
+                // last dot of p.m.; both dotted spellings denote the same cue.
+                let folded = literal.replacingOccurrences(of: #"(?i)\b([ap])\.m\.?(?=\s|$)"#,
+                    with: "$1m", options: .regularExpression)
+                return SourceUnitLedger(folded).words.map(\.text)
+            }
+            func acquisitionWords(_ literal: String) -> [String] {
+                let action = ShoppingGroupParser.frontedAcquisitionContext(in: literal).map {
+                    String(literal[$0.acquisitionRange])
+                } ?? literal
+                return orderedWords(action)
+            }
+            return products.map(orderedWords) == original.products.map(orderedWords)
+                && orderedWords(String(normalizedSource[eventRange]))
+                    == orderedWords(String(originalSource[original.eventRange]))
+                && acquisitionWords(String(normalizedSource[acquisitionRange]))
+                    == acquisitionWords(String(originalSource[original.acquisitionRange]))
+        }
+    }
+
+    static func purchaseEventPurpose(in source: String) -> PurchaseEventPurpose? {
+        let sentenceCheck = source.replacingOccurrences(of: #"(?i)\b([ap])\.m\."#,
+            with: "$1m", options: .regularExpression)
+        guard source.count <= 2_000, QuotedSpeechScope.ranges(in: source).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(source),
+              !SelfCorrectionResolver.hasCorrectionJunction(in: source),
+              ConditionalIntentScope.dependency(in: source) == nil,
+              ClauseScope.read(source).act == .direct,
+              sentenceCheck.range(of: #"[.]\s+[\p{L}]|[;!?\n]"#, options: .regularExpression) == nil,
+              let purposes = NSRegularExpression.speakItCached(#"(?i)\s+for\s+"#)
+        else { return nil }
+        let actionStart = frontedAcquisitionContext(in: source)?.acquisitionRange.lowerBound
+            ?? afterLeadingTiming(in: source)
+        for match in purposes.matches(in: source, range: NSRange(actionStart..., in: source)) {
+            guard let purpose = Range(match.range, in: source) else { continue }
+            let spokenAcquisition = String(source[actionStart..<purpose.lowerBound])
+            guard let head = spokenAcquisition.range(
+                of: #"(?i)^(?:please\s+)?\#(acquisitionHead)\s+"#,
+                options: .regularExpression) else { continue }
+            let productEnd = beforeTrailingTiming(in: spokenAcquisition)
+            guard productEnd > head.upperBound else { continue }
+            if productEnd < spokenAcquisition.endIndex,
+               !ClauseScope.isPureTemporalMatrixPrefix(String(spokenAcquisition[productEnd...])) {
+                continue
+            }
+            let body = String(spokenAcquisition[head.upperBound..<productEnd])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard certifiesImplicitProducts(body) else { continue }
+            let members = Self.products(in: body, verb: "get") ?? [body]
+            // Mirror inferredType's existing explicit purchase heads. An
+            // ambiguous collection head cannot gain this timing projection
+            // from an owned/definite member, even when its core is known.
+            let explicitPurchase = String(spokenAcquisition[head]).range(
+                of: #"(?i)^(?:please\s+)?(?:buy|purchase|order)\s+$"#,
+                options: .regularExpression) != nil
+            if !explicitPurchase {
+                guard members.allSatisfy({ member in
+                    guard member.range(
+                        of: #"(?i)^\s*(?:the|my|our|your|his|her|their|its|this|that|these|those)\b"#,
+                        options: .regularExpression) == nil else { return false }
+                    // Reuse the product core so package-contained genitives
+                    // remain visible. Possessive brands also conservatively
+                    // decline this shortcut; global shopping is unchanged.
+                    return productIdentity(member).split(whereSeparator: { $0.isWhitespace })
+                        .allSatisfy { token in
+                            String(token).range(
+                                of: #"(?i)^[\p{L}\p{M}'’-]+(?:['’]s|s['’])$"#,
+                                options: .regularExpression) == nil
+                        }
+                }) else { continue }
+            }
+            var eventEnd = source.endIndex
+            while eventEnd > purpose.upperBound,
+                  source[source.index(before: eventEnd)].isWhitespace
+                    || ".!?".contains(source[source.index(before: eventEnd)]) {
+                eventEnd = source.index(before: eventEnd)
+            }
+            guard eventEnd > purpose.upperBound else { continue }
+            let eventRange = purpose.upperBound..<eventEnd
+            let event = String(source[eventRange])
+            let temporalStart = beforeTrailingTiming(in: event)
+            guard temporalStart < event.endIndex,
+                  ClauseScope.isPureTemporalMatrixPrefix(String(event[temporalStart...])) else { continue }
+            var nominal = String(event[..<temporalStart]).trimmingCharacters(in: .whitespacesAndNewlines)
+            if let place = nominal.range(of: #"(?i)\s+at\s+"#, options: .regularExpression) {
+                let host = String(nominal[place.upperBound...])
+                // A possessive atom is a closed nominal place shape. An open
+                // place-word run cannot certify the absence of another act.
+                guard host.range(of: #"(?i)^(?:the\s+)?[\p{L}][\p{L}\p{M}'’-]*['’]s?$"#,
+                                 options: .regularExpression) != nil,
+                      host.range(of: #"(?i)^(?:the\s+)?\#(ActionabilityReader.nonPossessiveSHead)['’]s?$"#,
+                                 options: .regularExpression) == nil else { continue }
+                nominal = String(nominal[..<place.lowerBound])
+            }
+            let headNominal = nominal.replacingOccurrences(
+                of: #"(?i)^(?:the|a|an|my|our|your|his|her|their|this|that)\s+"#,
+                with: "", options: .regularExpression)
+            guard headNominal.range(of: #"^[\p{L}][\p{L}-]*$"#, options: .regularExpression) != nil,
+                  ActionabilityReader.hasScheduledNominalHead(headNominal) else { continue }
+            let objectStart = source.index(actionStart,
+                offsetBy: spokenAcquisition.distance(from: spokenAcquisition.startIndex, to: head.upperBound))
+            let objectEnd = source.index(actionStart,
+                offsetBy: spokenAcquisition.distance(from: spokenAcquisition.startIndex, to: productEnd))
+            return .init(acquisitionRange: source.startIndex..<purpose.lowerBound,
+                productRange: objectStart..<objectEnd, purposeRange: purpose.lowerBound..<source.endIndex,
+                eventRange: eventRange, products: members)
+        }
+        return nil
+    }
+
     /// Remove only a complete, validated store adjunct. Timing is removed by
     /// the caller after it has been parsed; original words remain in rawQuote.
     /// A brand or an unknown noun inside the product list is never a boundary.
@@ -154,7 +900,7 @@ enum ShoppingGroupParser {
         let range: Range<String.Index>
     }
 
-    private static let acquisitionHead = #"(?:buy|purchase|order|get|grab|pick\s+up)"#
+    static let acquisitionHead = #"(?:buy|purchase|order|get|grab|pick\s+up)"#
     private static let businessHeads: Set<String> = [
         "market", "store", "shop", "shops", "supply", "supplies", "outlet",
         "boutique", "pharmacy", "hardware", "foods", "supermarket", "grocery"
@@ -417,6 +1163,7 @@ enum ShoppingGroupParser {
         "cvs", "rite aid", "dollarama", "dollar tree", "canadian tire",
         "home depot", "lowe's", "lowes", "rona", "ikea", "best buy",
         "staples", "michaels", "petsmart", "pet valu", "lcbo", "sephora",
+        "wayfair", "etsy", "ebay", "chewy", "amazon",
         "sam's club", "sams club", "giant tiger", "winners", "marshalls",
         "sprouts", "publix", "wegmans", "heb", "h-e-b", "meijer", "winn-dixie",
         "piggly wiggly", "food lion", "stop and shop", "shoprite", "vons",
@@ -614,6 +1361,20 @@ enum ShoppingGroupParser {
         let scope: Scope
     }
 
+    /// Existing package/size data exposed only for a complete source role.
+    /// These predicates grant no purchase, action, recipient or clock.
+    static func isProductContainer(_ literal: String) -> Bool {
+        productContainers.contains(literal.lowercased())
+    }
+    static let productSizeValuePattern = #"(?:xs|s|m|l|xl|xxl|small|medium|large|\d{1,2})"#
+    static func normalizedProductSize(_ value: String) -> String {
+        ["small": "s", "medium": "m", "large": "l"][value] ?? value
+    }
+    static func acceptsProductSize(_ literal: String, product: String) -> Bool {
+        literal.range(of: "(?i)^" + productSizeValuePattern + "$", options: .regularExpression) != nil
+            && acceptsSharedDetail("size " + literal, product: product)
+    }
+
     /// Only a complete explicit trailing instruction on a current purchase.
     /// The engine separately proves every product and the remaining metadata.
     static func captureListDetail(in source: String) -> CaptureListDetail? {
@@ -638,7 +1399,7 @@ enum ShoppingGroupParser {
             let excluded = products(in: object, verb: "buy") ?? [object]
             return .init(prefix: prefix, metadata: metadata, label: "No " + excluded.joined(separator: ", "), scope: .exclusion(excluded))
         }
-        let value = #"(?:size\s+(?:xs|s|m|l|xl|xxl|small|medium|large|\d{1,2})|(?:red|blue|green|black|white|yellow|orange|purple|pink|brown|grey|gray|navy|beige))"#
+        let value = #"(?:size\s+\#(productSizeValuePattern)|(?:red|blue|green|black|white|yellow|orange|purple|pink|brown|grey|gray|navy|beige))"#
         guard let regex = NSRegularExpression.speakItCached(#"(?i)^(all|both|each)\s+(?:in\s+)?(\#(value))$"#),
               let match = regex.firstMatch(in: tail, range: NSRange(tail.startIndex..., in: tail)),
               let scope = Range(match.range(at: 1), in: tail),
@@ -660,16 +1421,13 @@ enum ShoppingGroupParser {
                    "sweater", "sweaters", "pants", "jeans", "glove", "gloves", "sock", "socks",
                    "shoe", "shoes", "boot", "boots", "hat", "hats", "mitten", "mittens",
                    "pajamas", "harness", "harnesses", "leash", "leashes"].contains(head) else { return false }
-            func size(_ value: String) -> String {
-                ["small": "s", "medium": "m", "large": "l"][value] ?? value
-            }
-            let target = size(String(label.lowercased().dropFirst(5)))
+            let target = normalizedProductSize(String(label.lowercased().dropFirst(5)))
             for index in words.indices {
                 let word = words[index]
                 // Bare digits are quantities, never an inferred clothing size.
                 let explicitSize = index > 0 && words[index - 1] == "size"
                 if explicitSize || ["xs", "s", "small", "m", "medium", "l", "large", "xl", "xxl"].contains(word) {
-                    if size(word) != target { return false }
+                    if normalizedProductSize(word) != target { return false }
                 }
             }
             return true
@@ -709,6 +1467,69 @@ enum ShoppingGroupParser {
         return namesOneProduct(core) || namesProductHead(head)
     }
 
+    /// A source acquisition can contain a participial modifier before its
+    /// noun, rather than the post-object result of a service. A known physical
+    /// head supplies portable proof; an unfamiliar head additionally needs a
+    /// real package-of envelope and a complete native nominal reading.
+    /// This follows the existing unowned acquisition default; an ambiguous
+    /// get/retrieve phrase is not semantic proof of purchasing. Owned, result
+    /// and unfinished-context forms cannot use this narrow rescue.
+    /// Neither a suffix nor a known last noun certifies an arbitrary clause.
+    static func certifiesPrenominalAcquisitionObject(_ object: String, in source: String) -> Bool {
+        guard QuotedSpeechScope.ranges(in: source).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(source),
+              let lead = source.range(of: #"(?i)^(?:get|grab|pick\s+up)\s+"#,
+                                      options: .regularExpression) else { return false }
+        let value = object.trimmingCharacters(in: .whitespacesAndNewlines
+            .union(CharacterSet(charactersIn: ".!?")))
+        guard value.range(of: #"[,;:.!?]"#, options: .regularExpression) == nil,
+              let range = source.range(of: value, options: .caseInsensitive,
+                                       range: lead.upperBound..<source.endIndex),
+              range.lowerBound == lead.upperBound,
+              source[range.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines
+                .union(CharacterSet(charactersIn: ".!?"))).isEmpty else { return false }
+        let words = value.lowercased().split(whereSeparator: { $0.isWhitespace }).map(String.init)
+        guard let first = words.first,
+              !["my", "our", "your", "his", "her", "their", "the", "this", "that", "these", "those"].contains(first),
+              let offset = nominalCoreStart(words), offset < words.count else { return false }
+        let core = Array(words[offset...])
+        guard core.count >= 2, let head = core.last,
+              !core.contains(where: { determiners.contains($0) || prepositions.contains($0)
+                || pronouns.contains($0) || conjunctions.contains($0) || auxiliaries.contains($0)
+                || ["not", "never", "without", "no"].contains($0)
+                || $0.range(of: temporalCue, options: .regularExpression) != nil }) else { return false }
+        // Preserve the existing administrative-card rule on this new path.
+        if ["card", "cards"].contains(head), !hasKnownProductCore(value) { return false }
+        // The result precedes the entire concrete noun, so it cannot be the
+        // final result in “get potatoes washed”. No OS tag is needed here.
+        if core.count == 2, ActionabilityReader.isResultParticiple(core[0]),
+           namesProductHead(head) { return true }
+        let envelope = Array(words.prefix(offset))
+        guard envelope.last == "of", envelope.dropLast().contains(where: {
+            productContainers.contains($0)
+                || ($0.split(separator: "-").last.map(String.init).map(productContainers.contains) == true)
+        }) else { return false }
+        // Known completed-result or ownership-state modifiers indicate
+        // retrieval even in a physical box. Native noun tags cannot grant
+        // purchase authority to those states. The known concrete
+        // prenominal branch above remains separate.
+        guard !core.dropLast().contains(where: {
+            ActionabilityReader.isResultParticiple($0) || ["old", "existing"].contains($0)
+        }) else { return false }
+        let context = SentenceContextCache.context(for: source)
+        let tokens = context.tokens(in: range)
+        guard tokens.count == words.count else { return false }
+        let nominal = Array(tokens.dropFirst(offset))
+        guard let noun = nominal.last, noun.lexicalClass == .noun,
+              !noun.isPersonalName, !noun.isOrganizationName,
+              !context.hasSubjectPredicate(in: nominal[0].range.lowerBound..<noun.range.upperBound),
+              nominal.dropLast().allSatisfy({ token in
+                  token.lexicalClass == .noun || token.lexicalClass == .adjective
+                    || (token.isVerb && token.text.lowercased().hasSuffix("ed"))
+              }) else { return false }
+        return true
+    }
+
     /// Own nominal needs are not purchase commands. Coordination alone also
     /// describes “help and advice”; require positive product evidence.
     static func implicitNeedBody(in text: String) -> String? {
@@ -719,14 +1540,21 @@ enum ShoppingGroupParser {
 
     static func certifiesImplicitProducts(_ body: String) -> Bool {
         let value = body.trimmingCharacters(in: CharacterSet(charactersIn: " .!?"))
-        let entries = products(in: value, verb: "get") ?? [value]
-        return !entries.isEmpty && entries.allSatisfy(hasKnownProductCore)
+        if let entries = products(in: value, verb: "get") {
+            return !entries.isEmpty && entries.allSatisfy(hasKnownProductCore)
+        }
+        // A failed list is not one nominal object merely because its last
+        // word names a product ("this week, eggs"). Keep a single-product
+        // fallback only when there is no remaining list/clause separator.
+        guard value.range(of: #"[,:;\n]"#, options: .regularExpression) == nil else { return false }
+        return hasKnownProductCore(value)
     }
 
     private static let commonProductHeads: Set<String> = [
         "pod", "pods", "capsule", "capsules", "tablet", "tablets", "cartridge", "cartridges",
         "filter", "filters", "cable", "cables", "adapter", "adapters", "charger", "chargers",
         "connector", "connectors", "coupling", "couplings", "gasket", "gaskets", "spacer", "spacers",
+        "stick", "sticks",
         "screw", "screws", "bolt", "bolts", "nut", "nuts", "washer", "washers", "anchor", "anchors",
         "hinge", "hinges", "handle", "handles", "runner", "runners", "hook", "hooks", "bracket", "brackets",
         "notebook", "notebooks", "pen", "pens", "pencil", "pencils", "envelope", "envelopes",
@@ -903,7 +1731,9 @@ enum ShoppingGroupParser {
     /// a stated time disqualifies it, and nothing about *which* product it
     /// names enters into the decision. Vocabulary appears only as positive
     /// evidence, to rescue a conjunct the tagger fumbles.
-    private static let leadingProductArticles: Set<String> = ["a", "an", "the", "my", "our", "some", "more"]
+    private static let leadingProductArticles: Set<String> = [
+        "a", "an", "the", "my", "our", "some", "more", "this", "that", "these", "those"
+    ]
     private static let quantityWords: Set<String> = [
         "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
         "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen",
@@ -914,7 +1744,8 @@ enum ShoppingGroupParser {
         "bag", "bags", "box", "boxes", "pack", "packs", "packet", "packets", "package", "packages",
         "tin", "tins", "can", "cans", "jar", "jars", "bottle", "bottles", "carton", "cartons",
         "tray", "trays", "tube", "tubes", "roll", "rolls", "pair", "pairs", "case", "cases",
-        "bunch", "bunches", "loaf", "loaves", "set", "sets", "kit", "kits", "bundle", "bundles"
+        "bunch", "bunches", "loaf", "loaves", "set", "sets", "kit", "kits", "bundle", "bundles",
+        "flat", "flats", "tub", "tubs", "bucket", "buckets", "ream", "reams", "sack", "sacks"
     ]
     private static let productMeasurements: Set<String> = [
         "g", "kg", "mg", "gram", "grams", "kilogram", "kilograms", "oz", "ounce", "ounces",
@@ -928,6 +1759,12 @@ enum ShoppingGroupParser {
     private static func nominalCoreStart(_ words: [String]) -> Int? {
         guard (1...12).contains(words.count) else { return nil }
         var index = 0
+        // A demonstrative may introduce a product, but its calendar use is
+        // context, never an object called "this week". Preserve the existing
+        // temporal rejection before stripping the leading determiner.
+        if ["this", "that", "these", "those"].contains(words[0].lowercased()),
+           words.count > 1,
+           words[1].range(of: temporalCue, options: .regularExpression) != nil { return nil }
         if leadingProductArticles.contains(words[index].lowercased()) { index += 1 }
         let quantityStart = index
         while index < words.count, index - quantityStart < 5 {
@@ -944,6 +1781,14 @@ enum ShoppingGroupParser {
         if fractional, index < words.count, ["a", "an"].contains(words[index].lowercased()),
            index + 1 < words.count,
            productMeasurements.contains(words[index + 1].lowercased()) || productContainers.contains(words[index + 1].lowercased()) {
+            index += 1
+        }
+        // Size modifies the physical container, not the product core. Only
+        // consume it when a real container + "of" immediately follows.
+        let containerSizes: Set<String> = ["small", "medium", "large", "big", "little", "jumbo", "family", "bulk"]
+        if index + 2 < words.count, containerSizes.contains(words[index].lowercased()),
+           productContainers.contains(words[index + 1].lowercased()),
+           words[index + 2].lowercased() == "of" {
             index += 1
         }
         if index < words.count {
@@ -1360,7 +2205,15 @@ enum ShoppingGroupParser {
         return products.contains { product in
             guard !namesOnlyProducts(product),
                   let range = body.range(of: product, options: .caseInsensitive) else { return false }
-            return context.hasSubjectPredicate(in: range)
+            if context.hasSubjectPredicate(in: range) { return true }
+            // Detached text has no purchase role. A subject + inflected
+            // predicate remains ambiguous even when native tagging calls both
+            // words nouns; only a concrete product head can settle that shape.
+            let words = product.split(whereSeparator: { $0.isWhitespace }).map(String.init)
+            return words.count == 2
+                && !namesProductHead(words[1])
+                && product.range(of: #"(?i)^[\p{L}'’-]+\s+[\p{L}'’-]{3,}s$"#,
+                                 options: .regularExpression) != nil
         }
     }
 
@@ -1387,31 +2240,41 @@ enum ShoppingGroupParser {
     /// A plural suffix or capitalization alone cannot prove either a product
     /// or a finite predicate. Unknown lexical tags never grant this override.
     static func provesNominalPurchaseObject(_ product: String, in purchaseCommand: String) -> Bool {
-        guard !SentenceContext.taggerDisabledForEvaluation,
-              purchaseCommand.count <= 2_000,
+        guard purchaseCommand.count <= 2_000,
               QuotedSpeechScope.ranges(in: purchaseCommand).isEmpty,
               !QuotedSpeechScope.hasUnclosedQuote(purchaseCommand),
               let head = purchaseCommand.range(of: #"(?i)^(?:buy|purchase|order)\s+"#,
                                                options: .regularExpression),
               let range = purchaseCommand.range(of: product, options: [.caseInsensitive, .backwards]),
               range.lowerBound >= head.upperBound else { return false }
+        // Quantity/package grammar already proves this exact known core.
+        // Native tagging can read "a dozen eggs" as subject + verb; that
+        // cannot override a complete nominal envelope around "eggs".
+        if namesOneProduct(productIdentity(product)) { return true }
+        guard !SentenceContext.taggerDisabledForEvaluation else { return false }
         let context = SentenceContextCache.context(for: purchaseCommand)
         let tokens = context.tokens(in: range)
-        guard let offset = nominalCoreStart(tokens.map { $0.text.lowercased() }),
-              !context.hasSubjectPredicate(in: range) else { return false }
+        guard let offset = nominalCoreStart(tokens.map { $0.text.lowercased() }) else { return false }
         let core = tokens.dropFirst(offset)
         let lexical = tokens.map { LexicalToken(text: $0.text, tag: $0.lexicalClass, range: $0.range) }
-        guard core.last?.lexicalClass == .noun,
-              reading(lexical[...]) == .product else { return false }
-        let coordinated = protectedProductCoordination(product)
-        return core.allSatisfy { token in
-            switch token.lexicalClass {
-            case .some(.noun), .some(.adjective), .some(.number): return true
-            case .some(.conjunction):
-                return coordinated && ["and", "plus"].contains(token.text.lowercased())
-            default: return false
-            }
+        guard reading(lexical[...]) == .product else { return false }
+        // The actual purchase binds one opaque modifier to a concrete product
+        // head. "Zorbix pods" cannot become a finite proposition because the
+        // tagger reads "pods" as a verb. Additional unproved nouns do not fit
+        // this complete shape ("a dog eats eggs" must still decline).
+        if core.count == 2, let first = core.first, let last = core.last,
+           namesProductHead(last.text),
+           first.lexicalClass == .noun || first.lexicalClass == .adjective {
+            return true
         }
+        guard !context.hasSubjectPredicate(in: range),
+              core.last?.lexicalClass == .noun else { return false }
+        // Genuine adjectival/number modifiers can describe a noun; a run of
+        // arbitrary noun tags alone cannot prove that no predicate was hidden.
+        return core.dropLast().allSatisfy { token in
+            token.lexicalClass == .adjective || token.lexicalClass == .number
+        }
+
     }
 
     /// Whether every group of an already-split list reads as a product, with

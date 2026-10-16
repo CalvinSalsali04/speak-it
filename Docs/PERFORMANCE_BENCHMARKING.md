@@ -234,3 +234,40 @@ items. Two requests establish neither p95 nor cold-cache or iPhone behavior.
 They exclude the microphone, reference bank, repository persistence and row
 rendering. No prewarm behavior was added; there is no measured phone benefit.
 The existing real-device signposts above remain the product latency contract.
+
+
+## October 16, 2026 scoped complex-capture diagnostic
+
+The existing synthetic repository harness retains `runtimeEvents` and now adds an ordered `runtimeEventTimeline` containing only event indices and monotonic seconds from the repository-call origin. Both arrays are appended/read under one lock. New DEBUG boundaries identify rules, context loading, work/timer entry, staged preparation, SDK invocation and work join. They add no analytics or persistent model field.
+
+LCQ002's one current shipping observation measured 22.648 seconds total: rules 1.990, full-bank retrieval 1.960, saved-context snapshot 0.0116 and staged preparation through SDK invocation 4.557. The response wrapper remained pending for 13.525 seconds and then threw after the existing deadline. It yielded zero complete responses and zero individually organized expected intentions. Full original retention is a durability result, not an organization-accuracy result.
+
+Nested retrieval, fit and SDK timings must not be added again to their enclosing intervals. App callbacks do not distinguish SDK queueing, input processing, first token, inference or transport. The separate admission-only first counter measurement (3.360 seconds) and warmed schema count (0.102 seconds) are not an equivalent cold-shipping trace. Reusing the exact per-invocation instruction count removes redundant work but has no demonstrated elapsed-time improvement. These are development observations, not percentile estimates or physical-phone performance qualification.
+
+
+## October16 recovered SDK timing and compact transport
+
+A read-only recovery of logs from the already completed, scoped simulator observation identifies the SDK request at04:17:51.342150UTC and its first token10.678584seconds later. That is2.544317seconds before the app deadline; no complete JSON response was returned. The retained record reports11generated tokens, not useful output throughput or pure inference speed. Input/output sanitation and backend spans overlap; their durations must not be summed or treated as guaranteed removable savings. This recovery executed no further capture, generation or recording.
+
+The subsequent compact String route changes the actual wire instructions/model mode and removes the guided SDK schema from token admission while retaining a local validation schema. Its single no-generation admission is3,967/4,096 tokens:2,413prompt,786instructions,0SDKschema and768output reserve. The same four complete projected references fit. This is capacity evidence only. The earlier guided observation is not a measured String latency or completion result. Evidence: denseCaptureRecoveredSDKTimingMilestone and compactStringCompleteAdmissionMilestone in the integration ledger.
+
+
+### 2026-10-16 — one actual compact String observation
+
+The changed shipping run uses object-unit-json-string, zero transmitted SDK-schema tokens, all nine original source units, the unchanged768-token reserve and automatic six selected/four fitted references from the full bundled bank. Its repository create takes23.990230917seconds; SDK await takes12.882524959seconds before deadline cancellation. Current prompt/instructions are2418/786 tokens. No complete SDK response reaches decoding or meaning validation.
+
+One read-only query of existing logs is bound to the dedicated simulator, app PID91372 and the exact request/session/window. It records request start07:20:51.399444Z and first token07:20:57.939122Z, a6.539678second interval. Cancellation telemetry reports3212 consumed tokens,280 generated tokens and282 deltas. Those counters describe a cancelled request, not valid returned JSON, complete organization, tokens-per-second or a controlled speed comparison. No additional model run or Instruments recording was made to recover them.
+
+The saved-state audit finds fifteen resolved rules rows after G26 rejects the terminal fallback. Lifecycle identity and exact original survive, but semantic organization is incomplete and unmarked. This observation therefore establishes neither safe visible recovery nor model success. The terminal handoff is being repaired separately; physical iPhone latency and fresh qualification remain open.
+
+
+### Subsequent optional-teacher observation
+
+One changed exposed request used 2,151 prompt tokens plus 786 instruction tokens, zero SDK schema tokens and 768 response reserve. It still produced no complete SDK response before the same twenty-second runtime deadline: 23.041 seconds for repository creation, 14.170 seconds awaiting the SDK. Exact-window simulator logs recorded first_token 4.929 seconds after request_start and 530 generated-token counters at cancellation, but contain no output text. Cancellation lifecycle response_complete telemetry is not a valid JSON response. These counters do not establish TPS, a pure inference delay, a causal speed gain or phone performance. Actual persistence now correctly retains one inert complete-original Needs organization item, which is durability evidence and zero organized-intention credit.
+
+
+### Closed streaming observation and guided restoration
+
+The sole synthetic DEBUG streaming diagnostic used the restored2,418-token prompt,786 instruction tokens,schema0 andreserve768; repository creation was22.974s and SDK await13.398s. The first observed cumulative snapshot arrived5.881s from collector entry. At cancellation349 snapshots had accumulated825UTF8bytes. EOFtrue with taskCancelledtrue and returnedfalse is not successful completion. The partial was malformed and ungrounded; it was neither repaired nor interpreted. Streaming timing is not ordinary-respond parity, TPS or phone latency. The diagnostic is removed and will not be repeated.
+
+Restored guided admission controls measure schema297 and instructions555 tokens on26-unit Train/Garden cases, with full retained inputs and whole fitted teachers. Total input/schema/output reservation is3,869/4,096 and4,071/4,096. Their complete26-independent-decision output examples measure312 tokens againstreserve768. These are own-SDK admission measurements without generation, not measured completion speed or whole-capture accuracy. Historical guided timeouts remain open evidence; a tiny hint delta does not justify another unchanged generation.

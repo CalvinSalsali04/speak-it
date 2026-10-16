@@ -369,8 +369,10 @@ def harvest_ids(path):
         raise SystemExit(f"leak check: {Path(path).name}: {why}")
 
 
-#: Sealed captures already sitting in tuned material when this was measured,
-#: 2026-09-11. Same contract as `PROSE_DOCUMENTED` and the `KNOWN:` rows in the
+#: Sealed captures known to sit in tuned material. The initial cohort was
+#: measured 2026-09-11; later disclosures are dated explicitly below and must
+#: also enter heldout/compromised.py before the clean score is quoted.
+#: Same contract as `PROSE_DOCUMENTED` and the `KNOWN:` rows in the
 #: development sets: **every one is still counted and still printed**, and the
 #: list moves only the exit status, so the check gates on anything new instead
 #: of being switched off for being red the first time it could see properly.
@@ -394,6 +396,12 @@ OVERLAP_DOCUMENTED = {
     ("everyday.tsv", "W20"): "SpeechRepairTests",
     ("heldout.tsv", "C049"): "gating corpus (DataQ) + routed.tsv + coordination.tsv",
     ("heldout.tsv", "C100"): "ten places: four gating-corpus files, six test files",
+    # A newly detected overlap, not part of the initial 2026-09-11 cohort.
+    # Retain all captures and count this collision; only its status is known.
+    ("heldout.tsv", "C101"): ("Detected 2026-10-14: exact normalized overlap in "
+        "SpeakItTests/PersonMentionTests.swift; observed file SHA256 "
+        "55679be5a725548cf4e489c99c2721288901bf88151a8418b88c2c2f2338dcd5; "
+        "fixture line and introducing authorship unresolved."),
     ("heldout.tsv", "C342"): "LocationReminderTests, eight assertions",
     # Near, at or above the 0.70 line. Same list because the marker does the
     # same job either way; the report separates them by the line each prints on.

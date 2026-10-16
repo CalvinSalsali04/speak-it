@@ -805,6 +805,23 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
             ["Nuvella milk chocolate", "eggs"]), "Groceries")
     }
 
+    func testKnownPackagedPurchaseObjectsDoNotDependOnLexicalTags() {
+        let previous = SentenceContext.taggerDisabledForEvaluation
+        defer { SentenceContext.taggerDisabledForEvaluation = previous }
+        for disabled in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disabled
+            for product in ["a dozen eggs", "two cans of chickpeas", "a large tub of Greek yogurt",
+                            "those granola bars", "that oat milk"] {
+                XCTAssertTrue(ShoppingGroupParser.provesNominalPurchaseObject(product,
+                    in: "Buy " + product + " and milk"), product)
+            }
+            for product in ["a dog eats eggs", "this week", "those", "Nora is tired"] {
+                XCTAssertFalse(ShoppingGroupParser.provesNominalPurchaseObject(product,
+                    in: "Buy " + product + " and milk"), product)
+            }
+        }
+    }
+
     func testPurchaseObjectNominalProofUsesTheActualCommandContext() throws {
         let previous = SentenceContext.taggerDisabledForEvaluation
         SentenceContext.taggerDisabledForEvaluation = false
@@ -9781,3 +9798,358 @@ final class ConfirmedSpeechHintTests: XCTestCase {
         XCTAssertFalse(SpeechVocabularyStore.contextualPhrases.contains("Joan"))
     }
 }
+
+
+#if DEBUG
+/// Controlled queue/ownership tests. These open no microphone, recognizer or
+/// real audio session, and make no hardware-latency or speech-accuracy claim.
+@MainActor
+final class SpeechAudioSessionLifecycleTests: XCTestCase {
+    func testCancelledActivationAndLateCleanupCannotDeactivateRestartedCapture() async throws {
+        let probe = SpeechAudioSessionProbe()
+        let activationBegan = expectation(description: "first activation entered worker")
+        let restartEnqueued = expectation(description: "restart submitted while first activation is held")
+        let a = SpeechAudioSessionLease(captureID: UUID())
+        let b = SpeechAudioSessionLease(captureID: UUID())
+        let releaseActivation = DispatchSemaphore(value: 0)
+        defer { releaseActivation.signal() }
+        let owner = SpeechAudioSessionOwner(configure: { profile in
+            probe.record("configure:" + profile.rawValue, sessionOperation: true)
+        }, setActive: { active in
+            if active {
+                let index = probe.beginActivation()
+                if index == 1 {
+                    activationBegan.fulfill()
+                    guard releaseActivation.wait(timeout: .now() + .seconds(5)) == .success else {
+                        throw SpeechAudioSessionProbeError.gateTimedOut
+                    }
+                }
+            } else {
+                let index = probe.beginDeactivation()
+                probe.record("deactivate\(index):end")
+            }
+        }, activationEnqueued: { id in
+            if id == b.captureID { restartEnqueued.fulfill() }
+        })
+        let first = Task { try await owner.activate(a, profile: .spokenAudio) }
+        await fulfillment(of: [activationBegan], timeout: 5)
+        owner.release(a)
+        let second = Task { try await owner.activate(b, profile: .measurement) }
+        await fulfillment(of: [restartEnqueued], timeout: 5)
+        releaseActivation.signal()
+        do {
+            try await first.value
+            XCTFail("Cancelled activation must not become a usable lease")
+        } catch {
+            XCTAssertTrue(error is CancellationError)
+        }
+        try await second.value
+        owner.release(a) // Delayed cleanup from A arrives after B owns the session.
+        await owner.finishPendingOperationsForTesting()
+        XCTAssertEqual(probe.events, [
+            "configure:spoken_audio", "activate1", "deactivate1:begin", "deactivate1:end",
+            "configure:measurement", "activate2"
+        ])
+        XCTAssertTrue(a.isReleased)
+        XCTAssertFalse(b.isReleased)
+        XCTAssertTrue(probe.sessionCallsStayedOffMain)
+        owner.release(b)
+        await owner.finishPendingOperationsForTesting()
+        XCTAssertEqual(Array(probe.events.suffix(2)), ["deactivate2:begin", "deactivate2:end"])
+    }
+
+    func testFinalBufferDrainsBeforeOneHandoffAndNextActivationWaitsForTeardown() async throws {
+        let probe = SpeechAudioSessionProbe()
+        let deactivationBegan = expectation(description: "old session deactivation entered worker")
+        let releaseDeactivation = DispatchSemaphore(value: 0)
+        let releaseBuffer = DispatchSemaphore(value: 0)
+        defer { releaseDeactivation.signal(); releaseBuffer.signal() }
+        let owner = SpeechAudioSessionOwner(configure: { profile in
+            probe.record("configure:" + profile.rawValue, sessionOperation: true)
+        }, setActive: { active in
+            if active { _ = probe.beginActivation() }
+            else {
+                let index = probe.beginDeactivation()
+                if index == 1 {
+                    deactivationBegan.fulfill()
+                    guard releaseDeactivation.wait(timeout: .now() + .seconds(5)) == .success else {
+                        throw SpeechAudioSessionProbeError.gateTimedOut
+                    }
+                }
+                probe.record("deactivate\(index):end")
+            }
+        })
+        let a = SpeechAudioSessionLease(captureID: UUID())
+        let b = SpeechAudioSessionLease(captureID: UUID())
+        try await owner.activate(a, profile: .spokenAudio)
+        let backend = SpeechAudioSessionProbeBackend(probe: probe)
+        let processingBegan = expectation(description: "last accepted buffer is still processing")
+        let processor = SpeechCaptureAudioProcessor(process: { buffer in
+            processingBegan.fulfill()
+            guard releaseBuffer.wait(timeout: .now() + .seconds(5)) == .success else {
+                probe.record("bufferGateTimedOut")
+                return
+            }
+            backend.append(buffer)
+        })
+        let transcriber = SpeechTranscriber(reportsAudioLevel: false, audioSessionOwner: owner)
+        defer { transcriber.cancel() }
+        transcriber.setSyntheticCaptureForTesting(a.captureID, backend: backend, processor: processor, lease: a)
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4))
+        buffer.frameLength = 4
+        processor.append(buffer)
+        await fulfillment(of: [processingBegan], timeout: 5)
+        let words = "Keep the final audio syllable"
+        let handoff = expectation(description: "complete final text handed off once")
+        handoff.assertForOverFulfill = true
+        var handedOff: [String] = []
+        var restarted: Task<Void, Error>?
+        transcriber.receiveTranscript(words, isFinal: false, captureID: a.captureID)
+        // Uses the same production drain/completeFinalization handoff as the
+        // automatic endpoint; the pause timer itself has separate replay tests.
+        transcriber.stopAndFinalize { text in
+            handedOff.append(text)
+            probe.record("handoff")
+            restarted = Task { try await owner.activate(b, profile: .spokenAudio) }
+            handoff.fulfill()
+        }
+        transcriber.receiveTranscript(words, isFinal: true, captureID: a.captureID)
+        XCTAssertEqual(transcriber.state, .finalizing)
+        XCTAssertTrue(handedOff.isEmpty)
+        XCTAssertFalse(probe.events.contains("endAudio"))
+        releaseBuffer.signal()
+        await fulfillment(of: [handoff, deactivationBegan], timeout: 5)
+        XCTAssertEqual(handedOff, [words])
+        XCTAssertFalse(probe.events.contains("bufferGateTimedOut"))
+        XCTAssertEqual(transcriber.state, .idle)
+        XCTAssertFalse(probe.events.contains("activate2"), "Next capture waits for old physical teardown")
+        let appended = try XCTUnwrap(probe.events.firstIndex(of: "append4"))
+        let ended = try XCTUnwrap(probe.events.firstIndex(of: "endAudio"))
+        let delivered = try XCTUnwrap(probe.events.firstIndex(of: "handoff"))
+        XCTAssertLessThan(appended, ended)
+        XCTAssertLessThan(ended, delivered)
+        transcriber.receiveTranscript("late duplicate", isFinal: true, captureID: a.captureID)
+        XCTAssertEqual(handedOff, [words])
+        releaseDeactivation.signal()
+        let restart = try XCTUnwrap(restarted)
+        try await restart.value
+        let deactivated = try XCTUnwrap(probe.events.firstIndex(of: "deactivate1:end"))
+        let activated = try XCTUnwrap(probe.events.firstIndex(of: "activate2"))
+        XCTAssertLessThan(deactivated, activated)
+        XCTAssertTrue(probe.sessionCallsStayedOffMain)
+        owner.release(b)
+        await owner.finishPendingOperationsForTesting()
+    }
+
+    func testStartupErrorAndLateCapturedCleanupPreserveFailureAndNextCapture() async throws {
+        let probe = SpeechAudioSessionProbe()
+        let owner = SpeechAudioSessionOwner(configure: { profile in
+            probe.record("configure:" + profile.rawValue, sessionOperation: true)
+        }, setActive: { active in
+            if active { _ = probe.beginActivation() }
+            else {
+                let index = probe.beginDeactivation()
+                probe.record("deactivate\(index):end")
+            }
+        })
+        let a = SpeechAudioSessionLease(captureID: UUID())
+        let b = SpeechAudioSessionLease(captureID: UUID())
+        try await owner.activate(a, profile: .spokenAudio)
+        let transcriber = SpeechTranscriber(reportsAudioLevel: false, audioSessionOwner: owner)
+        defer { transcriber.cancel() }
+        transcriber.setSyntheticCaptureForTesting(a.captureID,
+            backend: SpeechAudioSessionProbeBackend(probe: probe), lease: a, isStarting: true)
+        // The real startup callback has no words: it publishes a visible
+        // failure and releases A, but deliberately leaves A's IDs current.
+        transcriber.receiveError(SpeechRecognitionBackendError.audioForwardingFailed,
+                                 captureID: a.captureID)
+        guard case .failed = transcriber.state else {
+            return XCTFail("A startup error must remain a visible failure")
+        }
+        let failure = transcriber.state
+        transcriber.discardUncommittedStartForTesting(a)
+        XCTAssertEqual(transcriber.state, failure,
+                       "Late startup return must not erase the callback's failure")
+        await owner.finishPendingOperationsForTesting()
+        XCTAssertTrue(a.isReleased)
+        try await owner.activate(b, profile: .spokenAudio)
+        transcriber.setSyntheticCaptureForTesting(b.captureID,
+            backend: SpeechAudioSessionProbeBackend(probe: probe), lease: b)
+        let nextWords = "Keep the next capture's original words"
+        transcriber.receiveTranscript(nextWords, isFinal: false, captureID: b.captureID)
+        let beforeLateA = probe.events
+        transcriber.discardUncommittedStartForTesting(a)
+        transcriber.receiveError(SpeechRecognitionBackendError.audioForwardingFailed,
+                                 captureID: a.captureID)
+        await owner.finishPendingOperationsForTesting()
+        XCTAssertEqual(transcriber.state, .listening)
+        XCTAssertEqual(transcriber.transcript, nextWords)
+        XCTAssertEqual(probe.events, beforeLateA,
+                       "Stale A cannot cancel B's backend or deactivate B's session")
+        XCTAssertFalse(b.isReleased)
+        XCTAssertTrue(probe.sessionCallsStayedOffMain)
+    }
+
+    func testRecognitionErrorDrainsAcceptedBufferBeforeOnePartialHandoffAndIgnoresLateCapture() async throws {
+        let probe = SpeechAudioSessionProbe()
+        let owner = SpeechAudioSessionOwner(configure: { profile in
+            probe.record("configure:" + profile.rawValue, sessionOperation: true)
+        }, setActive: { active in
+            if active { _ = probe.beginActivation() }
+            else {
+                let index = probe.beginDeactivation()
+                probe.record("deactivate\(index):end")
+            }
+        })
+        let a = SpeechAudioSessionLease(captureID: UUID())
+        let b = SpeechAudioSessionLease(captureID: UUID())
+        try await owner.activate(a, profile: .spokenAudio)
+        let releaseBuffer = DispatchSemaphore(value: 0)
+        defer { releaseBuffer.signal() }
+        let processingBegan = expectation(description: "accepted error-path buffer is still processing")
+        let backend = SpeechAudioSessionProbeBackend(probe: probe)
+        let processor = SpeechCaptureAudioProcessor(process: { buffer in
+            processingBegan.fulfill()
+            guard releaseBuffer.wait(timeout: .now() + .seconds(5)) == .success else {
+                probe.record("errorBufferGateTimedOut")
+                return
+            }
+            backend.append(buffer)
+        })
+        let transcriber = SpeechTranscriber(reportsAudioLevel: false, audioSessionOwner: owner)
+        defer { transcriber.cancel() }
+        let handoff = expectation(description: "one recognized partial text handoff after drain")
+        handoff.assertForOverFulfill = true
+        let nextCaptureReady = expectation(description: "next capture owns its session after A handoff")
+        var handedOff: [String] = []
+        var restarted: Task<Void, Error>?
+        let nextWords = "Keep capture B's original words"
+        transcriber.setSyntheticCaptureForTesting(a.captureID, onAutomaticFinalization: { text in
+            handedOff.append(text)
+            probe.record("errorHandoff")
+            restarted = Task {
+                try await owner.activate(b, profile: .spokenAudio)
+                transcriber.setSyntheticCaptureForTesting(b.captureID,
+                    backend: SpeechAudioSessionProbeBackend(probe: probe), lease: b)
+                transcriber.receiveTranscript(nextWords, isFinal: false, captureID: b.captureID)
+                nextCaptureReady.fulfill()
+            }
+            handoff.fulfill()
+        }, backend: backend, processor: processor, lease: a)
+        let format = try XCTUnwrap(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
+        let buffer = try XCTUnwrap(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 4))
+        buffer.frameLength = 4
+        processor.append(buffer)
+        await fulfillment(of: [processingBegan], timeout: 5)
+        let partialWords = "Keep the recognized words before this error"
+        transcriber.receiveTranscript(partialWords, isFinal: false, captureID: a.captureID)
+        transcriber.receiveError(SpeechRecognitionBackendError.audioForwardingFailed,
+                                 captureID: a.captureID)
+        transcriber.receiveError(SpeechRecognitionBackendError.audioForwardingFailed,
+                                 captureID: a.captureID)
+        XCTAssertEqual(transcriber.state, .finalizing)
+        XCTAssertEqual(transcriber.transcript, partialWords)
+        XCTAssertTrue(handedOff.isEmpty)
+        XCTAssertFalse(probe.events.contains("backendCancel"))
+        XCTAssertFalse(probe.events.contains("endAudio"))
+        releaseBuffer.signal()
+        await fulfillment(of: [handoff, nextCaptureReady], timeout: 5)
+        let restart = try XCTUnwrap(restarted)
+        try await restart.value
+        XCTAssertEqual(handedOff, [partialWords])
+        XCTAssertFalse(probe.events.contains("errorBufferGateTimedOut"))
+        let appended = try XCTUnwrap(probe.events.firstIndex(of: "append4"))
+        let cancelled = try XCTUnwrap(probe.events.firstIndex(of: "backendCancel"))
+        let delivered = try XCTUnwrap(probe.events.firstIndex(of: "errorHandoff"))
+        XCTAssertLessThan(appended, cancelled)
+        XCTAssertLessThan(cancelled, delivered)
+        XCTAssertEqual(probe.events.filter { $0 == "backendCancel" }.count, 1)
+        XCTAssertFalse(probe.events.contains("endAudio"),
+                       "Recognition error does not fabricate successful finality")
+        let beforeLateA = probe.events
+        transcriber.receiveError(SpeechRecognitionBackendError.audioForwardingFailed,
+                                 captureID: a.captureID)
+        transcriber.receiveTranscript("late A final must not replace B", isFinal: true,
+                                      captureID: a.captureID)
+        transcriber.discardUncommittedStartForTesting(a)
+        await owner.finishPendingOperationsForTesting()
+        XCTAssertEqual(handedOff, [partialWords])
+        XCTAssertEqual(transcriber.state, .listening)
+        XCTAssertEqual(transcriber.transcript, nextWords)
+        XCTAssertEqual(probe.events, beforeLateA)
+        XCTAssertFalse(b.isReleased)
+        XCTAssertTrue(probe.sessionCallsStayedOffMain)
+
+        // The other entry is a normal endpoint already waiting for its ASR
+        // final/grace. An actual error must consume that same handoff once,
+        // cancel the grace task, and ignore the recognizer's subsequent final.
+        var finalWaitHandoffs: [String] = []
+        transcriber.stopAndFinalize { text in
+            finalWaitHandoffs.append(text)
+            probe.record("normalFinalWaitErrorHandoff")
+        }
+        XCTAssertEqual(transcriber.state, .finalizing)
+        XCTAssertEqual(probe.events.filter { $0 == "endAudio" }.count, 1)
+        transcriber.receiveError(SpeechRecognitionBackendError.audioForwardingFailed,
+                                 captureID: b.captureID)
+        XCTAssertEqual(transcriber.state, .idle)
+        XCTAssertEqual(finalWaitHandoffs, [nextWords])
+        transcriber.receiveTranscript("late B final after error", isFinal: true,
+                                      captureID: b.captureID)
+        transcriber.receiveError(SpeechRecognitionBackendError.audioForwardingFailed,
+                                 captureID: b.captureID)
+        await owner.finishPendingOperationsForTesting()
+        XCTAssertEqual(finalWaitHandoffs, [nextWords])
+        XCTAssertEqual(probe.events.filter { $0 == "normalFinalWaitErrorHandoff" }.count, 1)
+        XCTAssertEqual(probe.events.filter { $0 == "backendCancel" }.count, 2)
+        XCTAssertTrue(b.isReleased)
+    }
+}
+
+private enum SpeechAudioSessionProbeError: Error { case gateTimedOut }
+
+private final class SpeechAudioSessionProbe: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedEvents: [String] = []
+    private var mainThreadSessionCall = false
+    private var activationCount = 0
+    private var deactivationCount = 0
+    var events: [String] { lock.lock(); defer { lock.unlock() }; return storedEvents }
+    var sessionCallsStayedOffMain: Bool { lock.lock(); defer { lock.unlock() }; return !mainThreadSessionCall }
+    func record(_ event: String, sessionOperation: Bool = false) {
+        lock.lock(); defer { lock.unlock() }
+        if sessionOperation && Thread.isMainThread { mainThreadSessionCall = true }
+        storedEvents.append(event)
+    }
+    func beginActivation() -> Int {
+        lock.lock(); defer { lock.unlock() }
+        activationCount += 1
+        mainThreadSessionCall = mainThreadSessionCall || Thread.isMainThread
+        storedEvents.append("activate\(activationCount)")
+        return activationCount
+    }
+    func beginDeactivation() -> Int {
+        lock.lock(); defer { lock.unlock() }
+        deactivationCount += 1
+        mainThreadSessionCall = mainThreadSessionCall || Thread.isMainThread
+        storedEvents.append("deactivate\(deactivationCount):begin")
+        return deactivationCount
+    }
+}
+
+@MainActor
+private final class SpeechAudioSessionProbeBackend: SpeechRecognitionBackend {
+    let engine = SpeechRecognitionEngine.legacyRecognizer
+    let usesTrainedVoiceActivityDetection = false
+    let hadAudioForwardingFailure = false
+    private let probe: SpeechAudioSessionProbe
+    init(probe: SpeechAudioSessionProbe) { self.probe = probe }
+    func start(contextualPhrases: [String], onTranscript: @escaping @MainActor (String, Bool) -> Void,
+               onVoiceActivity: @escaping @MainActor () -> Void,
+               onError: @escaping @MainActor (Error) -> Void) async throws {}
+    nonisolated func append(_ buffer: AVAudioPCMBuffer) { probe.record("append\(buffer.frameLength)") }
+    func endAudio() { probe.record("endAudio") }
+    func cancel() { probe.record("backendCancel") }
+}
+#endif

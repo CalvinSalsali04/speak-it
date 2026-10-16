@@ -72,6 +72,114 @@ enum SpeechCaptureDiagnosticsStore {
     }
 }
 
+/// Capture-scoped ownership of the process-wide audio session. Releasing a
+/// cancelled lease never grants permission to deactivate a later capture.
+final class SpeechAudioSessionLease: @unchecked Sendable {
+    let captureID: UUID
+    private let lock = NSLock()
+    private var released = false
+
+    init(captureID: UUID) { self.captureID = captureID }
+    var isReleased: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return released
+    }
+    func release() {
+        lock.lock(); released = true; lock.unlock()
+    }
+}
+
+/// Uses the existing iOS17+ synchronous APIs exclusively on one serial worker.
+/// A queued operation runs through completion before another may use the session.
+/// No microphone, ASR backend, transcript, or SwiftUI state crosses this worker.
+final class SpeechAudioSessionOwner: @unchecked Sendable {
+    static let shared = SpeechAudioSessionOwner()
+    private let queue = DispatchQueue(label: "com.calvinwak.SpeakIt.audio-session", qos: .userInitiated)
+    private let configure: @Sendable (SpeechCaptureAudioProfile) throws -> Void
+    private let setActive: @Sendable (Bool) throws -> Void
+    private let activationEnqueued: @Sendable (UUID) -> Void
+    // Accessed only on queue. The lease object, rather than a mutable caller ID,
+    // determines which capture acquired the physical session.
+    private var activeLease: SpeechAudioSessionLease?
+
+    init(
+        configure: @escaping @Sendable (SpeechCaptureAudioProfile) throws -> Void = { profile in
+            let session = AVAudioSession.sharedInstance()
+            // Preserve the existing exclusive categories, modes and options.
+            switch profile {
+            case .spokenAudio: try session.setCategory(.playAndRecord, mode: .spokenAudio, options: [])
+            case .measurement: try session.setCategory(.record, mode: .measurement, options: [])
+            case .voiceProcessed: try session.setCategory(.playAndRecord, mode: .voiceChat, options: [])
+            }
+        },
+        setActive: @escaping @Sendable (Bool) throws -> Void = {
+            try AVAudioSession.sharedInstance().setActive($0)
+        },
+        activationEnqueued: @escaping @Sendable (UUID) -> Void = { _ in }
+    ) {
+        self.configure = configure
+        self.setActive = setActive
+        self.activationEnqueued = activationEnqueued
+    }
+
+    func activate(_ lease: SpeechAudioSessionLease, profile: SpeechCaptureAudioProfile) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            queue.async { [self] in
+                guard !lease.isReleased else {
+                    continuation.resume(throwing: CancellationError())
+                    return
+                }
+                if let activeLease {
+                    guard activeLease === lease else {
+                        continuation.resume(throwing: SpeechAudioSessionOwnerError.captureAlreadyActive)
+                        return
+                    }
+                    continuation.resume()
+                    return
+                }
+                activeLease = lease
+                do {
+                    try configure(profile)
+                    try setActive(true)
+                    guard !lease.isReleased else { throw CancellationError() }
+                    continuation.resume()
+                } catch {
+                    deactivateOwned(lease)
+                    continuation.resume(throwing: error)
+                }
+            }
+            activationEnqueued(lease.captureID)
+        }
+    }
+
+    func release(_ lease: SpeechAudioSessionLease) {
+        // Invalidates an activation even if its hardware call is already running.
+        // That operation performs its own cleanup before advancing this queue.
+        lease.release()
+        queue.async { [self] in deactivateOwned(lease) }
+    }
+
+    private func deactivateOwned(_ lease: SpeechAudioSessionLease) {
+        guard activeLease === lease else { return }
+        // Preserve the existing no-notify deactivation policy: do not restart
+        // interrupted media over the capture receipt.
+        try? setActive(false)
+        activeLease = nil
+    }
+
+#if DEBUG
+    func finishPendingOperationsForTesting() async {
+        await withCheckedContinuation { continuation in
+            queue.async { continuation.resume() }
+        }
+    }
+#endif
+}
+
+private enum SpeechAudioSessionOwnerError: Error {
+    case captureAlreadyActive
+}
+
 @MainActor
 final class SpeechTranscriber: ObservableObject {
     enum EndpointMode: Equatable {
@@ -113,6 +221,8 @@ final class SpeechTranscriber: ObservableObject {
     }
 
     private let reportsAudioLevel: Bool
+    private let audioSessionOwner: SpeechAudioSessionOwner
+    private var audioSessionLease: SpeechAudioSessionLease?
     private let audioActivityTracker = AudioActivityTracker()
     private let audioQualityTracker = AudioQualityTracker()
     private let audioEngine = AVAudioEngine()
@@ -195,8 +305,9 @@ final class SpeechTranscriber: ObservableObject {
             || !transcript.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    init(reportsAudioLevel: Bool = true) {
+    init(reportsAudioLevel: Bool = true, audioSessionOwner: SpeechAudioSessionOwner = .shared) {
         self.reportsAudioLevel = reportsAudioLevel
+        self.audioSessionOwner = audioSessionOwner
         observeAudioSessionChanges()
     }
 
@@ -204,11 +315,26 @@ final class SpeechTranscriber: ObservableObject {
     /// Exercises the production callback handlers at a capture boundary
     /// without opening a microphone in XCTest. This does not verify hardware.
     func setSyntheticCaptureForTesting(
-        _ id: UUID, onAutomaticFinalization: ((String) -> Void)? = nil
+        _ id: UUID, onAutomaticFinalization: ((String) -> Void)? = nil,
+        backend: (any SpeechRecognitionBackend)? = nil,
+        processor: SpeechCaptureAudioProcessor? = nil,
+        lease: SpeechAudioSessionLease? = nil,
+        isStarting: Bool = false
     ) {
+        activeStartID = isStarting ? id : nil
         activeCaptureID = id
+        recognitionBackend = backend
+        audioProcessor = processor
+        audioSessionLease = lease
+        receivedFinalResult = false
         automaticFinalization = onAutomaticFinalization
-        state = .listening
+        state = isStarting ? .requestingPermission : .listening
+    }
+
+    /// Exercises captured-start cleanup after real callback handlers have run.
+    /// This does not bypass permissions or execute backend/engine startup.
+    func discardUncommittedStartForTesting(_ lease: SpeechAudioSessionLease) {
+        discardUncommittedStart(lease)
     }
 #endif
 
@@ -298,10 +424,20 @@ final class SpeechTranscriber: ObservableObject {
         do {
             resetRecognitionResources()
 
-            let audioSession = AVAudioSession.sharedInstance()
+            guard activeStartID == startID, activeCaptureID == startID,
+                  !Task.isCancelled, !audioDrainPending else {
+                if activeCaptureID == startID { cancel() }
+                return
+            }
             audioProfile = SpeechCaptureAudioProfile.selected
-            try Self.configureAudioSession(audioSession, profile: audioProfile)
-            try audioSession.setActive(true)
+            let lease = SpeechAudioSessionLease(captureID: startID)
+            audioSessionLease = lease
+            try await audioSessionOwner.activate(lease, profile: audioProfile)
+            guard activeStartID == startID, activeCaptureID == startID,
+                  audioSessionLease === lease, !lease.isReleased, !Task.isCancelled, !audioDrainPending else {
+                discardUncommittedStart(lease)
+                return
+            }
 
             let inputNode = audioEngine.inputNode
             let enablesVoiceProcessing = audioProfile == .voiceProcessed
@@ -331,12 +467,13 @@ final class SpeechTranscriber: ObservableObject {
                     self?.receiveError(error, captureID: startID)
                 }
             )
-            isPreparingEnhancedRecognition = false
-            guard activeStartID == startID else {
+            guard activeStartID == startID, activeCaptureID == startID,
+                  audioSessionLease === lease, !lease.isReleased, !Task.isCancelled, !audioDrainPending else {
                 backend.cancel()
-                resetRecognitionResources()
+                discardUncommittedStart(lease)
                 return
             }
+            isPreparingEnhancedRecognition = false
             recognitionBackend = backend
             recognitionEngine = backend.engine
 
@@ -443,8 +580,9 @@ final class SpeechTranscriber: ObservableObject {
 
             audioEngine.prepare()
             try audioEngine.start()
-            guard activeStartID == startID else {
-                resetRecognitionResources()
+            guard activeStartID == startID, activeCaptureID == startID,
+                  audioSessionLease === lease, !lease.isReleased, !Task.isCancelled else {
+                discardUncommittedStart(lease)
                 return
             }
             audioInputReadyTimeout?.cancel()
@@ -759,14 +897,27 @@ final class SpeechTranscriber: ObservableObject {
             hasRecoveryRecording: recoveryAudioFile != nil && hasDetectedAudioInput
         ) {
         case .finalizeTranscript:
-            if state == .finalizing {
-                completeFinalization()
-            } else if let automaticFinalization {
+            if state != .finalizing {
+                guard let automaticFinalization else { return }
                 finalization = automaticFinalization
                 finalizationSource = .recognizerError
+                naturalPauseTask?.cancel()
+                naturalPauseTask = nil
+                isWaitingForContinuation = false
                 markSpeechEndpointDetectedIfNeeded()
                 state = .finalizing
-                completeFinalization()
+            }
+            audioInputReadyTimeout?.cancel()
+            audioInputReadyTimeout = nil
+            finalizationTimeout?.cancel()
+            finalizationTimeout = nil
+            // An ASR error permits the existing partial-text save policy, not
+            // dropping accepted microphone buffers. Stop and drain first; do
+            // not invent a final result from the failed recognition backend.
+            stopAudioInput { [weak self] in
+                guard let self, self.activeCaptureID == captureID,
+                      self.state == .finalizing, !self.isFailingLongCapture else { return }
+                self.completeFinalization()
             }
         case .recoverRecording, .reportFailure:
             resetRecognitionResources()
@@ -1145,20 +1296,18 @@ final class SpeechTranscriber: ObservableObject {
         callbacks.forEach { $0() }
     }
 
-    private static func configureAudioSession(
-        _ audioSession: AVAudioSession,
-        profile: SpeechCaptureAudioProfile
-    ) throws {
-        // All profiles remain exclusive: no mix/duck option is supplied, so a
-        // Reel, podcast, or song is interrupted instead of leaking into ASR.
-        switch profile {
-        case .spokenAudio:
-            try audioSession.setCategory(.playAndRecord, mode: .spokenAudio, options: [])
-        case .measurement:
-            try audioSession.setCategory(.record, mode: .measurement, options: [])
-        case .voiceProcessed:
-            try audioSession.setCategory(.playAndRecord, mode: .voiceChat, options: [])
+    /// An old startup may release only its captured lease. Never reset a
+    /// newer generation's backend, processor, protected file or microphone.
+    private func discardUncommittedStart(_ lease: SpeechAudioSessionLease) {
+        guard activeStartID == lease.captureID, activeCaptureID == lease.captureID,
+              audioSessionLease === lease, state == .requestingPermission else {
+            // A callback may already have released this lease and published a
+            // failure, or another capture may now own the transcriber.
+            audioSessionOwner.release(lease)
+            return
         }
+        // Stop the owned engine/tap before reset queues session deactivation.
+        cancel()
     }
 
     private func resetRecognitionResources() {
@@ -1171,10 +1320,10 @@ final class SpeechTranscriber: ObservableObject {
         stopAudioInput()
         recognitionBackend?.cancel()
         recognitionBackend = nil
-        // Don't automatically restart interrupted media after saving. The
-        // person can resume it when they are ready, without it competing with
-        // the Remembered confirmation.
-        try? AVAudioSession.sharedInstance().setActive(false)
+        if let lease = audioSessionLease {
+            audioSessionLease = nil
+            audioSessionOwner.release(lease)
+        }
     }
 
     private func observeAudioSessionChanges() {

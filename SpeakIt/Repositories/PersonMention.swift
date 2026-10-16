@@ -197,6 +197,67 @@ enum PersonMentionResolver {
         return base + suffix
     }()
 
+    /// A complete titled addressee at an already proved communication slot.
+    /// This reads only the existing name phrase, never routing/actionability.
+    /// A possessed name keeps the ordinary full-relation precedence instead.
+    static func communicationTitledRecipientRange(
+        in text: String, startingAt start: String.Index
+    ) -> Range<String.Index>? {
+        guard start < text.endIndex else { return nil }
+        let end = text[start...].firstIndex(where: \.isWhitespace) ?? text.endIndex
+        let first = word(from: text[start..<end], range: start..<end)
+        guard titles[first.lower] != nil, !first.isPossessive else { return nil }
+        let list = words(in: text[start...])
+        guard list.count >= 2, !list[1].isPossessive,
+              String(text[list[1].range]) == list[1].core,
+              let phrase = personPhrase(in: list, at: 0,
+                  allowLowercase: isCasuallyCased(text), limit: 2),
+              phrase.end == 2, phrase.range.lowerBound == start else { return nil }
+        return phrase.range
+    }
+
+    /// A local lexical relationship proof, never a name-gender inference.
+    /// Only a single conventional kin recipient in the existing family can
+    /// support this contact-context pronoun. Foreign possessors, possessed
+    /// chains, plurals, trades and bare personal names supply no such proof.
+    static func communicationRelationSupportsPronoun(_ pronoun: String, recipient: String) -> Bool {
+        let list = words(in: recipient[...])
+        guard !list.isEmpty, list.count <= 2,
+              list.allSatisfy({ !$0.isPossessive && !$0.core.isEmpty }) else { return false }
+        let relation: String
+        if list.count == 1 {
+            relation = list[0].lower
+        } else if ["my", "our"].contains(list[0].lower) {
+            relation = list[1].lower
+        } else if communicationTitledRecipientRange(in: recipient, startingAt: recipient.startIndex)
+            == recipient.startIndex..<recipient.endIndex {
+            relation = list[0].lower
+        } else { return false }
+        // These are subsets of the existing singular kinship words, not a
+        // new person vocabulary. Ambiguous neutral/plural forms stay outside.
+        let female: Set<String> = ["mom", "mum", "mother", "mommy", "mama",
+            "grandma", "grandmother", "granny", "nana", "grandmom", "grandmum",
+            "sis", "sister", "aunt", "auntie", "niece", "wife", "fiancee", "daughter"]
+        let male: Set<String> = ["dad", "father", "daddy", "papa", "grandpa", "grandfather",
+            "granddad", "grandad", "bro", "brother", "uncle", "nephew", "husband", "fiance", "son"]
+        guard kinship.contains(relation) else { return false }
+        switch pronoun {
+        case "she": return female.contains(relation)
+        case "he": return male.contains(relation)
+        case "they": return female.contains(relation) || male.contains(relation)
+        default: return false
+        }
+    }
+
+    /// Negative evidence only for a bounded contact-context reason. This
+    /// performs no routing, follow-up lookup or recursive clause reading.
+    static func communicationContextContainsPerson(in source: String) -> Bool {
+        words(in: source[...]).contains {
+            relationNouns.contains($0.lower) || titles[$0.lower] != nil
+                || $0.isPersonalName || $0.isPossessive
+        }
+    }
+
     // MARK: Reading
 
     /// Whether the text is cased the way dictation cases a sentence whose names
@@ -264,6 +325,9 @@ enum PersonMentionResolver {
         // lead. The subject rules have to see the sentence underneath it.
         let body = strippedLead(source)
         let bodyWords = words(in: body)
+        if let beneficiary = causativeBeneficiary(in: body, words: bodyWords) {
+            found.append(beneficiary)
+        }
         let hadLead = body.startIndex != source.startIndex
         // "Standup moved from 9 to 9:30" is a thing rescheduled to a clock,
         // not somebody who relocated. "Moved" is the same life-event verb in
@@ -288,6 +352,34 @@ enum PersonMentionResolver {
         return ranked
     }
 
+    /// “Get Willa a spare key cut” assigns a complete service to a named
+    /// beneficiary. The determined object and final productive result prove
+    /// that role without requiring the name to appear in a vocabulary. This
+    /// supplies person metadata only; action and purchase ownership stay with
+    /// their existing readers. Unknown or incomplete objects still decline.
+    private static func causativeBeneficiary(in source: Substring, words list: [Word]) -> PersonMention? {
+        let text = String(source)
+        guard QuotedSpeechScope.ranges(in: text).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(text),
+              list.first?.lower == "get", list.count >= 5,
+              let result = list.last, ActionabilityReader.isResultParticiple(result.lower),
+              let objectStart = list.indices.dropFirst().first(where: {
+                  ["a", "an", "the"].contains(list[$0].lower)
+              }), objectStart > 1, objectStart < list.count - 1,
+              let phrase = personPhrase(in: list, at: 1, allowLowercase: false, limit: objectStart),
+              phrase.end == objectStart,
+              !list[1..<objectStart].contains(where: \.isPossessive) else { return nil }
+        let objectRange = list[objectStart].range.lowerBound..<result.range.lowerBound
+        let object = String(source[objectRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard source[..<result.range.lowerBound].range(of: #"[,;:.!?()\[\]{}]"#,
+                  options: .regularExpression) == nil,
+              RuntimeCurrentNominalProof.read(object),
+              source[result.range.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines
+                .union(CharacterSet(charactersIn: ".!?"))).isEmpty else { return nil }
+        return PersonMention(label: phrase.label, sourceRange: phrase.range,
+            confidence: phrase.confidence, role: .participant)
+    }
+
     /// Whether the sentence's subject is a thing whose time changed. The cue
     /// is the one `ActionabilityReader` reads to call the sentence an event,
     /// so the two cannot disagree about which sentences qualify.
@@ -298,6 +390,14 @@ enum PersonMentionResolver {
             of: #"^\S+(?:\s+\S+)?\s+(?:was\s+|got\s+|has\s+been\s+|is\s+)?(?:"# + ActionabilityReader.rescheduleCue + #"|"# + ActionabilityReader.rescheduleDayCue + #")"#,
             options: [.regularExpression, .caseInsensitive]
         ) != nil
+    }
+
+    /// The existing definite address frame selects an ordinary task, while
+    /// its direct target role still distinguishes a person from an office.
+    /// Callers supply the action body; an embedded call cannot open this frame.
+    static func hasLeadingDefiniteCommunicationTarget(in text: String) -> Bool {
+        text.range(of: #"^(?:ask|call|phone|text|email|message|tell)\s+the\s+"#,
+                   options: [.regularExpression, .caseInsensitive]) != nil
     }
 
     /// The one person a thought is about, when it is about anybody.
@@ -738,6 +838,18 @@ enum PersonMentionResolver {
     ///
     /// Ranked last, so a person the sentence is actually addressing always wins
     /// over the owner of something mentioned along the way.
+    /// Relative temporal genitives name a common object role, not a contact.
+    /// Keep literal capitals, kinship and corroborated names: a modifier alone
+    /// must not globally blacklist a genuine person or a name called Season.
+    private static func isTemporalCommonOwner(_ list: [Word], at index: Int) -> Bool {
+        let owner = list[index]
+        guard index > 0, index + 1 < list.count,
+              !owner.isCapitalized, !owner.isPersonalName,
+              !kinship.contains(owner.lower), !isCommonFirstName(owner.core),
+              !neutralNameEvidence(owner).personal else { return false }
+        return ActionabilityReader.relativeTemporalGenitiveModifiers.contains(list[index - 1].lower)
+    }
+
     private static func possessiveOwner(_ list: [Word], allowLowercase: Bool) -> PersonMention? {
         for index in list.indices.dropFirst() {
             let word = list[index]
@@ -746,6 +858,7 @@ enum PersonMentionResolver {
                   isNameToken(word, allowLowercase: allowLowercase),
                   index + 1 < list.count,
                   !pronouns.contains(list[index + 1].lower),
+                  !isTemporalCommonOwner(list, at: index),
                   // "The dog's grooming appointment": a name takes no
                   // determiner, so a possessive behind one is a common noun.
                   // Kinship keeps its determiner ("my sister's kids").
@@ -1556,6 +1669,15 @@ enum MemoryPersonNameResolver {
         if let explicit = personName?.trimmingCharacters(in: .whitespacesAndNewlines),
            !explicit.isEmpty {
             return explicit
+        }
+        // A nil stored name on a directly described target is intentional.
+        // Re-reading its possessive owner would recreate a different contact.
+        // Explicit metadata above wins; unrelated/embedded mentions below
+        // retain the existing fallback and are never cleared by this frame.
+        let actionBody = ActionabilityReader.actionBody(segment.lowercased())
+        if PersonMentionResolver.hasLeadingDefiniteCommunicationTarget(in: actionBody),
+           case .described = PersonMentionResolver.followUpTarget(in: segment) {
+            return nil
         }
         return PersonMentionResolver.primary(in: segment)?.label
             ?? PersonMentionResolver.primary(in: title)?.label

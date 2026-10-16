@@ -100,7 +100,13 @@ struct SaveThoughtIntent: LiveActivityIntent {
         await CaptureActivityManager.showOrganizing(normalizedThought)
         let result = try await ExternalCaptureWriter.save(normalizedThought)
         CaptureActivationStore.markSucceeded()
-        if result.needsInterpretationConfirmation {
+        if result.needsOrganizationReview {
+            await CaptureActivityManager.showProblem(
+                title: "Words saved",
+                detail: "Organization didn’t finish. Open Speak It to review your capture."
+            )
+            return .result(dialog: "Your words are saved. Open Speak It to review and organize your capture.")
+        } else if result.needsInterpretationConfirmation {
             await CaptureActivityManager.showProblem(
                 title: "Needs clarification",
                 detail: "Open Speak It to try again or review what was saved."
@@ -143,7 +149,8 @@ struct CompleteNextSpeakItItemIntent: AppIntent {
         }
         try await MainActor.run {
             let repository = SwiftDataThoughtRepository(
-                modelContext: PersistenceController.shared.mainContext
+                modelContext: PersistenceController.shared.mainContext,
+                captureAllowance: .live(container: PersistenceController.shared)
             )
             try repository.performReminderAction(
                 itemIDs: [item.id],
@@ -469,7 +476,12 @@ private final class BackgroundCaptureCoordinator {
             activeDraftID = nil
             captureStartedAt = nil
             CaptureActivationStore.markSucceeded()
-            if result.needsInterpretationConfirmation {
+            if result.needsOrganizationReview {
+                await CaptureActivityManager.showProblem(
+                    title: "Words saved",
+                    detail: "Organization didn’t finish. Open Speak It to review your capture."
+                )
+            } else if result.needsInterpretationConfirmation {
                 await CaptureActivityManager.showProblem(
                     title: "Needs clarification",
                     detail: "Open Speak It to try again or review what was saved."
@@ -588,13 +600,15 @@ enum ExternalCaptureWriter {
         let confirmationContext: String
         let isDuplicate: Bool
         let needsInterpretationConfirmation: Bool
+        let needsOrganizationReview: Bool
     }
 
     static func save(
         _ thought: String,
         createdAt: Date = .now,
         repository suppliedRepository: (any ThoughtRepository)? = nil,
-        defaults: UserDefaults = .standard
+        defaults: UserDefaults = .standard,
+        captureAdmission: (() throws -> Bool)? = nil
     ) async throws -> Result {
         guard suppliedRepository != nil || PersistenceController.initializationError == nil else {
             throw RepositoryError.storageUnavailable
@@ -606,12 +620,13 @@ enum ExternalCaptureWriter {
         let tutorialBeganAt = defaults.double(forKey: "SpeakIt.captureSetupTestBeganAt")
         let isTutorialTest = FirstRunTutorialPhase(rawValue: defaults.string(forKey: FirstRunTutorialKeys.phase) ?? "")?
             .hasComplimentaryCaptureAnywhereTest(beganAt: tutorialBeganAt) == true
-        guard isTutorialTest || SubscriptionStore.canCreateBackgroundCapture(defaults: defaults, now: createdAt) else {
+        guard try isTutorialTest || (captureAdmission?() ?? SubscriptionStore.canCreateBackgroundCapture(defaults: defaults, now: createdAt)) else {
             throw CaptureAccessError.freeLimitReached
         }
 
         let repository = suppliedRepository ?? SwiftDataThoughtRepository(
-            modelContext: PersistenceController.shared.mainContext
+            modelContext: PersistenceController.shared.mainContext,
+                captureAllowance: .live(container: PersistenceController.shared)
         )
         let capture = try await repository.createCaptureResult(
             text: thought,
@@ -619,17 +634,17 @@ enum ExternalCaptureWriter {
             createdAt: createdAt,
             // The outside-the-app path awaits and verifies one schedule below.
             // Avoid a second asynchronous scheduler racing the verified request.
+            allowancePolicy: SubscriptionStore.backgroundCapturePolicy(
+                source: isTutorialTest ? .tutorial : .shortcut, defaults: defaults),
             schedulesReminders: false
         )
-        if capture.createdNewCapture, capture.consumesFreeCapture, !isTutorialTest {
-            SubscriptionStore.recordBackgroundCapture(defaults: defaults, now: createdAt)
-        }
 
         if isTutorialTest {
             return Result(
                 confirmationContext: "Practice test · free captures untouched",
                 isDuplicate: capture.isDuplicate,
-                needsInterpretationConfirmation: capture.needsInterpretationConfirmation
+                needsInterpretationConfirmation: capture.needsInterpretationConfirmation,
+                needsOrganizationReview: capture.needsOrganizationReview
             )
         }
 
@@ -638,7 +653,8 @@ enum ExternalCaptureWriter {
             return Result(
                 confirmationContext: "Already captured",
                 isDuplicate: true,
-                needsInterpretationConfirmation: capture.needsInterpretationConfirmation
+                needsInterpretationConfirmation: capture.needsInterpretationConfirmation,
+                needsOrganizationReview: capture.needsOrganizationReview
             )
         }
         let requests = capture.items.compactMap(ReminderScheduleRequest.init(item:))
@@ -663,7 +679,8 @@ enum ExternalCaptureWriter {
         return Result(
             confirmationContext: confirmationContext,
             isDuplicate: false,
-            needsInterpretationConfirmation: capture.needsInterpretationConfirmation
+            needsInterpretationConfirmation: capture.needsInterpretationConfirmation,
+            needsOrganizationReview: capture.needsOrganizationReview
         )
     }
 

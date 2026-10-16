@@ -19,7 +19,7 @@ Voice or text capture
 SpeechTranscriber / App Intent
     ↓ raw transcript checkpoint
 CaptureDraftStore
-    ↓ durable parent + placeholder
+    ↓ durable parent + placeholder + V6 allowance obligation
 ThoughtRepository protocol
     ↓
 SwiftDataThoughtRepository
@@ -38,15 +38,16 @@ The in-app capture screen acknowledges the durable original through an immutable
 If organization is still running after 250 ms, a read-only “Saved on this iPhone”
 receipt shows those exact recognized words and “Organizing your thought…”. It
 makes no destination, reminder or completed-operation claim. The existing final
-result replaces it; fast local results skip the intermediate screen. Quota,
-notification, tutorial and retry accounting remain on their existing final-result
-paths. This does not detach processing or reduce model generation time.
+result replaces it; fast local results skip the intermediate screen. The V6
+allowance candidate reserves a free slot with this raw transaction and settles
+its debit from the definitive persisted result. Notification and final-result
+presentation retain their existing paths. This does not detach processing or reduce model generation time.
 Saved context is supplied lazily as main-actor value snapshots after current-source
 certificates; a simple certified capture performs no whole-library context fetch.
 
 `PersistenceController.shared` owns the production `ModelContainer`. In-app and outside-the-app capture use the same repository path, so both follow the same extraction, validation, reminder, and durability rules.
 
-Schema versioning keeps two things apart on purpose. Every numbered version in `SchemaV1.swift` — `SpeakItSchemaV1` through `SpeakItSchemaV4` — is history: each nests its own frozen `@Model` copies, none may ever be edited, and together they are what `SpeakItMigrationPlan` migrates a store *from*. `SpeakItSchemaCurrent` is the live shape the app addresses, is the only declaration allowed to move, and is what `PersistenceController.schema` opens. Collapsing the two — letting the newest numbered version name the live classes — is what makes adding the next version redefine the previous one and stop existing stores from opening. `SchemaFreezeTests` pins the version 3 contract to a real store a shipped build wrote, pins version 4 to the shape it was introduced with, and fails the moment a persisted model changes shape without a new version.
+Schema versioning keeps two things apart on purpose. Every numbered version in `SchemaV1.swift` — `SpeakItSchemaV1` through `SpeakItSchemaV6` — is history: each nests its own frozen `@Model` copies, none may ever be edited, and together they are what `SpeakItMigrationPlan` migrates a store *from*. `SpeakItSchemaCurrent` is the live shape the app addresses, is the only declaration allowed to move, and is what `PersistenceController.schema` opens. Collapsing the two — letting the newest numbered version name the live classes — is what makes adding the next version redefine the previous one and stop existing stores from opening. `SchemaFreezeTests` pins the version 3 contract to a real store a shipped build wrote, pins versions 4–6 to their recorded introduction shapes, and fails the moment a persisted model changes shape without a new version.
 
 Version 4 stores what the interpreter concluded. `OrganizedThought.state` — a `SemanticState` of `resolved`, `underspecified`, `contested` or `unsupported`, carrying a named `SemanticGap` when it is not resolved — used to be computed for every reading and dropped on the way into `CapturedItem`, so "Needs review" reconstructed a reason afterwards from the item's type, person and dates. It is now written to `semanticStateRawValue` and `semanticGapRawValue`, and `CapturedItem.clarificationRequirement` reports the recorded gap ahead of that reconstruction. Two things still outrank it, because neither is a reading of a sentence: a held destructive request, and what the device is waiting for on a place trigger. A row with no recorded verdict — everything written before version 4 — keeps the derivation it already had and is never reported as `resolved`.
 
@@ -292,3 +293,86 @@ Source46 is an unpromoted repair of Source45's measured array transport regressi
 Source112 is an unpromoted invocation-local preparation repair. Each bounded part may reuse its own materialized preflight request only when complete current source/context, instructions, grouping data, public schema bytes, schema cost, output reserve, own current model capacity, and ordered admitted reference bytes match exactly. Changed common references trigger ordinary fitting. No receipt crosses parts or captures. Actual per-call component accounting still uses the call model, and cancellation checks and the outer 20-second deadline remain. Preparation timings distinguish fresh fitting from exact reuse; saved semantics and whole-graph validation are unchanged. Semantic benefit remains unmeasured.
 
 Source113 is an unpromoted compact transport of the existing expressive outline. Each row carries the same purpose, rewrite flag, review flag and ordered exact current evidence IDs. Shared source remains representable and must still receive complete disjoint literal anchors/reconciliation before validation and effects; fixed-owner eligibility is not widened. Special joint-call decisions retain their prior expressive schema. The source/context remains complete, no title/fact fields enter the first response, and complete membership and all old semantic/state guards remain. The response reserve keeps the previous768 minimum; lower per-row encoding overhead is measured, not proof of correctness. Admission identity now compares UTF8 bytes, and every staged SDK entry rechecks cancellation after awaited accounting.
+
+## 2026-10-14 candidate: durable lifetime allowance
+
+The allowance remains ten free captures in total. Production capture callers
+supply explicit Pro/free/practice/replacement snapshots to the repository;
+legacy test and preview repositories omit the accounting dependency.
+A metered repository rejects a missing policy. Tutorial source forces exemption,
+and a clarification replacement retains its root key without an extra debit.
+Existing `CaptureCreationResult.consumesFreeCapture` semantics remain authoritative:
+successful operation-only requests and duplicates are free, while a mixed result
+with independent new content consumes one slot. At-limit presentation is unchanged.
+
+`CaptureAllowance`, a repository accounting helper, uses a shared nonblocking
+`flock`. Raw admission checks duplicates again and reads fresh SwiftData state
+under that lock before saving the original session, placeholder and independent
+obligation in one transaction. Result saves persist their definitive billing
+breadcrumb atomically. Settlement writes the external journal before marking an
+obligation charged. All critical sections are synchronous; none holds the lock
+across an await. ID lookups have a predicate and a one-row limit; reconciliation
+fetches pending obligations rather than materializing the capture library.
+
+The journal contains only a legacy baseline and credited chain UUIDs, bounded by
+the ten-capture allowance. An atomic app-group file mirrors a non-synchronizable
+Keychain item. Both the identity journal and the legacy counter use
+`AfterFirstUnlock` backup eligibility. Readable copies merge identities before
+any legacy baseline catch-up; an existing credit must also repair both copies
+before local terminal state. This handles replay of an older pending record
+whose identity was already credited, rather than double-counting it as new.
+
+A valid file permits raw persistence and local reservation while the Keychain is
+unavailable; charging waits for readable, durably repaired identity history.
+Missing and unreadable history are different, including during legacy migration:
+when identity history cannot be read and no valid file exists, keep the draft and
+surface a storage error. Pending slots affect admission and the remaining count,
+but never the legacy committed counter or earned Pro invitations. Foreground
+and pre-gate refresh reconcile definitive outcomes, and one unavailable credit
+does not prevent an independent exemption from releasing its reservation.
+
+Candidate evidence: the first focused native pass passed 18 file-backed allowance
+tests and two isolated external-writer tests. A follow-up targeted native run
+passed 30 tests with zero failures or skips, including the four affected/new
+allowance methods and the full `SchemaFreezeTests` migration class. These focused
+checks precede final integrated release qualification and do not guarantee every
+backup/restore sequence. Physical-device
+Keychain availability, protected-file access and restore/reinstall behavior
+remain to be exercised. Uninstall while a debit is pending can remove the local
+words and obligation before its charge survives externally; deleting an item
+inside the app never refunds a committed charge.
+
+
+### Complete addressed-choice source role (2026-10-16)
+
+ClauseScope.CompleteAddressedChoiceQuestion holds transient original ranges for recipient, execution matrix, optional matrix timing, question alternatives and optional decision context. It performs source-only syntax checks and does not call the organizer. RuntimeShortSourceCertificate consumes the whole role before generic clock peeling, requiring an independently resolved literal recipient and the existing metadata guards. RuntimeCompleteLiteralCertificate consults this family before generic honorific/comma restrictions and keeps established rule alignment. TemporalCommitment scopes its existing unsettled checks to the proved execution matrix only for this complete role. Indexed validation retains Check-with recipient metadata only from an unchanged singleton proof whose organization is semantically equal to the ordinary organization used downstream. Existing ownership, reconciliation, contact conflicts and G19 remain authoritative. All original words and occurrence IDs survive; no durable model fields are added.
+
+
+### Complete follow-up reference role (2026-10-16)
+
+ClauseScope.CompleteFollowUpReference retains endpoint, execution, document-topic and optional reference-context/storage ranges. completeReferenceMatterNominal is a pure bounded determined/genitive document subtree; its nominal head evidence supplies no contact, timing or payment authority. The complete Short wrapper checks whole own voice and the existing full-source literal target, then reuses all final organizer/no-effects guards. CompleteLiteral opts this fully consumed family into its established alignment before generic comma restrictions. Existing indexed whole-row normalization intentionally discards optional generated currentMeaning when source is unchanged; returned full meaning and all original IDs remain authoritative. No persistent fields, model requests or G19 rules change.
+
+
+### Complete invoice before-day role (2026-10-16)
+
+ClauseScope.CompletePaymentBeforeDay holds transient object, BEFORE deadline and calendar ranges. The complete-reference nominal subtree checks only document structure; RuntimeShortSourceCertificate independently intersects it with existing Pay-positive object evidence, retains the complete deadline as clock source, and reuses organizer resolution plus independent clock-reading equality. The original whole source remains analysis/raw/provenance; established rule alignment may retain canonical analysis punctuation. No generated contact, money action or reminder permission is introduced.
+
+
+### Complete quantified phone-reorder role (2026-10-16)
+
+ClauseScope.CompletePhoneReorder retains endpoint, product, quantity, package, two size and optional stock ranges. Pure product/size readers reuse existing data and alias canonicalization. The complete Short wrapper supplies resolved literal person-follow-up metadata only from the full original occurrence. CompleteLiteral has a phone-only whole-original admission over unrepaired exact-owned baseline fragments without prior effects; this bypasses obsolete guessed fragment count for this complete role, without changing generic alignment. Runtime and no-model entries share the proof and normal shopping/final-preservation passes. No persistent fields, SDK request or corpus approvals change.
+
+### Automatic complete source composition (2026-10-16 candidate)
+
+On iOS 26.4+, `RuntimeFoundationInterpreter.completeSourceComposition` proposes only a unique exact cover of the original source using existing complete roles: Short singletons, a heading plus independently complete action, pickup preparation, local appositional calls, written-artifact content and planned retail lists. Unknown residue, competing covers, unsupported repairs or corrections decline this optional certificate. No fixture answer, intention count or reference supplies authority. Complete word-occurrence ownership, staged outline lowering, required-revision/completion checks and unchanged indexed validation remain mandatory. Accepted parents must be resolved and preserve the complete disjoint original ownership. Shopping shaping is checked locally, then applied once through the normal Engine path; final Engine preservation and effect guards still run. Operations stay empty; any timing or reminder must have its existing source proof.
+
+For an unchanged complete singleton described recipient, indexed projection retains the independently proved Short Task with nil person metadata instead of promoting a literal relation to a named contact. This projection applies to every qualifying exact indexed caller; only the composer clears its own inferred empty-anchor contacts before validation. Conflicting supplied contacts still reject.
+
+Configured runtime, no-model Engine and direct-rules entries share the composer before context loading or generation. The OS 26.4 API boundary is separate from model hardware availability. Older iOS 17 paths retain the portable component fixes; whole-composition parity is still preparation.
+
+### Portable whole-source plan (2026-10-16 update)
+
+`RuntimeCompleteSourceComposition` now builds the same typed exact-cover plan without an OS availability annotation, on the iOS 17+ deployment path. Twelve source readers moved into `RuntimeCompleteSourceFrames` with byte-identical bodies. Each parent independently owns complete source, purpose, metadata and effects. On iOS 26.4+, unchanged staged/indexed validation is still mandatory and its entire returned rows must equal the portable parents; rejection never falls through to the portable result on that system. Normal Engine shaping and preservation guards remain in place. API portability is independent of model hardware; it does not establish execution on iOS 17.
+
+
+The bounded member-availability shopping family keeps a typed original qualifier range on exactly one medial entry. Declared-list expansion remains the sole child/occurrence allocator. The complete literal certificate compares every baseline field, normalizing confidence only for this independently recomputed family, and returns the untouched baseline. A complete source composer parent and original-only retailer presentation projection reuse existing whole-source/indexed validation; no generated text, reminder or condition execution authority is introduced.

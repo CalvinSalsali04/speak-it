@@ -930,10 +930,31 @@ enum ThoughtOrganizer {
             refused = false
         }
         return refused && !ShoppingGroupParser.namesOnlyProducts(object)
+            && !ShoppingGroupParser.certifiesPrenominalAcquisitionObject(object, in: sentence)
     }
 
     static func hasUnresolvedTimingConstraint(_ text: String) -> Bool {
         TemporalIntentParser.carriesUnresolvedConstraint(in: ClauseScope.instructionText(text))
+    }
+
+    /// Pure numeric evidence for a source-role certificate. This reads no
+    /// clock, duration, date, speech act or optional language-model asset.
+    static func isPositiveLiteralNumber(_ source: String) -> Bool {
+        TemporalIntentParser.number(from: source).map { $0 > 0 } ?? false
+    }
+
+    /// A bounded source certificate must examine all literal timing, including
+    /// timing inside a communication payload that the instruction router omits.
+    static func hasNoLiteralTiming(
+        in source: String, referenceDate: Date, calendar: Calendar
+    ) -> Bool {
+        let timing = TemporalIntentParser.parse(
+            source, itemType: .task, referenceDate: referenceDate, calendar: calendar
+        )
+        return timing.intent == .none && timing.dueDate == nil
+            && timing.reminderDate == nil && timing.locationIntent == nil
+            && timing.delivery == .none && !timing.needsClarification
+            && RecurrenceIntentParser.parse(source) == nil
     }
 
     /// Read a descriptive calendar context without exposing private parser
@@ -948,6 +969,70 @@ enum ThoughtOrganizer {
               timing.delivery == .none, timing.reminderDate == nil,
               timing.locationIntent == nil else { return nil }
         return (timing.intent, timing.dueDate)
+    }
+
+    /// A source-only proof for final metadata and preservation guards. The
+    /// caller must still retain its independently established actionable kind
+    /// and compare the complete original role; this grants no item type.
+    static func clockBoundaryTiming(in source: String, referenceDate: Date,
+                                    calendar: Calendar) -> (intent: TemporalIntent, dueDate: Date)? {
+        guard let proof = TemporalIntentParser.dayClockBoundary(in: source),
+              let value = TemporalIntentParser.dayClockBoundaryTiming(proof, source: source,
+                referenceDate: referenceDate, calendar: calendar) else { return nil }
+        return (value.intent, value.date)
+    }
+
+    /// Target syntax and validation reuse the ordinary calendar/clock reader.
+    /// This transient result never becomes the task's execution metadata.
+    static var bookingTargetTemporalPattern: String { TemporalIntentParser.bookingTargetTemporalPattern }
+    static var bookingTargetCalendarPattern: String { TemporalIntentParser.bookingTargetCalendarPattern }
+    static func bookingTargetTiming(_ target: String, referenceDate: Date,
+                                    calendar: Calendar) -> TemporalIntent? {
+        let value = TemporalIntentParser.parse(target, itemType: .task,
+            referenceDate: referenceDate, calendar: calendar)
+        guard !value.needsClarification,
+              value.dueDate != nil || (value.intent.kind == .calendarWindow
+                && value.intent.day != nil && value.intent.windowEndDay != nil),
+              value.intent.kind == .dateOnly || value.intent.kind == .exactDateTime
+                || value.intent.kind == .calendarWindow,
+              value.reminderDate == nil, value.delivery == .none,
+              value.locationIntent == nil, value.intent.recurrence == nil,
+              value.intent.relativeSeconds == nil, value.intent.timeZoneIdentifier == nil,
+              value.intent.timeZoneBehavior == .deviceLocal else { return nil }
+        return value.intent
+    }
+
+    /// Exact source syntax for one named calendar day, using the parser's
+    /// existing calendar vocabulary rather than a second date recognizer.
+    static var namedDeadlineCalendarDayPattern: String {
+        TemporalIntentParser.namedDeadlineCalendarDayPattern
+    }
+
+    private static func midnightDeadlineTiming(
+        _ proof: ClauseScope.MidnightDeadline, source: String,
+        referenceDate: Date, calendar: Calendar
+    ) -> (intent: TemporalIntent, dueDate: Date)? {
+        if let request = proof.requestRange,
+           !hasNoLiteralTiming(in: String(source[request]), referenceDate: referenceDate, calendar: calendar) {
+            return nil
+        }
+        // Read only the literal calendar span. Parsing a midnight first and
+        // then shifting its already rolled date would lose the spoken day.
+        let timing = TemporalIntentParser.parse(String(source[proof.calendarRange]),
+            itemType: .task, referenceDate: referenceDate, calendar: calendar,
+            includesCurrentWeekday: true)
+        guard !timing.needsClarification, timing.intent.kind == .dateOnly,
+              let day = timing.intent.day, timing.delivery == .none,
+              timing.reminderDate == nil, timing.locationIntent == nil,
+              timing.intent.recurrence == nil, timing.intent.relativeSeconds == nil,
+              timing.intent.timeZoneIdentifier == nil,
+              timing.intent.timeZoneBehavior == .deviceLocal else { return nil }
+        let intent = TemporalIntent(kind: .exactDateTime, day: day,
+            time: WallClockTime(hour: 0, minute: 0),
+            sourceText: String(source[proof.deadlineRange]),
+            deadlineBoundary: .endOfNamedDay)
+        guard let due = intent.endOfDayDeadlineDate(calendar: calendar) else { return nil }
+        return (intent, due)
     }
 
     /// A fronted event must not disappear when its consequences are split.
@@ -965,6 +1050,13 @@ enum ThoughtOrganizer {
         return timing.intent.kind == .none || timing.needsClarification
     }
 
+    /// Expose the existing closed number reader for numbered object labels,
+    /// without exposing the private temporal parser or copying its grammar.
+    static var numberedWorkLabelPattern: String { TemporalIntentParser.spokenNumberPattern }
+    static func numberedWorkLabelValue(_ literal: String) -> Int? {
+        TemporalIntentParser.number(from: literal)
+    }
+
     static func organize(
         _ text: String,
         referenceDate: Date = .now,
@@ -975,7 +1067,7 @@ enum ThoughtOrganizer {
         let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let lowercase = normalized.lowercased()
         let instructionText = ClauseScope.instructionText(lowercase)
-        let conditionalDependency = ConditionalIntentScope.dependency(in: lowercase)
+        let conditionalDependency = ConditionalIntentScope.dependency(in: instructionText)
         let semanticActionText = conditionalDependency?.consequence ?? lowercase
         let actionText = ActionabilityReader.actionBody(semanticActionText)
         if contentScopeIsMemory || CaptureContentScope.explicitlyMemory(normalized) {
@@ -988,6 +1080,107 @@ enum ThoughtOrganizer {
                 temporalIntent: .none, locationIntent: nil, state: .resolved
             )
         }
+        // A local apposition names the recipient of the explicit resultive
+        // call. Only its own stated day is organized; the appointment clock
+        // and third-party reminder request remain literal context, not alerts.
+        if let call = ClauseScope.appositionalCallContext(in: normalized,
+                referenceDate: referenceDate, calendar: calendar) {
+            let rawCall = sourceText.flatMap { ClauseScope.appositionalCallContext(in: $0,
+                referenceDate: referenceDate, calendar: calendar) }
+            let matches = sourceText.map { raw in rawCall.map {
+                call.matchesOriginal($0, normalizedSource: normalized, originalSource: raw)
+            } ?? false } ?? true
+            guard matches else {
+                return OrganizedThought(itemType: .unclear, category: .general, priority: .normal,
+                    personName: nil, dueDate: nil, reminderDate: nil, reminderDelivery: .none,
+                    recurrenceRule: nil, needsClarification: true, temporalIntent: .none,
+                    locationIntent: nil, state: .underspecified(.ambiguousTemporalScope))
+            }
+            return organize(call.executionText(in: normalized), referenceDate: referenceDate,
+                calendar: calendar, sourceText: sourceText.flatMap { raw in rawCall.map { $0.executionText(in: raw) } })
+        }
+        // The complete written artifact frame owns its colon payload. Only
+        // the independently matching literal matrix supplies action metadata;
+        // closure dates remain visible source/title content.
+        if let written = ClauseScope.writtenArtifactContent(in: normalized,
+                referenceDate: referenceDate, calendar: calendar) {
+            let rawWritten = sourceText.flatMap { ClauseScope.writtenArtifactContent(in: $0,
+                referenceDate: referenceDate, calendar: calendar) }
+            let matches = sourceText.map { raw in rawWritten.map {
+                written.matchesOriginal($0, normalizedSource: normalized, originalSource: raw)
+            } ?? false } ?? true
+            guard matches else {
+                return OrganizedThought(itemType: .unclear, category: .general, priority: .normal,
+                    personName: nil, dueDate: nil, reminderDate: nil, reminderDelivery: .none,
+                    recurrenceRule: nil, needsClarification: true, temporalIntent: .none,
+                    locationIntent: nil, state: .underspecified(.ambiguousTemporalScope))
+            }
+            let execution = written.executionText(in: normalized)
+            // Strictly shorter: no colon remains, so this frame cannot recur.
+            return organize(execution, referenceDate: referenceDate, calendar: calendar,
+                sourceText: sourceText.flatMap { raw in rawWritten.map { $0.executionText(in: raw) } })
+        }
+        // This complete role supplies an explicit own finish action and
+        // a separately owned due span. Numeric question/section labels are
+        // object text, never hours. The routing recursion is strictly shorter
+        // and cannot match this due/progress/range frame again.
+        if let work = ClauseScope.partialNumberedWork(in: normalized) {
+            let rawWork = sourceText.flatMap { ClauseScope.partialNumberedWork(in: $0) }
+            let matches = sourceText.map { raw in rawWork.map {
+                work.matchesOriginal($0, normalizedSource: normalized, originalSource: raw)
+            } ?? false } ?? true
+            let routing = work.routingText(in: normalized)
+            if matches, routing.count < normalized.count {
+                let action = organize(routing, referenceDate: referenceDate, calendar: calendar)
+                let deadline = String(normalized[work.deadlineRange])
+                let timing: ParsedTiming
+                if let proof = ClauseScope.midnightDeadline(in: normalized,
+                        ownedDeadlineRange: work.deadlineRange),
+                   let boundary = midnightDeadlineTiming(proof, source: normalized,
+                        referenceDate: referenceDate, calendar: calendar) {
+                    timing = ParsedTiming(dueDate: boundary.dueDate, reminderDate: nil,
+                        delivery: .none, needsClarification: false, intent: boundary.intent,
+                        locationIntent: nil, wantsReminder: false)
+                } else {
+                    timing = TemporalIntentParser.parse(deadline, itemType: .task,
+                        referenceDate: referenceDate, calendar: calendar,
+                        sourceOrderText: sourceText.flatMap { raw in rawWork.map { String(raw[$0.deadlineRange]) } })
+                }
+                if action.itemType == .task, !action.needsClarification,
+                   action.dueDate == nil, action.reminderDate == nil,
+                   action.locationIntent == nil, action.recurrenceRule == nil,
+                   timing.dueDate != nil, !timing.needsClarification,
+                   timing.reminderDate == nil, timing.delivery == .none,
+                   timing.locationIntent == nil,
+                   timing.intent.kind == .dateOnly || timing.intent.kind == .exactDateTime {
+                    return OrganizedThought(itemType: .task, category: action.category,
+                        priority: inferredPriority(from: lowercase, dueDate: timing.dueDate, referenceDate: referenceDate),
+                        personName: action.personName, dueDate: timing.dueDate,
+                        reminderDate: nil, reminderDelivery: .none, recurrenceRule: nil,
+                        needsClarification: false, temporalIntent: timing.intent,
+                        locationIntent: nil, state: .resolved)
+                }
+            }
+            return OrganizedThought(itemType: .unclear, category: .general, priority: .normal,
+                personName: nil, dueDate: nil, reminderDate: nil, reminderDelivery: .none,
+                recurrenceRule: nil, needsClarification: true, temporalIntent: .none,
+                locationIntent: nil, state: .underspecified(.ambiguousObject))
+        }
+        // An explicit declared Shopping list stores literal entry text like
+        // Add Items. Memory protection above remains authoritative; matching
+        // raw source must independently retain the same complete declaration.
+        if let declared = ShoppingGroupParser.declaredShoppingRun(in: normalized),
+           sourceText.map({ raw in
+               ShoppingGroupParser.declaredShoppingRun(in: raw).map {
+                   declared.matchesOriginal($0, source: normalized, originalSource: raw)
+               } ?? false
+           }) ?? true {
+            return OrganizedThought(itemType: .shopping, category: .shopping,
+                priority: .normal, personName: nil, dueDate: nil, reminderDate: nil,
+                reminderDelivery: .none, recurrenceRule: nil,
+                needsClarification: false, temporalIntent: .none,
+                locationIntent: nil, state: .resolved)
+        }
         // A task-entry wrapper names the destination; the speech act inside
         // it still owns any proposition and its clock. Without peeling this
         // frame, "Add my task to text Sam that the train leaves at seven"
@@ -995,8 +1188,150 @@ enum ThoughtOrganizer {
         // The shared speech-act projection owns outgoing-message timing.
         // It retains outer requests and the established bare day of contact,
         // while leaving quoted clocks and alarms inside the message body.
-        let timingText = instructionText
-        let timingSourceOrderText = sourceText.map { ClauseScope.instructionText($0) }
+        // A complete physical purchase can name a separately timed event
+        // as its purpose. Read only its acquisition span for execution; even
+        // the event noun's daypart hints belong to that event. A supplied raw
+        // owner must independently prove the same products, event and acquisition.
+        let purchasePurpose = ShoppingGroupParser.purchaseEventPurpose(in: normalized)
+        let sourcePurpose = sourceText.flatMap { ShoppingGroupParser.purchaseEventPurpose(in: $0) }
+        let projectsPurchasePurpose: Bool
+        if let purchasePurpose {
+            if let sourceText {
+                projectsPurchasePurpose = sourcePurpose.map { raw in
+                    purchasePurpose.matchesOriginal(raw,
+                        normalizedSource: normalized, originalSource: sourceText)
+                } ?? false
+            } else { projectsPurchasePurpose = true }
+        } else { projectsPurchasePurpose = false }
+        let bookingTarget = ClauseScope.bookingTarget(in: normalized)
+        let sourceBookingTarget = sourceText.flatMap { ClauseScope.bookingTarget(in: $0) }
+        let projectsBookingTarget = bookingTarget.map { current in
+            sourceText.map { raw in sourceBookingTarget.map {
+                current.matchesOriginal($0, normalizedSource: normalized, originalSource: raw)
+            } ?? false } ?? true
+        } ?? false
+        let bookingTargetIsUnsettled = projectsBookingTarget && bookingTarget.map { proof in
+            proof.targetRanges.count != 1 || proof.executionRanges.count > 1
+                || !hasNoLiteralTiming(in: String(normalized[proof.objectRange]),
+                    referenceDate: referenceDate, calendar: calendar)
+                || proof.locationRange.map { !hasNoLiteralTiming(in: String(normalized[$0]),
+                    referenceDate: referenceDate, calendar: calendar) } == true
+                || (proof.targetRanges + proof.executionRanges).contains {
+                    bookingTargetTiming(String(normalized[$0]), referenceDate: referenceDate,
+                        calendar: calendar) == nil
+                }
+                || proof.targetClockRange.map { clockRange in
+                    guard let primaryRange = proof.targetRanges.first,
+                          let primary = bookingTargetTiming(String(normalized[primaryRange]),
+                            referenceDate: referenceDate, calendar: calendar),
+                          primary.kind == .dateOnly, primary.time == nil,
+                          let clock = bookingTargetTiming(String(normalized[clockRange]),
+                            referenceDate: referenceDate, calendar: calendar),
+                          clock.kind == .exactDateTime, clock.time != nil else { return true }
+                    return false
+                } == true
+        } == true
+        let enrollmentAppositive = ClauseScope.datedEnrollmentAppositive(in: normalized,
+            referenceDate: referenceDate, calendar: calendar)
+        let sourceEnrollment = sourceText.flatMap { ClauseScope.datedEnrollmentAppositive(in: $0,
+            referenceDate: referenceDate, calendar: calendar) }
+        let projectsEnrollment: Bool
+        if let enrollmentAppositive {
+            if let sourceText {
+                projectsEnrollment = sourceEnrollment.map { raw in
+                    enrollmentAppositive.matchesOriginal(raw,
+                        normalizedSource: normalized, originalSource: sourceText)
+                } ?? false
+            } else { projectsEnrollment = true }
+        } else { projectsEnrollment = false }
+        let dispatchDeadline = ClauseScope.outgoingArtifactDeadline(in: normalized)
+        let sourceDispatchDeadline = sourceText.flatMap { ClauseScope.outgoingArtifactDeadline(in: $0) }
+        let projectsDispatchDeadline = dispatchDeadline.map { current in
+            sourceText.map { raw in
+                sourceDispatchDeadline.map { original in
+                    current.matchesOriginal(original, normalizedSource: normalized, originalSource: raw)
+                } ?? false
+            } ?? true
+        } ?? false
+        let contactPurpose = ClauseScope.finiteContactPurpose(in: normalized)
+        let sourceContactPurpose = sourceText.flatMap { ClauseScope.finiteContactPurpose(in: $0) }
+        let projectsContactPurpose: Bool
+        if let contactPurpose {
+            projectsContactPurpose = sourceText.map { raw in
+                sourceContactPurpose.map { original in
+                    contactPurpose.sameExecutionScope(original,
+                        normalizedSource: normalized, originalSource: raw)
+                } ?? false
+            } ?? true
+        } else { projectsContactPurpose = false }
+        let descriptiveMessage = ClauseScope.descriptiveMessageTiming(in: normalized)
+        let sourceDescriptiveMessage = sourceText.flatMap { ClauseScope.descriptiveMessageTiming(in: $0) }
+        let projectsDescriptiveMessage = descriptiveMessage.map { current in
+            sourceText.map { raw in sourceDescriptiveMessage.map {
+                current.matchesOriginal($0, normalizedSource: normalized, originalSource: raw)
+            } ?? false } ?? true
+        } ?? false
+        let contactPreference = ClauseScope.contactTimingPreference(in: normalized)
+        let sourceContactPreference = sourceText.flatMap { ClauseScope.contactTimingPreference(in: $0) }
+        let projectsContactPreference = contactPreference.map { current in
+            sourceText.map { raw in sourceContactPreference.map {
+                current.matchesOriginal($0, normalizedSource: normalized, originalSource: raw)
+            } ?? false } ?? true
+        } ?? false
+        if contactPreference != nil, sourceText != nil, !projectsContactPreference {
+            return OrganizedThought(itemType: .unclear, category: .general, priority: .normal,
+                personName: nil, dueDate: nil, reminderDate: nil, reminderDelivery: .none,
+                recurrenceRule: nil, needsClarification: true, temporalIntent: .none,
+                locationIntent: nil, state: .underspecified(.ambiguousTemporalScope))
+        }
+        // A supplied original must prove the same literal execution scope. The
+        // shared scope reader can recognize analysis text, but that alone
+        // cannot erase a raw source clock from this timing projection.
+        let mismatchedMessageScope = descriptiveMessage != nil && sourceText != nil && !projectsDescriptiveMessage
+        let fallbackInstructionText = (contactPurpose != nil && sourceText != nil
+            && !projectsContactPurpose) || mismatchedMessageScope ? lowercase : instructionText
+        let timingText: String
+        if projectsBookingTarget, let bookingTarget {
+            timingText = bookingTarget.executionText(in: normalized).lowercased()
+        } else if projectsDispatchDeadline, let dispatchDeadline {
+            timingText = dispatchDeadline.executionText(in: normalized).lowercased()
+        } else if projectsPurchasePurpose, let purchasePurpose {
+            timingText = String(normalized[purchasePurpose.acquisitionRange]).lowercased()
+        } else if projectsEnrollment, let enrollmentAppositive {
+            timingText = enrollmentAppositive.executionText(in: normalized).lowercased()
+        } else if projectsDescriptiveMessage, let descriptiveMessage {
+            timingText = descriptiveMessage.executionText(in: normalized).lowercased()
+        } else if projectsContactPreference, let contactPreference {
+            timingText = contactPreference.executionText(in: normalized).lowercased()
+        } else if projectsContactPurpose, let contactPurpose {
+            timingText = contactPurpose.executionText(in: normalized).lowercased()
+        } else { timingText = fallbackInstructionText }
+        let timingSourceOrderText = sourceText.map { raw in
+            if projectsBookingTarget, let sourceBookingTarget {
+                return sourceBookingTarget.executionText(in: raw)
+            }
+            if projectsDispatchDeadline, let sourceDispatchDeadline {
+                return sourceDispatchDeadline.executionText(in: raw)
+            }
+            if projectsPurchasePurpose, let sourcePurpose {
+                return String(raw[sourcePurpose.acquisitionRange])
+            }
+            if projectsEnrollment, let sourceEnrollment {
+                return sourceEnrollment.executionText(in: raw)
+            }
+            if projectsDescriptiveMessage, let sourceDescriptiveMessage {
+                return sourceDescriptiveMessage.executionText(in: raw)
+            }
+            if mismatchedMessageScope { return raw }
+            if projectsContactPreference, let sourceContactPreference {
+                return sourceContactPreference.executionText(in: raw)
+            }
+            if projectsContactPurpose, let sourceContactPurpose {
+                return sourceContactPurpose.executionText(in: raw)
+            }
+            if contactPurpose != nil, !projectsContactPurpose { return raw }
+            return ClauseScope.instructionText(raw)
+        }
         // Two independent readings of the same sentence: what kind of thing it
         // is, and whether the person still owes something. Deriving the second
         // from the first is what let a `note` verdict throw away a correctly
@@ -1183,7 +1518,11 @@ enum ThoughtOrganizer {
         let personName: String?
         var missingFollowUpTarget = false
         var ambiguousFollowUpTarget = false
-        if type == .personFollowUp {
+        // The same leading definite address that selects an ordinary task
+        // still owns its target role. An office is described, not its named
+        // possessive owner; embedded calls retain the ordinary mention path.
+        if type == .personFollowUp || (type == .task
+            && PersonMentionResolver.hasLeadingDefiniteCommunicationTarget(in: actionText)) {
             switch PersonMentionResolver.followUpTarget(in: personSource) {
             case let .person(mention):
                 personName = mention.label
@@ -1307,7 +1646,7 @@ enum ThoughtOrganizer {
             )
         }
 
-        return OrganizedThought(
+        let organization = OrganizedThought(
             itemType: type,
             category: category,
             priority: inferredPriority(from: lowercase, dueDate: dueDate, referenceDate: referenceDate),
@@ -1325,6 +1664,71 @@ enum ThoughtOrganizer {
             temporalIntent: resolvedIntent,
             locationIntent: timing.locationIntent
         )
+        // A current reservation-target reading cannot fall back to treating
+        // FOR as an execution date when the target/object is unsettled or a
+        // supplied original disagrees. This late veto preserves the actual
+        // final classification; it never
+        // promotes a Memory, event or other unsupported source into a task.
+        if organization.itemType == .task, bookingTarget != nil,
+           bookingTargetIsUnsettled || !projectsBookingTarget {
+            return OrganizedThought(itemType: organization.itemType, category: organization.category,
+                priority: organization.priority, personName: organization.personName,
+                dueDate: nil, reminderDate: nil, reminderDelivery: .none,
+                recurrenceRule: nil, needsClarification: true, temporalIntent: .none,
+                locationIntent: nil, state: .underspecified(.ambiguousTemporalScope))
+        }
+        // Preserve a spoken clock inequality only on an already chosen own
+        // actionable kind. Full original geometry and the complete untimed
+        // action prove its owner; no inner content or raw mismatch donates time.
+        if organization.itemType.isActionable, actionability != .knowledge,
+           TemporalIntentParser.carriesLiteralClockBoundary(in: timingText) {
+            let proof = TemporalIntentParser.dayClockBoundary(in: normalized)
+            let rawProof = sourceText.flatMap { TemporalIntentParser.dayClockBoundary(in: $0) }
+            let agrees = proof.map { current in sourceText.map { raw in rawProof.map {
+                current.matchesOriginal($0, source: normalized, raw: raw)
+            } ?? false } ?? true } ?? false
+            guard [.task, .personFollowUp, .shopping].contains(organization.itemType),
+                  organization.state.kind == .resolved,
+                  organization.recurrenceRule == nil, organization.locationIntent == nil,
+                  !Self.isNegatedOwnCommitment(lowercase),
+                  agrees, let proof,
+                  let bound = TemporalIntentParser.dayClockBoundaryTiming(proof, source: normalized,
+                    referenceDate: referenceDate, calendar: calendar) else {
+                return OrganizedThought(itemType: organization.itemType, category: organization.category,
+                    priority: organization.priority, personName: organization.personName,
+                    dueDate: nil, reminderDate: nil, reminderDelivery: .none, recurrenceRule: nil,
+                    needsClarification: true, temporalIntent: .init(kind: .none, sourceText: normalized),
+                    locationIntent: nil, state: .underspecified(.ambiguousTemporalScope))
+            }
+            let requestedAlert = timing.wantsReminder
+            return OrganizedThought(itemType: organization.itemType, category: organization.category,
+                priority: organization.priority, personName: organization.personName,
+                dueDate: bound.date, reminderDate: nil, reminderDelivery: .none, recurrenceRule: nil,
+                needsClarification: requestedAlert, temporalIntent: bound.intent, locationIntent: nil,
+                state: requestedAlert ? .underspecified(.ambiguousTemporalScope) : .resolved)
+        }
+        // Boundary metadata is a final resolved task decision. Memory, events,
+        // reminders, recurrence, conditions and held source cannot acquire it.
+        if organization.itemType == .task, organization.state.kind == .resolved,
+           !organization.needsClarification, organization.reminderDate == nil,
+           organization.reminderDelivery == .none, organization.recurrenceRule == nil,
+           organization.locationIntent == nil,
+           let proof = ClauseScope.midnightDeadline(in: normalized),
+           sourceText.map({ raw in
+               ClauseScope.midnightDeadline(in: raw).map {
+                   proof.matchesOriginal($0, normalizedSource: normalized, originalSource: raw)
+               } ?? false
+           }) ?? true,
+           let boundary = midnightDeadlineTiming(proof, source: normalized,
+                referenceDate: referenceDate, calendar: calendar) {
+            return OrganizedThought(itemType: organization.itemType, category: organization.category,
+                priority: inferredPriority(from: lowercase, dueDate: boundary.dueDate, referenceDate: referenceDate),
+                personName: organization.personName, dueDate: boundary.dueDate,
+                reminderDate: nil, reminderDelivery: .none, recurrenceRule: nil,
+                needsClarification: false, temporalIntent: boundary.intent,
+                locationIntent: nil, state: organization.state)
+        }
+        return organization
     }
 
     /// Folds a recurrence rule into the parsed intent. A repeating thought is
@@ -1458,6 +1862,11 @@ enum ThoughtOrganizer {
             return .task
         }
 
+        // A post-object result is a service task, not acquisition. The
+        // existing speech-act/actionability reader still owns commitment.
+        if actionability.belongsOnToday,
+           ActionabilityReader.hasCausativeResult(sourceText) { return .task }
+
         // A meal with a named companion is a plan, even when "grab" or
         // "get" would otherwise make its noun a shopping item. Require a
         // confident person in the companion slot: "coffee with milk" and
@@ -1476,8 +1885,7 @@ enum ThoughtOrganizer {
         // Collecting an already booked, hired or borrowed object does not
         // buy it. Preserve its collection place in the action, rather than
         // removing that field as shopping-group presentation metadata.
-        if text.range(of: #"(?i)^(?:get|grab|pick\s+up)\s+(?:(?:the|my|our|a|an)\s+)?(?:rental|rented|hired|borrowed|reserved|pre[- ]?ordered)\s+"#,
-                      options: .regularExpression) != nil { return .task }
+        if ShoppingGroupParser.isCollectionAcquisition(text) { return .task }
 
         // A nominal wish or shortage has no purchase verb. Do not let the
         // generic noun-coordination reader invent shopping for abstractions.
@@ -1541,7 +1949,9 @@ enum ThoughtOrganizer {
                 contextIsPurchase = calendarOnly || ShoppingGroupParser.storeName(in: text)
                     .map(ShoppingGroupParser.isRecognizedStoreName) == true
             } else { contextIsPurchase = true }
-            if contextIsPurchase, ShoppingGroupParser.certifiesImplicitProducts(object) { return .shopping }
+            if contextIsPurchase,
+               ShoppingGroupParser.certifiesImplicitProducts(object)
+                || ShoppingGroupParser.certifiesPrenominalAcquisitionObject(object, in: text) { return .shopping }
         }
         let acquisition = #"^(?:get|grab|pick\s+up)\s+(?:\d+\s+)?"#
         if text.range(
@@ -1579,10 +1989,7 @@ enum ThoughtOrganizer {
             // "Call the dentist" is an errand aimed at an office; "call Mom" is
             // a person. A bare determiner after the verb is the difference, and
             // filing an errand under People buries it where nobody looks for it.
-            if text.range(
-                of: #"^(?:ask|call|phone|text|email|message|tell)\s+the\s+"#,
-                options: .regularExpression
-            ) != nil {
+            if PersonMentionResolver.hasLeadingDefiniteCommunicationTarget(in: text) {
                 return .task
             }
             // "Call about the water heater warranty" names nobody at all;
@@ -2396,10 +2803,14 @@ private enum DueAndReminderClauses {
 }
 
 private enum TemporalIntentParser {
-    private struct ParsedTime {
+    struct ParsedTime {
         let hour: Int
         let minute: Int
         let hasMeridiem: Bool
+        var boundary: ClockBoundary? = nil
+        var boundaryRange: NSRange? = nil
+        var clockRange: NSRange? = nil
+        var boundaryMeridiem: String? = nil
     }
 
     /// The outcome of turning wording into an instant. `ambiguous` is not a
@@ -2622,7 +3033,8 @@ private enum TemporalIntentParser {
         itemType: ItemType,
         referenceDate: Date,
         calendar originalCalendar: Calendar,
-        sourceOrderText: String? = nil
+        sourceOrderText: String? = nil,
+        includesCurrentWeekday: Bool = false
     ) -> ParsedTiming {
         var calendar = originalCalendar
         if calendar.timeZone.secondsFromGMT(for: referenceDate) == 0,
@@ -2661,7 +3073,8 @@ private enum TemporalIntentParser {
                 in: semanticText,
                 referenceDate: referenceDate,
                 calendar: calendar,
-                allowsBareClock: itemType.isActionable || wantsReminder
+                allowsBareClock: itemType.isActionable || wantsReminder,
+                includesCurrentWeekday: includesCurrentWeekday
             )
             : TimingResolution.unresolved
         // A day-only deadline on an implicit delegated communication can
@@ -2735,7 +3148,8 @@ private enum TemporalIntentParser {
         let locationIntent = resolution.intent.kind == .none || combinesPlaceAndTime
             ? parsedLocation
             : nil
-        let conditionalDependency = ConditionalIntentScope.dependency(in: semanticText)
+        let conditionalDependency = ConditionalIntentScope.dependency(
+            in: ClauseScope.instructionText(semanticText))
         let conditionResolution = conditionalDependency.map {
             timingResolution(
                 in: $0.condition,
@@ -3259,7 +3673,8 @@ private enum TemporalIntentParser {
         in text: String,
         referenceDate: Date,
         calendar: Calendar,
-        allowsBareClock: Bool
+        allowsBareClock: Bool,
+        includesCurrentWeekday: Bool = false
     ) -> TimingResolution {
         // "4/5" is April 5 or May 4 depending on where you live, and the
         // expression cannot tell you which. Ask rather than pick.
@@ -3320,7 +3735,8 @@ private enum TemporalIntentParser {
             day = calendar.date(byAdding: .day, value: offset, to: referenceDate)
         }
         if day == nil {
-            day = weekday(in: text, referenceDate: referenceDate, calendar: calendar)
+            day = weekday(in: text, referenceDate: referenceDate, calendar: calendar,
+                          includesCurrentWeekday: includesCurrentWeekday)
         }
         if day == nil {
             day = monthAndDay(in: text, referenceDate: referenceDate, calendar: calendar)
@@ -3719,6 +4135,132 @@ private enum TemporalIntentParser {
         return ordinalWords[match[1].lowercased().replacingOccurrences(of: "-", with: " ")]
     }
 
+    static var bookingTargetCalendarPattern: String {
+        let weekday = weekdays.map { NSRegularExpression.escapedPattern(for: $0.name) }.joined(separator: "|")
+        let ordinal = #"(?:\d{1,2}(?:st|nd|rd|th)|\#(ActionabilityReader.ordinalWord))"#
+        let day = #"(?:(?:\#(weekday))\s+this\s+week|\#(namedDeadlineCalendarDayPattern)|(?:this|next)\s+week|the\s+\#(ordinal)|\#(ordinal)\s+(?:of\s+)?(?:\#(monthNamePattern)))"#
+        return #"\#(day)(?:\s+(?:morning|afternoon|evening|night))?(?:\s+at\s+\#(RuleBasedThoughtExtractor.clockExpression))?"#
+    }
+
+    static var bookingTargetTemporalPattern: String {
+        // The same calendar form may be a bare own execution adjunct. Only
+        // a directly FOR-governed target permits an unmarked cardinal clock;
+        // Room 7 / suite 12 never gains own-clock authority from this pattern.
+        return #"(?:\#(bookingTargetCalendarPattern)|(?:at\s+)?\#(RuleBasedThoughtExtractor.clockExpression)(?:\s+(?:today|tomorrow|tonight|this\s+(?:morning|afternoon|evening)))?)"#
+    }
+
+    struct DayClockBoundary {
+        let actionRange: Range<String.Index>
+        let calendarRange: Range<String.Index>
+        let timingRange: Range<String.Index>
+        let relation: ClockBoundary
+        let clock: ParsedTime
+
+        func matchesOriginal(_ original: Self, source: String, raw: String) -> Bool {
+            func words(_ value: String) -> [String] { SourceUnitLedger(value).words.map(\.text) }
+            return relation == original.relation && words(source) == words(raw)
+                && words(String(source[actionRange])) == words(String(raw[original.actionRange]))
+                && words(String(source[calendarRange])) == words(String(raw[original.calendarRange]))
+                && words(String(source[timingRange])) == words(String(raw[original.timingRange]))
+        }
+    }
+
+    /// Positive geometry for one execution adjunct; the remaining whole
+    /// action still needs the existing own-action reading and head grammar.
+    static func dayClockBoundary(in source: String) -> DayClockBoundary? {
+        guard QuotedSpeechScope.ranges(in: source).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(source),
+              !SelfCorrectionResolver.hasCorrectionJunction(in: source),
+              CaptureOperationDetector.partitionWithOwnership(source).operations.isEmpty else { return nil }
+        let day = #"(?<boundaryDay>\#(namedDeadlineCalendarDayPattern))"#
+        let face = #"(?<ownedBoundaryAdjunct>(?<ownedBoundaryRelation>after|before)\s+(?<ownedBoundaryClock>\#(RuleBasedThoughtExtractor.clockExpression))\#(boundaryClockDaypart))"#
+        let dateFirst = #"(?<boundaryTiming>(?:on\s+)?\#(day)\s+\#(face))"#
+        let clockFirst = #"(?<boundaryTiming>\#(face)\s+on\s+\#(day))"#
+        let patterns = [
+            #"(?i)^\s*(?<boundaryAction>.+?)\s+\#(dateFirst)\s*[.!]?\s*$"#,
+            #"(?i)^\s*(?<boundaryAction>.+?)\s+\#(clockFirst)\s*[.!]?\s*$"#,
+            #"(?i)^\s*\#(clockFirst)\s*,\s*(?<boundaryAction>.+?)\s*[.!]?\s*$"#,
+            #"(?i)^\s*(?:please\s+)?(?:remind|notify|alert)\s+me\s+\#(dateFirst)\s+to\s+(?<boundaryAction>.+?)\s*[.!]?\s*$"#
+        ]
+        for pattern in patterns {
+            guard let regex = NSRegularExpression.speakItCached(pattern),
+                  let match = regex.firstMatch(in: source, range: NSRange(source.startIndex..., in: source)),
+                  let action = Range(match.range(withName: "boundaryAction"), in: source),
+                  let calendar = Range(match.range(withName: "boundaryDay"), in: source),
+                  let timing = Range(match.range(withName: "boundaryTiming"), in: source),
+                  let adjunct = Range(match.range(withName: "ownedBoundaryAdjunct"), in: source),
+                  let clockRange = Range(match.range(withName: "ownedBoundaryClock"), in: source) else { continue }
+            // The calendar day is not a clock operand: November 20 AFTER
+            // seven names a date plus a bound, not twenty minutes after seven.
+            // Read only the exact original clock adjunct, then map its literal
+            // UTF16 ranges back to this source occurrence.
+            let literalAdjunct = String(source[adjunct])
+            guard var clock = time(in: literalAdjunct, allowsBareClock: true),
+                  let relation = clock.boundary, let localClock = clock.clockRange,
+                  clock.boundaryRange == NSRange(literalAdjunct.startIndex..., in: literalAdjunct) else { continue }
+            let originalAdjunct = NSRange(adjunct, in: source)
+            let originalClock = NSRange(location: originalAdjunct.location + localClock.location,
+                length: localClock.length)
+            guard originalClock == NSRange(clockRange, in: source) else { continue }
+            clock.boundaryRange = originalAdjunct
+            clock.clockRange = originalClock
+            let literalAction = String(source[action])
+            let body = ActionabilityReader.actionBody(literalAction)
+            let scope = ClauseScope.read(literalAction)
+            let heads = "(?:" + ActionabilityReader.actionVerb + "|" + ActionabilityReader.headOnlyImperativeVerb + ")"
+            guard scope.act == .direct || scope.act == .reminding,
+                  ActionabilityReader.read(literalAction).belongsOnToday,
+                  let head = body.range(of: "(?i)^(?:please\\s+)?" + heads + "(?=\\s|$)", options: .regularExpression),
+                  ThoughtCompletion.unfinished(in: literalAction) == nil,
+                  body.range(of: #"(?i)\b(?:and|or|but|so|then|also|if|unless|when|while|once|until|because|that|whether|which|who|not|never|no|for|about|regarding|concerning)\b|n['’]t\b|[,;:!?]"#, options: .regularExpression) == nil,
+                  String(body[head.upperBound...]).range(of: "(?i)(?<!\\S)" + heads + "(?=\\s|$)", options: .regularExpression) == nil else { continue }
+            return .init(actionRange: action, calendarRange: calendar, timingRange: timing,
+                relation: relation, clock: clock)
+        }
+        return nil
+    }
+
+    static func dayClockBoundaryTiming(_ proof: DayClockBoundary, source: String,
+                                      referenceDate: Date, calendar: Calendar) -> (intent: TemporalIntent, date: Date)? {
+        let action = String(source[proof.actionRange])
+        guard ThoughtOrganizer.hasNoLiteralTiming(in: ActionabilityReader.actionBody(action),
+                referenceDate: referenceDate, calendar: calendar),
+              namedTimeZone(in: source) == nil,
+              RecurrenceIntentParser.parse(source) == nil, LocationIntentParser.parse(source) == nil else { return nil }
+        let value = parse(String(source[proof.calendarRange]), itemType: .task,
+            referenceDate: referenceDate, calendar: calendar, includesCurrentWeekday: true)
+        guard value.intent.kind == .dateOnly, let day = value.intent.day,
+              value.intent.timeZoneIdentifier == nil, !value.needsClarification else { return nil }
+        var literalClock = proof.clock
+        if let meridiem = literalClock.boundaryMeridiem {
+            // The existing word-minute branch retains the minute but omits
+            // its trailing AM/PM. Apply only this already captured clock's
+            // explicit meridiem using the ordinary clock grammar's conversion.
+            literalClock = ParsedTime(hour: (literalClock.hour % 12) + (meridiem.hasPrefix("p") ? 12 : 0),
+                minute: literalClock.minute, hasMeridiem: true)
+        }
+        let timingText = String(source[proof.timingRange])
+        if literalClock.hasMeridiem, let daypart = DaypartHint(in: timingText) {
+            let twelveHour = literalClock.hour % 12 == 0 ? 12 : literalClock.hour % 12
+            guard daypart.hour(for: twelveHour) == literalClock.hour else { return nil }
+        }
+        let clock = defaultedBareHourOnNamedDay(literalClock, in: timingText)
+        let intent = TemporalIntent(kind: .exactDateTime, day: day,
+            time: WallClockTime(hour: clock.hour, minute: clock.minute),
+            sourceText: String(source[proof.timingRange]), clockBoundary: proof.relation)
+        guard let date = intent.clockBoundaryDate(calendar: calendar) else { return nil }
+        return (intent, date)
+    }
+
+    /// Only complete named-day syntax is admitted by the deadline boundary
+    /// certificate. Relative windows, multiple days, zones and clock residue
+    /// cannot be smuggled into a calendar-only read.
+    static var namedDeadlineCalendarDayPattern: String {
+        let weekday = weekdays.map { NSRegularExpression.escapedPattern(for: $0.name) }.joined(separator: "|")
+        return #"(?:today|tomorrow|(?:(?:this|next)\s+)?(?:"# + weekday
+            + #")|(?:"# + monthNamePattern + #")\s+(?:\d{1,2}(?:st|nd|rd|th)?|\#(ActionabilityReader.ordinalWord)))"#
+    }
+
     /// Every month name the calendar grammar accepts, as one alternation.
     private static let monthNamePattern = months
         .flatMap(\.names)
@@ -3785,7 +4327,8 @@ private enum TemporalIntentParser {
     private static func weekday(
         in text: String,
         referenceDate: Date,
-        calendar: Calendar
+        calendar: Calendar,
+        includesCurrentWeekday: Bool = false
     ) -> Date? {
         // A weekday named as something that already happened is not a plan.
         // "The outage last Tuesday" and "the call last Thursday" resolved to
@@ -3801,7 +4344,7 @@ private enum TemporalIntentParser {
         guard let nearest = nextWeekday(
             weekday.value,
             after: referenceDate,
-            includeToday: false,
+            includeToday: includesCurrentWeekday,
             calendar: calendar
         ) else { return nil }
 
@@ -4133,7 +4676,55 @@ private enum TemporalIntentParser {
         spokenClockFace(in: text) != nil || bareHalfHour(in: text) != nil || twentyFourHourSpoken(in: text) != nil
     }
 
+    /// Retain the exact literal relation/clock occurrences before resolution
+    /// reduces a parsed clock to an instant. Arithmetic clocks keep their
+    /// existing meaning, and a second boundary cannot masquerade as one.
     private static func time(in text: String, allowsBareClock: Bool) -> ParsedTime? {
+        guard var parsed = clockFace(in: text, allowsBareClock: allowsBareClock) else { return nil }
+        let matches = literalClockBoundaryMatches(in: text)
+        guard matches.count == 1, let match = matches.first,
+              let boundaryRange = Range(match.range, in: text),
+              let clockRange = Range(match.range(withName: "boundaryClock"), in: text),
+              let relationRange = Range(match.range(withName: "boundaryRelation"), in: text),
+              let literal = clockFace(in: String(text[boundaryRange]), allowsBareClock: true),
+              parsed.hour == literal.hour, parsed.minute == literal.minute,
+              parsed.hasMeridiem == literal.hasMeridiem else { return parsed }
+        parsed.boundary = String(text[relationRange]).lowercased() == "after" ? .after : .before
+        parsed.boundaryRange = match.range
+        parsed.clockRange = NSRange(clockRange, in: text)
+        let clockLiteral = String(text[clockRange])
+        if let meridiem = clockLiteral.range(of: #"(?i)(?:a\.?m\.?|p\.?m\.?)$"#, options: .regularExpression) {
+            parsed.boundaryMeridiem = String(clockLiteral[meridiem]).lowercased()
+        }
+        return parsed
+    }
+
+    /// These are the existing DaypartHint clock modifiers. Their meaning is
+    /// still read by DaypartHint, only inside the exact owned timing slot.
+    private static let boundaryClockDaypart = #"(?:\s+in\s+the\s+(?:morning|afternoon|evening|night))?"#
+
+    private static func literalClockBoundaryMatches(in text: String) -> [NSTextCheckingResult] {
+        // "quarter after six" is 6:15, not an opening at six. These are the
+        // same existing arithmetic readers used by the clock grammar below.
+        guard text.range(of: #"(?i)\b(?:after|before)\b"#, options: .regularExpression) != nil,
+              spokenClockFace(in: text) == nil, spokenClockFaceByEar(in: text) == nil,
+              bareHalfHour(in: text) == nil,
+              let regex = NSRegularExpression.speakItCached(
+                #"(?i)\b(?<boundaryRelation>after|before)\s+(?<boundaryClock>\#(RuleBasedThoughtExtractor.clockExpression))\#(boundaryClockDaypart)(?=$|[\s.,;!?])"#)
+        else { return [] }
+        return regex.matches(in: text, range: NSRange(text.startIndex..., in: text))
+    }
+
+    static func carriesLiteralClockBoundary(in text: String) -> Bool {
+        // This is review activation only. An explicit DAY immediately before
+        // a boundary cannot be swallowed by whole-sentence clock arithmetic,
+        // even when extra bounds make the complete positive frame fail.
+        let dayBound = #"(?i)\b(?:\#(namedDeadlineCalendarDayPattern))\s+(?:after|before)\s+(?:\#(RuleBasedThoughtExtractor.clockExpression))(?=$|[\s.,;!?])"#
+        if text.range(of: dayBound, options: .regularExpression) != nil { return true }
+        return !literalClockBoundaryMatches(in: text).isEmpty
+    }
+
+    private static func clockFace(in text: String, allowsBareClock: Bool) -> ParsedTime? {
         // "First thing" is the app's one morning policy, deliberately the same
         // hour a date-only reminder alerts at. Speak It exposes one morning, so
         // "first thing" and "in the morning" are the same hour, defined once
@@ -4220,7 +4811,7 @@ private enum TemporalIntentParser {
         ), match.count >= 4, let rawHour = number(from: match[1]) {
             let minute = Int(match[2]) ?? 0
             guard (1...12).contains(rawHour), (0...59).contains(minute) else { return nil }
-            let isPM = match[3].hasPrefix("p")
+            let isPM = match[3].lowercased().hasPrefix("p")
             let hour = (rawHour % 12) + (isPM ? 12 : 0)
             return ParsedTime(hour: hour, minute: minute, hasMeridiem: true)
         }

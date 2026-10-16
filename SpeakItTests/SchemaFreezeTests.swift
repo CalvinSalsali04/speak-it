@@ -72,6 +72,12 @@ final class SchemaFreezeTests: XCTestCase {
         "UserPreferences": "Qb7pwhuu/qNfNofKI1l6tIrP9gHAUz/lNSt/TcOXpC8="
     ]
 
+    /// Version 6 adds an independent entity; the historical entity hashes above
+    /// remain unchanged. Recorded from a real V6 store at introduction.
+    private static let versionSixHashes = versionFiveHashes.merging([
+        "CaptureAllowanceObligation": "NX4PTbuzHaRvtzkJnnQoNzEiiayJW4WyiUBmXhuqvI0="
+    ]) { _, new in new }
+
     /// The identifiers the seeded fixture carries, so a fetch can be checked
     /// against what was written rather than against titles alone.
     private enum Seeded {
@@ -271,7 +277,7 @@ final class SchemaFreezeTests: XCTestCase {
 
         XCTAssertEqual(
             live,
-            Self.versionFiveHashes,
+            Self.versionSixHashes,
             """
             A persisted model changed shape without a new schema version. Do \
             not edit this expectation or a frozen schema. Add a new numbered \
@@ -280,16 +286,22 @@ final class SchemaFreezeTests: XCTestCase {
         )
     }
 
+    func testFrozenVersionSixMatchesLiveAndPreservesHistoricalEntities() throws {
+        let frozen = try versionHashes(ofStoreCreatedFrom: Schema(versionedSchema: SpeakItSchemaV6.self), named: "frozen-v6")
+        XCTAssertEqual(frozen, Self.versionSixHashes)
+        XCTAssertEqual(frozen.filter { $0.key != "CaptureAllowanceObligation" }, Self.versionFiveHashes)
+    }
+
     func testTheMigrationPlanStillEndsAtTheFrozenNewestVersion() {
-        XCTAssertEqual(SpeakItMigrationPlan.schemas.count, 5)
+        XCTAssertEqual(SpeakItMigrationPlan.schemas.count, 6)
         XCTAssertTrue(
-            SpeakItMigrationPlan.schemas.last is SpeakItSchemaV5.Type,
+            SpeakItMigrationPlan.schemas.last is SpeakItSchemaV6.Type,
             "The newest version in the plan must be the frozen snapshot"
         )
         XCTAssertEqual(SpeakItSchemaV3.versionIdentifier, Schema.Version(3, 0, 0))
         XCTAssertEqual(SpeakItSchemaV4.versionIdentifier, Schema.Version(4, 0, 0))
         XCTAssertEqual(SpeakItSchemaV5.versionIdentifier, Schema.Version(5, 0, 0))
-        XCTAssertEqual(SpeakItSchemaCurrent.versionIdentifier, Schema.Version(5, 0, 0))
+        XCTAssertEqual(SpeakItSchemaCurrent.versionIdentifier, Schema.Version(6, 0, 0))
     }
 
     /// Version 3's snapshot must be untouched by version 4 existing. This is
@@ -374,7 +386,7 @@ final class SchemaFreezeTests: XCTestCase {
         XCTAssertEqual(preferences[0].preferredCaptureMethod, .inAppVoice)
         XCTAssertTrue(preferences[0].shortcutSetupCompleted)
 
-        XCTAssertEqual(try versionIdentifiers(atStore: url), ["5.0.0"], "The store must land on version 4")
+        XCTAssertEqual(try versionIdentifiers(atStore: url), ["6.0.0"], "The store must land on version 6")
     }
 
     /// The legacy contract, checked against the one store in this repository
@@ -504,7 +516,7 @@ final class SchemaFreezeTests: XCTestCase {
             )
             XCTAssertEqual(
                 try versionIdentifiers(atStore: url),
-                ["5.0.0"],
+                ["6.0.0"],
                 "Pass \(pass) left the store somewhere other than the newest version"
             )
         }
@@ -516,10 +528,10 @@ final class SchemaFreezeTests: XCTestCase {
         let url = storeURL("fresh")
         _ = try openAsReleaseCandidate(at: url)
 
-        XCTAssertEqual(try versionIdentifiers(atStore: url), ["5.0.0"])
+        XCTAssertEqual(try versionIdentifiers(atStore: url), ["6.0.0"])
         XCTAssertEqual(
             try versionHashes(atStore: url),
-            Self.versionFiveHashes,
+            Self.versionSixHashes,
             "A first launch must produce the same store shape an upgrade lands on"
         )
     }
@@ -592,7 +604,7 @@ final class SchemaFreezeTests: XCTestCase {
             "Version 4's attribute arrives empty too — no verdict is recoverable for it"
         )
         XCTAssertNil(items[0].semanticState)
-        XCTAssertEqual(try versionIdentifiers(atStore: url), ["5.0.0"])
+        XCTAssertEqual(try versionIdentifiers(atStore: url), ["6.0.0"])
     }
 
     /// The oldest store shape, kept here beside the others so the whole ladder
@@ -631,6 +643,6 @@ final class SchemaFreezeTests: XCTestCase {
         XCTAssertNil(items[0].locationIntentData)
         XCTAssertFalse(items[0].hasRecordedSemanticState)
         XCTAssertNil(items[0].semanticState)
-        XCTAssertEqual(try versionIdentifiers(atStore: url), ["5.0.0"])
+        XCTAssertEqual(try versionIdentifiers(atStore: url), ["6.0.0"])
     }
 }

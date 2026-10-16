@@ -305,7 +305,7 @@ struct CaptureCreationResult {
         presentations.filter(\.requiresReview).count
     }
 
-    /// True only when Speak It is unsure about the meaning of the capture.
+    /// True when meaning needs review or organization did not finish.
     ///
     /// `needsReviewCount` is intentionally broader: it also includes thoughts
     /// that were understood but cannot run yet (for example a place reminder
@@ -315,9 +315,10 @@ struct CaptureCreationResult {
         guard operationOutcome == nil else { return false }
 
         return items.contains { item in
-            guard item.needsClarification, item.processingConfidence < 0.82 else {
-                return false
-            }
+            guard item.needsClarification else { return false }
+            // A recorded processing fallback is not a confidence estimate.
+            if item.clarificationRequirement == .organizationIncomplete { return true }
+            guard item.processingConfidence < 0.82 else { return false }
 
             switch item.clarificationRequirement {
             case .time, .person, .type, .splitDecision, .confirmation:
@@ -336,11 +337,22 @@ struct CaptureCreationResult {
             // was said yet.
             case .incompleteThought:
                 return true
+            // Handled before the confidence threshold above; kept explicit so
+            // the review-reason switch remains exhaustive.
+            case .organizationIncomplete:
+                return true
             case .unsupportedLocationTrigger, .unsupportedConditionTrigger,
                  .locationTrigger, .combinedTimeAndPlace, .pendingOperation, .none:
                 return false
             }
         }
+    }
+
+    /// Distinguishes a processing fallback from a question about the words.
+    /// Existing operation and device/trigger review reasons retain precedence.
+    var needsOrganizationReview: Bool {
+        guard operationOutcome == nil else { return false }
+        return items.contains { $0.clarificationRequirement == .organizationIncomplete }
     }
 
     var reminderCount: Int {
@@ -440,6 +452,7 @@ protocol ThoughtRepository: AnyObject, Sendable {
         text: String,
         source: CaptureSource,
         createdAt: Date,
+        allowancePolicy: CaptureAllowancePolicy?,
         schedulesReminders: Bool,
         performance: CapturePerformanceTrace?,
         onDurablySaved: (@MainActor (DurableCaptureReceipt) -> Void)?
@@ -453,7 +466,8 @@ protocol ThoughtRepository: AnyObject, Sendable {
     func addShoppingItems(
         _ entries: [String],
         group: String,
-        createdAt: Date
+        createdAt: Date,
+        allowancePolicy: CaptureAllowancePolicy?
     ) throws -> [CapturedItem]
 
     func update(_ item: CapturedItem, with edits: ItemEdits) throws
@@ -489,21 +503,23 @@ extension ThoughtRepository {
     @discardableResult
     func addShoppingItems(
         _ entries: [String],
-        group: String
+        group: String,
+        allowancePolicy: CaptureAllowancePolicy? = nil
     ) throws -> [CapturedItem] {
-        try addShoppingItems(entries, group: group, createdAt: .now)
+        try addShoppingItems(entries, group: group, createdAt: .now, allowancePolicy: allowancePolicy)
     }
 
     func createCaptureResult(
         text: String,
         source: CaptureSource,
         createdAt: Date,
+        allowancePolicy: CaptureAllowancePolicy? = nil,
         schedulesReminders: Bool,
         performance: CapturePerformanceTrace?
     ) async throws -> CaptureCreationResult {
         try await createCaptureResult(
             text: text, source: source, createdAt: createdAt,
-            schedulesReminders: schedulesReminders, performance: performance,
+            allowancePolicy: allowancePolicy, schedulesReminders: schedulesReminders, performance: performance,
             onDurablySaved: nil
         )
     }
@@ -512,12 +528,14 @@ extension ThoughtRepository {
         text: String,
         source: CaptureSource,
         createdAt: Date,
+        allowancePolicy: CaptureAllowancePolicy? = nil,
         schedulesReminders: Bool
     ) async throws -> CaptureCreationResult {
         try await createCaptureResult(
             text: text,
             source: source,
             createdAt: createdAt,
+            allowancePolicy: allowancePolicy,
             schedulesReminders: schedulesReminders,
             performance: nil
         )

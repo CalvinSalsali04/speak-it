@@ -143,17 +143,29 @@ struct ItemPresentation: Equatable, Sendable {
             calendar: calendar
         )
         let isOverdue = !item.isCompleted && dest == .overdue
+        let presentsDeadline: Bool
+        if case let .time(date, _, _) = reminderState {
+            presentsDeadline = item.temporalIntent?.deadlineBoundary != nil && date == item.dueDate
+        } else {
+            presentsDeadline = false
+        }
+        let deadlineLabel = presentsDeadline
+            ? endOfDayDeadlineLabel(for: item, calendar: calendar) ?? "Deadline time needs review" : nil
+
+        let presentsClockBoundary = item.temporalIntent?.clockBoundary != nil
+        let clockLabel = presentsClockBoundary
+            ? Self.clockBoundaryLabel(for: item, calendar: calendar) ?? "Time needs review" : nil
 
         return ItemPresentation(
             destination: dest,
             isOverdue: isOverdue,
-            primaryTimingText: calendarWindowText(for: item, calendar: calendar) ?? primaryTimingText(
-                for: reminderState,
-                now: now,
-                calendar: calendar
-            ),
-            triggerSummary: triggerSummary(for: reminderState, recurrence: recurrence),
-            reviewRequirement: reviewRequirement(for: item, blocker: blocker),
+            primaryTimingText: presentsClockBoundary ? clockLabel : presentsDeadline ? deadlineLabel
+                : calendarWindowText(for: item, calendar: calendar) ?? primaryTimingText(
+                    for: reminderState, now: now, calendar: calendar
+                ),
+            triggerSummary: presentsClockBoundary ? clockLabel : presentsDeadline ? deadlineLabel
+                : triggerSummary(for: reminderState, recurrence: recurrence),
+            reviewRequirement: reviewRequirement(for: item, blocker: blocker, calendar: calendar),
             reminderState: reminderState,
             recurrenceSummary: recurrence
         )
@@ -163,7 +175,7 @@ struct ItemPresentation: Equatable, Sendable {
 
     private static func calendarWindowText(for item: CapturedItem, calendar: Calendar) -> String? {
         guard let intent = item.temporalIntent,
-              intent.kind == .calendarWindow else { return nil }
+              intent.kind == .calendarWindow, intent.deadlineBoundary == nil else { return nil }
         let intendedCalendar = intent.calendar(default: calendar)
         guard let start = intent.day?.startOfDay(in: intendedCalendar),
               let end = intent.windowEndDay?.startOfDay(in: intendedCalendar) else { return nil }
@@ -178,6 +190,10 @@ struct ItemPresentation: Equatable, Sendable {
         for item: CapturedItem,
         blocker: LocationReminderBlocker?
     ) -> ReminderState {
+        if item.temporalIntent?.clockBoundary != nil {
+            guard let date = item.dueDate else { return .none }
+            return .time(date, isDateOnly: false, delivery: .none)
+        }
         // A place trigger outranks a stored date for the same reason
         // `CapturedItem.reminderTrigger` prefers it: the place is what decides
         // the moment, and a date alongside it only narrows the window.
@@ -217,7 +233,8 @@ struct ItemPresentation: Equatable, Sendable {
     /// original wording requested no alert. This describes the configured kind,
     /// not permission, eligibility or observed system registration.
     static func configuredReminderDelivery(for item: CapturedItem) -> ReminderDelivery {
-        guard item.reminderDate != nil else { return .none }
+        guard item.temporalIntent?.clockBoundary == nil,
+              item.reminderDate != nil else { return .none }
         let wording = effectiveReminderDelivery(for: item)
         return wording == .none ? .notification : wording
     }
@@ -243,6 +260,52 @@ struct ItemPresentation: Equatable, Sendable {
         return delivery
     }
 
+    /// Absolute relation text, never an exact-AT appointment or alert claim.
+    static func clockBoundaryLabel(
+        intent: TemporalIntent, dueDate: Date?,
+        calendar: Calendar = .autoupdatingCurrent,
+        locale: Locale = .autoupdatingCurrent
+    ) -> String? {
+        guard let boundary = intent.clockBoundary,
+              let anchor = intent.clockBoundaryDate(calendar: calendar),
+              anchor == dueDate else { return nil }
+        let relation: String
+        switch boundary {
+        case .after: relation = "After"
+        case .before: relation = "Before"
+        case .unrecognized: return nil
+        }
+        let sourceCalendar = intent.calendar(default: calendar)
+        let style = Date.FormatStyle(locale: locale, calendar: sourceCalendar,
+            timeZone: sourceCalendar.timeZone)
+        let day = anchor.formatted(style.weekday(.wide).month(.abbreviated).day().year())
+        let clock = anchor.formatted(style.hour(.defaultDigits(amPM: .abbreviated)).minute())
+        let zone = intent.timeZoneBehavior == .fixed
+            ? " " + (sourceCalendar.timeZone.abbreviation(for: anchor) ?? sourceCalendar.timeZone.identifier) : ""
+        return "\(relation) \(day), \(clock)\(zone)"
+    }
+
+    static func clockBoundaryLabel(
+        for item: CapturedItem, calendar: Calendar = .autoupdatingCurrent,
+        locale: Locale = .autoupdatingCurrent
+    ) -> String? {
+        guard !item.clockBoundaryNeedsReview(calendar: calendar), let intent = item.temporalIntent else { return nil }
+        return clockBoundaryLabel(intent: intent, dueDate: item.dueDate, calendar: calendar, locale: locale)
+    }
+
+    /// The absolute named-day deadline label, only when its validated endpoint
+    /// is exactly the due instant this item actually stores.
+    static func endOfDayDeadlineLabel(
+        for item: CapturedItem,
+        calendar: Calendar = .autoupdatingCurrent,
+        locale: Locale = .autoupdatingCurrent
+    ) -> String? {
+        guard let intent = item.temporalIntent,
+              let endpoint = intent.endOfDayDeadlineDate(calendar: calendar),
+              endpoint == item.dueDate else { return nil }
+        return intent.endOfDayDeadlineLabel(calendar: calendar, locale: locale)
+    }
+
     @MainActor
     static func savedTargetDetail(for item: CapturedItem) -> String {
         func formatted(_ date: Date, clock: Bool) -> String {
@@ -250,7 +313,15 @@ struct ItemPresentation: Equatable, Sendable {
                 : date.formatted(.dateTime.year().month(.abbreviated).day())
         }
         var details: [String] = []
-        if let due = item.dueDate { details.append("Due " + formatted(due, clock: !item.isDateOnly)) }
+        if let due = item.dueDate {
+            if item.temporalIntent?.clockBoundary != nil {
+                details.append(clockBoundaryLabel(for: item) ?? "Time needs review")
+            } else if item.temporalIntent?.deadlineBoundary != nil {
+                details.append(endOfDayDeadlineLabel(for: item) ?? "Due time needs review")
+            } else {
+                details.append("Due " + formatted(due, clock: !item.isDateOnly))
+            }
+        }
         if let alert = item.reminderDate { details.append("Alert " + formatted(alert, clock: true)) }
         if details.isEmpty { details.append("Captured " + formatted(item.createdAt, clock: true)) }
         return details.joined(separator: "; ")
@@ -290,7 +361,7 @@ struct ItemPresentation: Equatable, Sendable {
     ) -> Destination {
         // Review outranks everything: an item waiting on the person is not
         // available to act on, whichever section its dates would suggest.
-        if item.requiresReview(authorization: authorization) { return .needsReview }
+        if item.requiresReview(authorization: authorization, calendar: calendar) { return .needsReview }
         if item.belongsInMemory { return .memory }
 
         switch TodayActionTiming.group(for: item, relativeTo: now, calendar: calendar) {
@@ -401,7 +472,8 @@ struct ItemPresentation: Equatable, Sendable {
     @MainActor
     private static func reviewRequirement(
         for item: CapturedItem,
-        blocker: LocationReminderBlocker?
+        blocker: LocationReminderBlocker?,
+        calendar: Calendar
     ) -> String? {
         // The live blocker wins when there is one. It knows which gap this
         // actually is — "Set your Home location" rather than the generic "Place
@@ -409,6 +481,7 @@ struct ItemPresentation: Equatable, Sendable {
         // wrong place.
         if let saved = savedChangeReviewPrompt(for:item) { return saved }
         if let blocker { return blocker.listLabel }
+        if item.clockBoundaryNeedsReview(calendar: calendar) { return ClarificationRequirement.time.listLabel }
         guard item.needsClarification else { return nil }
         return (item.clarificationRequirement ?? .confirmation).listLabel
     }

@@ -5,6 +5,44 @@ Notable changes to Speak It, newest first. Build numbers are
 Entries before September 2026 were reconstructed from the commit history and
 `Docs/DECISIONS.md`, so they are summaries rather than a contemporaneous record.
 
+## Unreleased — capture accounting, lists and message ownership
+
+- Preserve source-proved AFTER/BEFORE execution-clock relations; unsupported bounds stay in review without an invented alert.
+- Keep supported THAT-message clocks in the message while preserving a separately owned fronted execution time.
+- Keep a supported retail-list availability qualifier with its own shopping item and stated store.
+- Share complete source-role composition across the portable path, retaining unchanged modern validation; older-system runtime qualification remains open.
+- Automatically organize captures with a unique complete source-role proof, preserving original words, item ownership and existing safety checks; broader qualification remains open.
+- Keep supported quantified phone orders together with the full recipient, product sizes and stock context on both runtime and no-model paths.
+- Keep supported invoice tasks and their literal before-day deadlines together without adding contacts or notifications.
+- Keep supported addressed date choices intact and schedule only the separately stated asking day.
+- Keep supported follow-up matters and their reference-number location together without inventing a reminder.
+- Keep a terminal processing failure visibly in Needs organization instead of restoring partially organized rows as complete.
+- Retain a complete, source-proved question recipient through final model validation without adding timing or alert effects.
+
+- Show Words saved / Needs organization for unfinished processing, preserve the full original and make review/edit reachable with large text.
+- Keep complete paired reminder details and independently stated later actions with their own times.
+- Preserve literal source ownership for attached questions and nominal corrections; distinguish weak retailer context from explicitly declared item pairs.
+- Keep a corrected fronted date with its independent action instead of borrowing the later action into a message body.
+- Adapt four independently reviewed, exact synthetic references to the shipping response format; dense model accuracy and speed remain unqualified.
+- Reserve lifetime allowance with the durable capture and settle each charge once across retries, recovery and duplicate delivery.
+- Keep locally proved product lists and their own store together inside mixed captures.
+- Preserve literal entries in explicit shopping-run declarations without relying on native noun tags, and keep proved items intact during optional model refinement.
+- Keep supported unfamiliar supplies as literal checkable entries in recognized-retailer need lists, preserving quantities, sizes and the store.
+- Keep fronted retailers and a proved replacement explanation with their shopping items.
+- Distinguish washing/service tasks from products and preserve named beneficiaries without inventing a person from a temporal possessive.
+- Keep related dinner timing visible without using it as a shopping execution time.
+- Preserve explicit leading conditions for review instead of mistaking their opener and subject for a reporter name.
+- Keep audio activation and cleanup with their capture, and drain admitted buffers before final/error handoff.
+- Preserve package quantities and sizes without adding product or store names.
+- Keep addressed questions together, preserving recipients and excluding historical message dates from deadlines.
+- Keep closed contracted message bodies and curly-apostrophe continuations together without scheduling their internal dates.
+- Keep supported complete titled recipients with delegated questions, without treating the question’s internal clock as an execution time.
+- Keep a supported shared send object and deadline with both named targets; preserve its negative matrix and separate explicit commands after completed addressed questions.
+- Keep contracted calendar facts such as “it's Monday” out of Today while retaining explicit deadlines and appointments.
+- Record the actual runtime configuration in opt-in qualification evidence; full long-capture qualification remains open.
+- Remove diagnostic-only token-count work from timed model requests while retaining actual capacity checks.
+- Source changes only; no distribution build or phone installation.
+
 ## Unreleased — durable capture confirmation
 
 - Show saved original words during longer organization, then the final result.
@@ -135,6 +173,12 @@ Entries before September 2026 were reconstructed from the commit history and
   failed proposal remains reviewable with the original transcript preserved.
 
 ## Unreleased
+
+- Preserve the stated store, trip day and product quantities for complete planned-trip shopping instructions.
+- Keep written sign-closure dates as content while respecting a separately stated task date.
+- Bind a patient reminder call to its complete local name and explicit call day, retaining appointment context without adding an unasked alert.
+
+- Reuse the exact instruction token count within complex-capture request preparation while preserving complete source, reference admission and capacity checks.
 
 - Preserves separate reminders after retained quoted content, limits new clock inheritance to a proved calendar adjunct, and keeps explicit saved-edit targets separate from earlier notes. These repairs await their own verification; failed prior runs remain recorded.
 

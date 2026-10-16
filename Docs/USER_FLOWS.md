@@ -42,7 +42,7 @@
 3. Tap **Save thought**.
 4. The repository trims outer whitespace, creates the capture session and item, and saves them together.
 5. If organization takes longer, show **Saved on this iPhone**, the committed recognized words, and **Organizing your thought…**. Keep this receipt read-only until the final result. Show **Remembered** when organization completes, then return to Today.
-6. If persistence fails, keep the typed text and show an error. If words were committed but organization fails later, say the original words were saved; closing retains the same session and recovery checkpoint without an unsaved-draft claim.
+6. If persistence fails, keep the typed text and show an error. If words were committed but organization fails later, say the original words were saved; closing retains the same session and recovery checkpoint without an unsaved-draft claim. A completed processing fallback says **Words saved** and **Needs organization**, with Review available before the long preview. It does not ask for another recording; grouping alone cannot complete organization.
 7. If the person taps X after entering words, offer **Save & Close**, **Discard**, and **Keep Editing**. An empty capture closes immediately; a saved capture is already safe.
 
 ## In-app voice capture
@@ -109,7 +109,10 @@ saved is ever locked, and no other feature is gated.
 ## Review and edit
 
 After an unclear capture, **Review and edit saved items** opens the complete
-original transcript and the individual saved rows. **Edit this item** opens
+original transcript and the individual saved rows. For an unfinished-organization
+fallback, the held item and Edit appear first with a short visual title preview;
+the unlimited original transcript follows. Tutorial and operation receipts keep
+their existing order. **Edit this item** opens
 the existing item editor for only that row. The original capture remains
 read-only and clear sibling items are left in place. **Try saying the capture
 again** remains available when editing cannot recover the intent; that route

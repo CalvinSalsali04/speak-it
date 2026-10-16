@@ -529,13 +529,13 @@ enum SemanticCorpusE {
                    count: 1, due: [nil],
                    severityFloor: .behavioral,
                    note: "No February has thirty days, in any year."),
-        // February 29 is a real date in a leap year, so it resolves like every
-        // other calendar date: the next occurrence that has not passed. 2026 is
-        // not a leap year, and rolling it into March would be inventing a day.
+        // Reservation targets are validated but never become execution dates.
+        // The focused booking-target test still verifies February 29 resolves
+        // to 2028 rather than rolling into March; invalid neighbours stay held.
         corpusCase(.calendarEdges, "Book the appointment for February 29",
-                   count: 1, due: [CorpusDate(month: 2, day: 29, hour: nil)],
-                   severityFloor: .behavioral,
-                   note: "The next February 29 is in 2028. Was March 1 of 2027."),
+                   count: 1, type: [.task], route: [.today], delivery: [.none], kind: [.none],
+                   due: [nil], remind: [nil], review: [false], severityFloor: .behavioral,
+                   note: "Valid next-leap-day reservation target retained literally; no booking-execution date."),
         // A question is not a plan, so the day inside it is what is being asked
         // about and never a deadline for the asking. The interrogative test
         // wanted a wh-word, a space and an auxiliary, so it saw "what is the
@@ -608,11 +608,13 @@ enum SemanticCorpusE {
         // The guard: a real day in a real month keeps resolving, including the
         // last day of a short month, which is the neighbour of every case above.
         corpusCase(.calendarEdges, "Book the appointment for February 28",
-                   count: 1, due: [CorpusDate(month: 2, day: 28, hour: nil)],
-                   note: "February 28 2026 has passed, so the next one is in 2027."),
+                   count: 1, type: [.task], route: [.today], delivery: [.none], kind: [.none],
+                   due: [nil], remind: [nil], review: [false],
+                   note: "Valid reservation target retained literally; target-calendar validation remains in focused coverage."),
         corpusCase(.calendarEdges, "Book the appointment for June 30",
-                   count: 1, due: [CorpusDate(month: 6, day: 30, hour: nil)],
-                   note: "The last day June does have."),
+                   count: 1, type: [.task], route: [.today], delivery: [.none], kind: [.none],
+                   due: [nil], remind: [nil], review: [false],
+                   note: "The last valid June day remains a visible reservation target, not an execution date."),
     ]
 
     // MARK: - Dictation renderings

@@ -17,6 +17,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     typealias PlaceReminderCancellation = @MainActor (String) -> Void
 
     private let modelContext: ModelContext
+    /// Nil is reserved for existing test/preview repositories. Production uses .live.
+    private let captureAllowance: CaptureAllowance?
+    private var pendingAllowanceDecisions: [UUID: Bool] = [:]
     private let placeReminderDelivery: PlaceReminderDelivery
     private let placeReminderCancellation: PlaceReminderCancellation
     private let requestsReminderAuthorization: Bool
@@ -31,9 +34,11 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         placeReminderDelivery: PlaceReminderDelivery? = nil,
         placeReminderCancellation: PlaceReminderCancellation? = nil,
         requestsReminderAuthorization: Bool = true,
-        permitsOnDeviceIntelligence: Bool = true
+        permitsOnDeviceIntelligence: Bool = true,
+        captureAllowance: CaptureAllowance? = nil
     ) {
         self.modelContext = modelContext
+        self.captureAllowance = captureAllowance
         self.requestsReminderAuthorization = requestsReminderAuthorization
         self.permitsOnDeviceIntelligence = permitsOnDeviceIntelligence
         self.placeReminderDelivery = placeReminderDelivery ?? { itemID, title, place, identifier in
@@ -50,6 +55,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     }
 
     func recoverUnorganizedCaptures() {
+        defer { reconcileCaptureAllowance() }
         let completeRawValue = ProcessingStatus.complete.rawValue
         let descriptor = FetchDescriptor<CaptureSession>(
             predicate: #Predicate { session in
@@ -118,6 +124,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                     // The lookup failed, but the words still belong to this
                     // capture. Keep its pending review row for later recovery.
                     ensureFallbackItem(for: session)
+                    recordAllowanceDecision(false, session: session)
                     closeSession(session)
                 }
                 return
@@ -171,6 +178,10 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 item.originalTextSegment,
                 referenceDate: item.createdAt
             )
+            // New deadline authority belongs to a new/pending capture, never
+            // to launch maintenance of an existing saved row.
+            guard reparsed.temporalIntent.deadlineBoundary == nil,
+                  reparsed.temporalIntent.clockBoundary == nil else { continue }
             item.locationIntent = nil
             if item.reminderDate == nil { item.reminderDate = reparsed.reminderDate }
             if item.dueDate == nil { item.dueDate = reparsed.dueDate }
@@ -228,7 +239,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         // Trust the reparse only when it agrees with what is actually stored.
         // Wording that resolved to a different day than the row holds means the
         // date was changed after capture, and the row is the truth.
-        if reparsed.kind != .none {
+        // Even a coincidentally matching endpoint cannot establish whether
+        // an old date was edited. Preserve its exact stored clock instead.
+        if reparsed.kind != .none, reparsed.deadlineBoundary == nil, reparsed.clockBoundary == nil {
             let calendar = Calendar.autoupdatingCurrent
             let storedDay = item.dueDate.flatMap { CalendarDay(from: $0, calendar: calendar) }
             if reparsed.day == nil || storedDay == nil || reparsed.day == storedDay {
@@ -264,6 +277,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     /// Only a genuine persistence failure keeps the checkpoint, which is the
     /// case it exists for.
     func recoverInterruptedCaptureDraft() {
+        defer { reconcileCaptureAllowance() }
         while let draft = CaptureDraftStore.recoverable() {
             // Same guard as `recoverUnorganizedCaptures`: a checkpoint whose
             // words trap the pipeline has already cost two launches by the
@@ -275,9 +289,14 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                     let pending = try createPendingCapture(
                         text: draft.transcript,
                         source: draft.captureSource,
-                        createdAt: draft.startedAt
+                        createdAt: draft.startedAt,
+                        allowancePolicy: SubscriptionStore.backgroundCapturePolicy(source: draft.captureSource)
                     )
-                    quarantine(pending.session)
+                    // A completed duplicate already acted on these words.
+                    // Only an unfinished duplicate still needs quarantine.
+                    if !pending.wasDuplicate || pending.session.processingStatus != .complete {
+                        quarantine(pending.session)
+                    }
                     CaptureDraftStore.clear(id: draft.id)
                     CaptureRecoveryAttemptLedger.finish(draft.id)
                 } catch {
@@ -291,7 +310,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                     text: draft.transcript,
                     source: draft.captureSource,
                     createdAt: draft.startedAt,
-                    schedulesReminder: true
+                    schedulesReminder: true,
+                    allowancePolicy: SubscriptionStore.backgroundCapturePolicy(source: draft.captureSource)
                 )
                 CaptureDraftStore.clear(id: draft.id)
                 CaptureRecoveryAttemptLedger.finish(draft.id)
@@ -494,6 +514,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             $0.captureSession?.captureSource != .tutorial
                 && !$0.isArchived && !$0.isCompleted && !$0.needsClarification
                 && $0.isLocationTriggered && !$0.constrainsBothPlaceAndTime
+                && $0.temporalIntent?.clockBoundary == nil
                 && $0.locationIntent?.isRetired != true
         }
         var reconciliation = monitor.reconcile(
@@ -541,7 +562,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         guard let item = try? findItem(withID: itemID),
               let intent = item.locationIntent,
               !item.isArchived, !item.isCompleted, !item.needsClarification,
-              !item.constrainsBothPlaceAndTime else {
+              !item.constrainsBothPlaceAndTime, item.temporalIntent?.clockBoundary == nil else {
             // Nothing live wants this region. Reconciling removes it.
             LocationReminderMonitor.shared.stopMonitoring(itemID: itemID)
             return
@@ -601,7 +622,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         guard let current = try? findItem(withID: itemID),
               var currentIntent = current.locationIntent,
               !current.isArchived, !current.isCompleted, !current.needsClarification,
-              !current.constrainsBothPlaceAndTime,
+              !current.constrainsBothPlaceAndTime, current.temporalIntent?.clockBoundary == nil,
               currentIntent.event == event,
               currentIntent.triggerRevision == intent.triggerRevision,
               regionIdentifier == nil || current.locationMonitorRequest(
@@ -736,7 +757,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         guard let candidates = try? modelContext.fetch(descriptor) else { return }
         var count = 0
         var first: [CapturedItem] = []
-        for item in candidates where item.belongsInToday && item.isWithinTodayHorizon(relativeTo: now) {
+        for item in candidates where item.belongsInToday && !item.clockBoundaryNeedsReview()
+            && item.isWithinTodayHorizon(relativeTo: now) {
             count += 1
             let insertion = first.firstIndex { todayItemOrder(item, $0) } ?? first.count
             if insertion < 8 {
@@ -747,10 +769,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         let snapshot = SharedTodaySnapshot(
             generatedAt: now,
             openCount: count,
-            items: first.map {
-                SharedTodayItem(id: $0.id, title: $0.displayTitle, dueDate: $0.dueDate,
-                                isUrgent: $0.priority == .urgent)
-            },
+            items: first.map { Self.sharedTodayItem(for: $0) },
             showsTaskNamesOnLockScreen: LockScreenTodayVisibility.showsTaskNames
         )
         if let previous = lastPublishedToday,
@@ -763,6 +782,43 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         }
     }
 
+
+    /// One production projection, shared with tests. The extension does not
+    /// decode app-only intent types or infer a boundary from a scalar date.
+    static func sharedTodayItem(
+        for item: CapturedItem, calendar: Calendar = .autoupdatingCurrent,
+        locale: Locale = .autoupdatingCurrent
+    ) -> SharedTodayItem {
+        var deadline: SharedTodayItem.Deadline?
+        if let intent = item.temporalIntent, let day = intent.day,
+           let summary = ItemPresentation.endOfDayDeadlineLabel(for: item, calendar: calendar, locale: locale) {
+            deadline = .init(year: day.year, month: day.month, day: day.day,
+                timeZoneIdentifier: intent.calendar(default: calendar).timeZone.identifier,
+                summary: summary, followsDeviceLocal: intent.timeZoneBehavior == .deviceLocal)
+        }
+        var clockBoundary: SharedTodayItem.ClockBoundary?
+        if let intent = item.temporalIntent, let boundary = intent.clockBoundary,
+           let day = intent.day, let time = intent.time,
+           let summary = ItemPresentation.clockBoundaryLabel(for: item, calendar: calendar, locale: locale) {
+            let relation: String?
+            switch boundary {
+            case .after: relation = "after"
+            case .before: relation = "before"
+            case .unrecognized: relation = nil
+            }
+            if let relation {
+                clockBoundary = .init(relation: relation, year: day.year, month: day.month, day: day.day,
+                    hour: time.hour, minute: time.minute,
+                    timeZoneIdentifier: intent.calendar(default: calendar).timeZone.identifier,
+                    followsDeviceLocal: intent.timeZoneBehavior == .deviceLocal, summary: summary)
+            }
+        }
+        return SharedTodayItem(id: item.id, title: item.displayTitle, dueDate: item.dueDate,
+            isUrgent: item.priority == .urgent, deadline: deadline,
+            deadlineNeedsReview: item.temporalIntent?.deadlineBoundary != nil && deadline == nil ? true : nil,
+            clockBoundary: clockBoundary,
+            clockBoundaryNeedsReview: item.temporalIntent?.clockBoundary != nil && clockBoundary == nil ? true : nil)
+    }
 
     func performReminderAction(itemIDs: [UUID], action: ReminderAction) throws {
         guard !itemIDs.isEmpty else { return }
@@ -779,6 +835,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 try setCompleted(item, completed: true)
             }
         case .snoozeTenMinutes:
+            guard items.allSatisfy({ $0.temporalIntent?.clockBoundary == nil }) else {
+                throw RepositoryError.saveFailed("Choose an exact reminder time for this thought.")
+            }
             let date = Date.now.addingTimeInterval(10 * 60)
             for item in items where !item.isCompleted {
                 item.reminderDate = date
@@ -787,6 +846,9 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             try persistChanges()
             rescheduleReminders(touching: items)
         case .tomorrow:
+            guard items.allSatisfy({ $0.temporalIntent?.clockBoundary == nil }) else {
+                throw RepositoryError.saveFailed("Choose an exact reminder time for this thought.")
+            }
             let calendar = Calendar.autoupdatingCurrent
             guard let day = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: .now)) else {
                 return
@@ -798,6 +860,15 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 let date = calendar.date(bySettingHour: hour, minute: minute, second: 0, of: day) ?? day
                 item.reminderDate = date
                 if item.dueDate != nil { item.dueDate = date }
+                if item.temporalIntent?.deadlineBoundary != nil {
+                    // This explicit notification action replaced the due
+                    // instant; retaining the old logical boundary would lie.
+                    item.temporalIntent = TemporalIntent.userEdited(
+                        dueDate: item.dueDate, reminderDate: date,
+                        recurrence: RecurrenceStore.rule(for: item.id),
+                        sourceText: item.temporalIntent?.sourceText ?? item.originalTextSegment,
+                        calendar: calendar, dueDateHasTime: true)
+                }
                 item.lastModifiedAt = .now
             }
             try persistChanges()
@@ -966,7 +1037,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         text: String,
         source: CaptureSource,
         createdAt: Date,
-        schedulesReminder: Bool
+        schedulesReminder: Bool,
+        allowancePolicy: CaptureAllowancePolicy? = nil
     ) throws -> SynchronousCaptureOutcome {
         let normalizedText = try normalizedCaptureText(text)
         if let duplicate = try recentDuplicate(
@@ -987,8 +1059,14 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         let pending = try createPendingCapture(
             text: normalizedText,
             source: source,
-            createdAt: createdAt
+            createdAt: createdAt,
+            allowancePolicy: allowancePolicy
         )
+        defer { reconcileCaptureAllowance() }
+        if pending.wasDuplicate {
+            guard let item = orderedItems(in: pending.session).first else { return .operationHandled }
+            return .created(item)
+        }
         let extraction = ThoughtExtractionEngine.extractWithRules(
             normalizedText,
             referenceDate: createdAt,
@@ -1041,6 +1119,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                     // A transient not-found receipt is not a durable home for
                     // the person's words. The pending row stays in review.
                     ensureFallbackItem(for: pending.session)
+                    recordAllowanceDecision(false, session: pending.session)
                     closeSession(pending.session)
                 }
                 guard let survivor = orderedItems(in: pending.session).first else {
@@ -1061,7 +1140,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     func addShoppingItems(
         _ entries: [String],
         group: String,
-        createdAt: Date
+        createdAt: Date,
+        allowancePolicy: CaptureAllowancePolicy? = nil
     ) throws -> [CapturedItem] {
         let names = entries
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -1075,8 +1155,11 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         let pending = try createPendingCapture(
             text: names.joined(separator: ", "),
             source: .inAppText,
-            createdAt: createdAt
+            createdAt: createdAt,
+            allowancePolicy: allowancePolicy,
+            deduplicates: false
         )
+        defer { reconcileCaptureAllowance() }
 
         let organization = OrganizedThought(
             itemType: .shopping,
@@ -1122,6 +1205,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         text: String,
         source: CaptureSource,
         createdAt: Date,
+        allowancePolicy: CaptureAllowancePolicy? = nil,
         schedulesReminders: Bool = true,
         performance: CapturePerformanceTrace? = nil,
         onDurablySaved: (@MainActor (DurableCaptureReceipt) -> Void)? = nil
@@ -1133,14 +1217,18 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             createdAt: createdAt
         ) {
             if schedulesReminders { retryPendingAtomicRevisionDelivery(duplicate.session) }
+            reconcileCaptureAllowance()
             return duplicate
         }
 
         let pending = try createPendingCapture(
             text: normalizedText,
             source: source,
-            createdAt: createdAt
+            createdAt: createdAt,
+            allowancePolicy: allowancePolicy
         )
+        defer { reconcileCaptureAllowance() }
+        if pending.wasDuplicate { return captureResult(for: pending.session, createdNewCapture: false) }
 
         onDurablySaved?(DurableCaptureReceipt(
             sessionID: pending.session.id,
@@ -1240,6 +1328,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             } else {
                 if case .notFound = outcome {
                     ensureFallbackItem(for: pending.session)
+                    recordAllowanceDecision(false, session: pending.session)
                     closeSession(pending.session)
                 }
                 performance?.finishPersistence()
@@ -1485,6 +1574,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             disposable.forEach(modelContext.delete)
             modelContext.delete(item)
             session.processingStatus = .complete
+            recordAllowanceDecision(!preservingItemIDs.isEmpty, session: session)
             try persistChanges(deletedItemIDs: [itemID] + disposable.map(\.id))
 
             RecurrenceStore.remove(itemID)
@@ -1527,6 +1617,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             let disposable = session.items.filter { !preservingItemIDs.contains($0.id) }
             disposable.forEach(modelContext.delete)
             session.processingStatus = .complete
+            recordAllowanceDecision(!preservingItemIDs.isEmpty, session: session)
             try setCompleted(item, completed: true)
             LocationReminderMonitor.shared.stopMonitoring(itemID: itemID)
             return .performed(operation: .complete, itemID: itemID, title: title)
@@ -1586,6 +1677,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         }
         session.operationStateData = try JSONEncoder().encode(state)
         session.processingStatus = .complete
+        recordAllowanceDecision(true, session: session)
         try persistChanges()
         return .ambiguous(operation: request.operation, candidateIDs: candidateIDs)
     }
@@ -1613,9 +1705,34 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             "remind me \(oldText)", referenceDate: session.createdAt,
             calendar: calendar
         )
-        guard let oldDate = oldReading.dueDate ?? oldReading.reminderDate,
-              CalendarDay(from: oldDate, calendar: calendar)
-                == CalendarDay(from: currentDate, calendar: calendar),
+        var expectedOldClockDate: Date?
+        if let intent = item.temporalIntent, intent.clockBoundary != nil {
+            guard !item.clockBoundaryNeedsReview(calendar: calendar) else { return hold() }
+            // The synthetic action only exposes the old timing for comparison;
+            // it never authorizes a change. An old DAY alone remains sufficient
+            // once the unique saved row and complete new AT moment are proved.
+            if let expected = ThoughtOrganizer.clockBoundaryTiming(in: "Check the task " + oldText,
+                    referenceDate: session.createdAt, calendar: calendar) {
+                guard expected.intent.clockBoundary == intent.clockBoundary,
+                      expected.dueDate == currentDate else { return hold() }
+                expectedOldClockDate = expected.dueDate
+            } else if oldReading.temporalIntent.kind.carriesTimeOfDay
+                || oldText.range(of: "(?i)\\b(?:at|after|before)\\s+" + RuleBasedThoughtExtractor.clockExpression,
+                    options: .regularExpression) != nil {
+                // An explicit incompatible or unproved clock cannot be reduced
+                // to its matching day and overwrite a different boundary.
+                return hold()
+            }
+        }
+        let currentDay: CalendarDay?
+        if let intent = item.temporalIntent, intent.deadlineBoundary != nil {
+            guard intent.endOfDayDeadlineDate(calendar: calendar) == item.dueDate else { return hold() }
+            currentDay = intent.day
+        } else {
+            currentDay = CalendarDay(from: currentDate, calendar: calendar)
+        }
+        guard let oldDate = expectedOldClockDate ?? oldReading.dueDate ?? oldReading.reminderDate,
+              CalendarDay(from: oldDate, calendar: calendar) == currentDay,
               let moved = rescheduledDates(newText, for: item,
                                            referenceDate: session.createdAt) else { return hold() }
 
@@ -1647,6 +1764,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             let disposable = session.items.filter { !preservingItemIDs.contains($0.id) }
             disposable.forEach(modelContext.delete)
             session.processingStatus = .complete
+            recordAllowanceDecision(!preservingItemIDs.isEmpty, session: session)
             try persistChanges(deletedItemIDs: disposable.map(\.id))
             if schedulesReminders {
                 synchronizeReminders(for: item.captureSession,
@@ -1739,11 +1857,13 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                   ActionabilityReader.read(revision.replacementAction).belongsOnToday,
                   action.locationIntent == nil,action.recurrenceRule == nil else { return hold() }
         }
+        if item.clockBoundaryNeedsReview() { return hold() }
         var due = item.dueDate, reminder = item.reminderDate, intent = item.temporalIntent
         let replacementHasTiming = !preserveAction && (action.dueDate != nil || action.reminderDate != nil)
         if let confirmation = revision.confirmedIntent, let timing = confirmation.timingText {
             let explicit = ThoughtOrganizer.organize("Check the task on " + timing,referenceDate: session.createdAt,calendar: calendar)
-            guard let day = explicit.dueDate, !explicit.needsClarification else { return hold() }
+            guard let day = explicit.dueDate, !explicit.needsClarification,
+                  canReplaceDeadlineBoundary(of: item, with: explicit, timing: timing) else { return hold() }
             let explicitClock = explicit.temporalIntent.kind.carriesTimeOfDay
             if explicitClock, let oldDue = item.dueDate, let oldReminder = item.reminderDate, oldDue != oldReminder { return hold() }
             func preserveClock(_ old: Date, on chosenDay: Date, carriesClock: Bool) -> Date? {
@@ -1779,6 +1899,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             let timing = revision.timingText ?? revision.replacementAction
             let reading = revision.timingText == nil ? action : ThoughtOrganizer.organize("remind me \(timing)", referenceDate: session.createdAt, calendar: calendar)
             guard !reading.needsClarification, reading.locationIntent == nil,
+                  canReplaceDeadlineBoundary(of: item, with: reading, timing: timing),
                   reading.recurrenceRule == nil, let moment = reading.reminderDate ?? reading.dueDate,
                   moment > session.createdAt else { return hold() }
             if revision.timingText != nil, replacementHasTiming {
@@ -1821,6 +1942,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             let disposable = session.items.filter { !preservingItemIDs.contains($0.id) }
             disposable.forEach(modelContext.delete)
             session.processingStatus = .complete
+            recordAllowanceDecision(!preservingItemIDs.isEmpty, session: session)
             try persistChanges(deletedItemIDs: disposable.map(\.id))
         } catch {
             // persistChanges rolls back fields and deleted placeholders. Keep
@@ -1862,6 +1984,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 newDueDate: nil,newReminderDate: nil,resolvedAt: nil)
             state.reviewItemID = review.id; state.pendingSavedRevision = intent
             session.operationStateData = try JSONEncoder().encode(state); session.processingStatus = .complete
+            recordAllowanceDecision(true, session: session)
             try persistChanges()
             return .ambiguous(operation: .revise,candidateIDs: intent.candidates.map(\.id))
         } catch {
@@ -2010,6 +2133,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 let disposable = session.items.filter { !preservingItemIDs.contains($0.id) }
                 disposable.forEach(modelContext.delete)
                 session.processingStatus = .complete
+            recordAllowanceDecision(!preservingItemIDs.isEmpty, session: session)
                 try persistChanges(deletedItemIDs: disposable.map(\.id))
                 ReminderScheduler.cancel(itemID: item.id)
                 return .performed(operation: .revise, itemID: item.id,
@@ -2060,6 +2184,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
                 let disposable = session.items.filter { !preservingItemIDs.contains($0.id) }
                 disposable.forEach(modelContext.delete)
                 session.processingStatus = .complete
+            recordAllowanceDecision(!preservingItemIDs.isEmpty, session: session)
                 try persistChanges(deletedItemIDs: disposable.map(\.id))
                 if schedulesReminders {
                     synchronizeReminders(for: item.captureSession,
@@ -2261,6 +2386,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             let disposable = session.items.filter { !preservingItemIDs.contains($0.id) }
             disposable.forEach(modelContext.delete)
             session.processingStatus = .complete
+            recordAllowanceDecision(!preservingItemIDs.isEmpty, session: session)
             try persistChanges(deletedItemIDs: disposable.map(\.id))
             if schedulesReminders {
                 synchronizeReminders(for: item.captureSession, requestAuthorizationIfNeeded: true)
@@ -2282,6 +2408,22 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     /// Whichever timing fields the item already carries are the ones that
     /// move; an item with no timing at all gains a reminder, because a person
     /// moving it "to Friday" is asking to hear about it then.
+    /// The old tuple cannot carry a logical end-of-day deadline. A complete
+    /// explicit date/clock is an intentional replacement; an inherited clock
+    /// on a day-only move is not permission to silently change its meaning.
+    private func canReplaceDeadlineBoundary(
+        of item: CapturedItem, with reading: OrganizedThought, timing: String
+    ) -> Bool {
+        guard item.temporalIntent?.deadlineBoundary != nil || item.temporalIntent?.clockBoundary != nil else { return true }
+        guard reading.temporalIntent.deadlineBoundary == nil,
+              reading.temporalIntent.clockBoundary == nil,
+              reading.temporalIntent.kind == .exactDateTime,
+              !reading.needsClarification else { return false }
+        if ThoughtOrganizer.namesAMonthAndDay(timing) { return true }
+        if case .resolved = ThoughtOrganizer.numericDate(in: timing) { return true }
+        return false
+    }
+
     private func rescheduledDates(
         _ timing: String,
         for item: CapturedItem,
@@ -2293,6 +2435,13 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             guard let anchor else { return nil }
             let moved = anchor.addingTimeInterval(offset)
             guard moved > referenceDate else { return nil }
+            if item.temporalIntent?.clockBoundary != nil { return nil }
+            if let intent = item.temporalIntent, intent.deadlineBoundary != nil {
+                let calendar = intent.calendar(default: .autoupdatingCurrent)
+                guard intent.endOfDayDeadlineDate(calendar: calendar) == item.dueDate,
+                      anchor == item.dueDate,
+                      CalendarDay(from: moved, calendar: calendar) == intent.day else { return nil }
+            }
             return (
                 item.dueDate != nil ? moved : nil,
                 item.reminderDate != nil || item.dueDate == nil ? moved : nil,
@@ -2305,7 +2454,8 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             referenceDate: referenceDate,
             calendar: .autoupdatingCurrent
         )
-        guard let moment = organized.reminderDate ?? organized.dueDate else { return nil }
+        guard let moment = organized.reminderDate ?? organized.dueDate,
+              canReplaceDeadlineBoundary(of: item, with: organized, timing: timing) else { return nil }
         let hasTime = organized.temporalIntent.kind.carriesTimeOfDay
         return (
             item.dueDate != nil ? moment : nil,
@@ -2511,6 +2661,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             LocationReminderMonitor.shared.stopMonitoring(itemID: item.id)
             modelContext.delete(item)
         }
+        recordAllowanceDecision(!itemIDs.isEmpty, session: session)
         closeSession(session)
     }
 
@@ -2530,6 +2681,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             )
             modelContext.insert(review)
         }
+        recordAllowanceDecision(true, session: session)
         closeSession(session)
     }
 
@@ -3080,6 +3232,32 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         )
     }
 
+    /// This breadcrumb joins the result save; the debit is settled afterwards.
+    private func recordAllowanceDecision(_ charge: Bool, session: CaptureSession) {
+        guard captureAllowance != nil else { return }
+        pendingAllowanceDecisions[session.id] = charge
+    }
+
+    func reconcileCaptureAllowance() {
+        try? captureAllowance?.reconcile { session in
+            if session.processingStatus == .failed {
+                return session.processingError == CaptureRecoveryAttemptLedger.quarantineMessage ? true : nil
+            }
+            guard session.processingStatus == .complete else { return nil }
+            guard let state = CaptureOperationState.read(from: session.operationStateData) else {
+                return !session.items.isEmpty
+            }
+            let outcome: CaptureOperationOutcome
+            switch state.phase {
+            case .performed:
+                outcome = .performedMany(operation: state.operation, count: state.candidateIDs.count)
+            case .pendingChoice, .dismissed:
+                outcome = .ambiguous(operation: state.operation, candidateIDs: state.candidateIDs)
+            }
+            return CaptureCreationResult(session: session, items: session.items, operationOutcome: outcome).consumesFreeCapture
+        }
+    }
+
     private func normalizedCaptureText(_ text: String) throws -> String {
         let normalized = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !normalized.isEmpty else { throw RepositoryError.emptyCapture }
@@ -3089,8 +3267,10 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
     private func createPendingCapture(
         text: String,
         source: CaptureSource,
-        createdAt: Date
-    ) throws -> (session: CaptureSession, placeholder: CapturedItem) {
+        createdAt: Date,
+        allowancePolicy: CaptureAllowancePolicy? = nil,
+        deduplicates: Bool = true
+    ) throws -> (session: CaptureSession, placeholder: CapturedItem, wasDuplicate: Bool) {
         let session = CaptureSession(
             originalTranscription: text,
             createdAt: createdAt,
@@ -3107,15 +3287,34 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             lastModifiedAt: createdAt,
             captureSession: session
         )
-        modelContext.insert(session)
-        modelContext.insert(placeholder)
 
         // The raw words are committed before extraction so classification can
         // never cost somebody a capture.
         let signpost = CapturePerformanceSignposts.begin("RawCapturePersistence")
         defer { CapturePerformanceSignposts.end("RawCapturePersistence", signpost) }
+        if let captureAllowance {
+            guard let allowancePolicy else { throw RepositoryError.storageUnavailable }
+            let savedID = try captureAllowance.commit(id: session.id, createdAt: createdAt,
+                policy: source == .tutorial || source == .sample ? .practice : allowancePolicy,
+                findDuplicate: { [self] context in
+                    guard deduplicates else { return nil }
+                    return try recentDuplicate(text: text, source: source, createdAt: createdAt, in: context)?.session.id
+                }) { context in
+                    context.insert(session)
+                    context.insert(placeholder)
+                }
+            // Return instances owned by the presentation/organization context.
+            var descriptor = FetchDescriptor<CaptureSession>(predicate: #Predicate { $0.id == savedID })
+            descriptor.fetchLimit = 1
+            guard let saved = try modelContext.fetch(descriptor).first else { throw RepositoryError.storageUnavailable }
+            let savedPlaceholder = saved.items.first ?? placeholder
+            publishSharedTodaySnapshot()
+            return (saved, savedPlaceholder, savedID != session.id)
+        }
+        modelContext.insert(session)
+        modelContext.insert(placeholder)
         try persistChanges()
-        return (session, placeholder)
+        return (session, placeholder, false)
     }
 
     @discardableResult
@@ -3161,6 +3360,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         extras.forEach(modelContext.delete)
         session.processingStatus = .complete
         session.processingError = nil
+        recordAllowanceDecision(true, session: session)
 
         do {
             try persistChanges(deletedItemIDs: extraIDs)
@@ -3533,7 +3733,10 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             )
         }
         do {
-            try modelContext.save()
+            if let captureAllowance {
+                try captureAllowance.saveResult(context: modelContext, decisions: pendingAllowanceDecisions)
+            } else { try modelContext.save() }
+            pendingAllowanceDecisions.removeAll()
             publishSharedTodaySnapshot()
             guard !isApplyingCloudSnapshot else { return }
             ICloudSyncState.markLocalChange()
@@ -3560,6 +3763,7 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
             // Re-reading the store is what makes the discard visible; the
             // processing pass then settles it. `testAFailedSaveWritesNothingDurable`
             // is what keeps this from quietly regressing.
+            pendingAllowanceDecisions.removeAll()
             modelContext.rollback()
             _ = try? modelContext.fetchCount(FetchDescriptor<CapturedItem>())
             modelContext.processPendingChanges()
@@ -3974,10 +4178,29 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         return next
     }
 
+    private func captureResult(for session: CaptureSession, createdNewCapture: Bool) -> CaptureCreationResult {
+        let operationOutcome: CaptureOperationOutcome? = {
+            guard let state = CaptureOperationState.read(from: session.operationStateData) else { return nil }
+            switch state.phase {
+            case .performed:
+                if let targetID = state.targetID {
+                    return .performed(operation: state.operation, itemID: targetID,
+                                      title: state.targetTitle ?? state.targetWords ?? "Saved item")
+                }
+                return .performedMany(operation: state.operation, count: state.candidateIDs.count)
+            case .pendingChoice: return .ambiguous(operation: state.operation, candidateIDs: state.candidateIDs)
+            case .dismissed: return .ambiguous(operation: state.operation, candidateIDs: [])
+            }
+        }()
+        return CaptureCreationResult(session: session, items: orderedItems(in: session),
+            createdNewCapture: createdNewCapture, operationOutcome: operationOutcome)
+    }
+
     private func recentDuplicate(
         text: String,
         source: CaptureSource,
-        createdAt: Date
+        createdAt: Date,
+        in context: ModelContext? = nil
     ) throws -> CaptureCreationResult? {
         let window: TimeInterval
         switch source {
@@ -4003,32 +4226,10 @@ final class SwiftDataThoughtRepository: ThoughtRepository {
         descriptor.fetchLimit = 8
 
         let fingerprint = text.captureFingerprint
-        return try modelContext.fetch(descriptor).lazy.compactMap { session in
+        return try (context ?? modelContext).fetch(descriptor).lazy.compactMap { session in
             guard session.originalTranscription.captureFingerprint == fingerprint else { return nil }
-            let items = self.orderedItems(in: session)
-            let operationOutcome: CaptureOperationOutcome? = {
-                guard let state = CaptureOperationState.read(from: session.operationStateData) else { return nil }
-                switch state.phase {
-                case .performed:
-                    if let targetID = state.targetID {
-                        return .performed(operation: state.operation, itemID: targetID,
-                                          title: state.targetTitle ?? state.targetWords ?? "Saved item")
-                    }
-                    return .performedMany(operation: state.operation,
-                                          count: state.candidateIDs.count)
-                case .pendingChoice:
-                    return .ambiguous(operation: state.operation, candidateIDs: state.candidateIDs)
-                case .dismissed:
-                    return .ambiguous(operation: state.operation, candidateIDs: [])
-                }
-            }()
-            guard !items.isEmpty || operationOutcome != nil else { return nil }
-            return CaptureCreationResult(
-                session: session,
-                items: items,
-                createdNewCapture: false,
-                operationOutcome: operationOutcome
-            )
+            let result = self.captureResult(for: session, createdNewCapture: false)
+            return result.hasItems || result.operationOutcome != nil ? result : nil
         }.first
     }
 }

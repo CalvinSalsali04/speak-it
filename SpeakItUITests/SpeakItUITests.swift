@@ -833,6 +833,85 @@ final class SpeakItUITests: XCTestCase {
         )
     }
 
+    /// Invalid local reference storage fails before generation on the available
+    /// runtime branch. This checks processing recovery, not model capability.
+    func testIncompleteOrganizationKeepsSavedWordsAndOffersReviewWithoutRetry() {
+        let source = #"Work stuff for the clinic this week. Call Henry Schein and reorder the nitrile gloves, two cases each of medium and large, we're down to the last box. The X-ray sensor has to go out for repair and the courier is picking it up tomorrow at eleven, so pack it up before then. Update the holiday hours sign on the front door: we're closed December twenty-fourth through the twenty-eighth. Ask Dr. Patel whether she wants the staff lunch on December eleventh or the eighteenth, she gets the final say. Thursday's new patient, Mrs. Abernathy, is booked for two thirty and she asked for a reminder call the day before, so call her Wednesday. Follow up with Sun Life about the Kowalski family's rejected claim, the reference number is in the blue folder. Pay the cleaning company's invoice before Friday. And for home, on Saturday I'm going to Costco, so grab coffee filters, paper towels, and a flat of sparkling water."#
+        let app = launchApp("--ui-testing-skip-welcome", "-SpeakIt.appearance", "dark",
+            "--ui-testing-dynamic-type-axxxl", environment: [
+                "SPEAKIT_UI_QA_STORE_ID": UUID().uuidString,
+                "SPEAKIT_RUNTIME_EXAMPLES": "1",
+                "SPEAKIT_RUNTIME_RETRIEVAL": "1",
+                "SPEAKIT_RUNTIME_ALLOW_PROPOSED": "0",
+                "SPEAKIT_RUNTIME_LIBRARY": "/nonexistent-ui-runtime-reference-\(UUID().uuidString).sqlite",
+                // Deliberately synthetic: a present, valid-shape pin reaches the
+                // nonexistent file's read failure rather than the unpinned guard.
+                "SPEAKIT_RUNTIME_LIBRARY_SHA256": String(repeating: "0", count: 64)
+            ])
+        saveTypedCapture(source, in: app, expectedReceipt: "Words saved")
+        XCTAssertFalse(app.buttons["capture.clarificationRetry"].exists,
+            "A processing failure must not ask the person to record complete words again")
+        XCTAssertFalse(app.staticTexts["Can you clarify?"].exists)
+        let receipt = XCTAttachment(screenshot: app.screenshot())
+        receipt.name = "Organization incomplete — saved words — dark accessibility text"
+        receipt.lifetime = .keepAlways
+        add(receipt)
+
+        let review = app.buttons["capture.clarificationReview"]
+        XCTAssertTrue(review.waitForExistence(timeout: 8))
+        for _ in 0..<8 where !review.isHittable { app.swipeUp() }
+        let readyReview = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in
+            review.isHittable && review.frame.width >= 43.99 && review.frame.height >= 43.99
+        }, object: nil)
+        XCTAssertEqual(XCTWaiter.wait(for: [readyReview], timeout: 3), .completed)
+        assertMinimumTouchTarget(review)
+        review.tap()
+        XCTAssertTrue(app.navigationBars["Capture details"].waitForExistence(timeout: 5))
+        // The held item and its controls come first. This identifier belongs
+        // only to Text(session.originalTranscription), never its title preview.
+        let reviewContent = app.collectionViews["capture.review.content"]
+        XCTAssertTrue(reviewContent.waitForExistence(timeout: 5), app.debugDescription)
+        let original = reviewContent.staticTexts["capture.review.originalTranscription"]
+        for _ in 0..<4 where !original.exists { reviewContent.swipeUp() }
+        XCTAssertTrue(original.waitForExistence(timeout: 5), app.debugDescription)
+        XCTAssertEqual(Array(original.label.utf8), Array(source.utf8),
+            "The entire immutable original must remain accessible, byte for byte")
+        let originalReceipt = XCTAttachment(screenshot: app.screenshot())
+        originalReceipt.name = "Organization incomplete — original capture retained"
+        originalReceipt.lifetime = .keepAlways
+        add(originalReceipt)
+        let originalHierarchy = XCTAttachment(string: app.debugDescription)
+        originalHierarchy.name = "Organization incomplete — full original accessibility hierarchy"
+        originalHierarchy.lifetime = .keepAlways
+        add(originalHierarchy)
+
+        let edit = reviewContent.buttons.matching(identifier: "capture.review.editItem").firstMatch
+        for _ in 0..<4 where !edit.isHittable { reviewContent.swipeDown() }
+        XCTAssertTrue(edit.isHittable, app.debugDescription)
+        XCTAssertEqual(app.buttons.matching(identifier: "capture.review.editItem").count, 1,
+            "The processing fallback must remain one held whole capture")
+        XCTAssertTrue(reviewContent.staticTexts["Needs organization"].firstMatch.exists)
+        XCTAssertFalse(app.buttons["capture.review.keepAsOneThought"].exists,
+            "Grouping cannot complete an unfinished organization attempt")
+        assertMinimumTouchTarget(edit)
+        edit.tap()
+        XCTAssertTrue(app.navigationBars["Edit Thought"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Needs organization"].firstMatch.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Your words are saved. Review this capture to organize it."].exists)
+        XCTAssertFalse(app.buttons["editor.keepAsOneThought"].exists)
+        let editorReceipt = XCTAttachment(screenshot: app.screenshot())
+        editorReceipt.name = "Organization incomplete — honest editor requirement"
+        editorReceipt.lifetime = .keepAlways
+        add(editorReceipt)
+        app.navigationBars.buttons["Cancel"].tap()
+        XCTAssertTrue(app.navigationBars["Capture details"].waitForExistence(timeout: 5))
+        for _ in 0..<4 where !edit.isHittable { reviewContent.swipeDown() }
+        XCTAssertTrue(edit.isHittable, app.debugDescription)
+        XCTAssertTrue(reviewContent.staticTexts["Needs organization"].firstMatch.exists,
+            "Opening and cancelling the editor must not clear this review reason")
+        XCTAssertFalse(app.buttons["capture.review.keepAsOneThought"].exists)
+    }
+
     func testUnclearCaptureCanOpenOneSavedItemForLocalEdit() {
         let app = launchApp("--ui-testing-skip-welcome")
         app.buttons["dock.capture"].tap()
@@ -2478,12 +2557,25 @@ And email Jonah the final volunteer rota once Priya has approved it. She has loo
         capture.coordinate(withNormalizedOffset: CGVector(dx: 0.90, dy: 0.5)).tap()
 
         let typeInstead = app.buttons["capture.typeInstead"]
-        XCTAssertTrue(typeInstead.waitForExistence(timeout: 8), "type instead", file: file, line: line)
-        for _ in 0..<5 where !typeInstead.isHittable { app.swipeUp() }
-        XCTAssertTrue(typeInstead.isHittable, app.debugDescription, file: file, line: line)
-        typeInstead.coordinate(withNormalizedOffset: CGVector(dx: 0.90, dy: 0.5)).tap()
-
         let editor = app.textViews["capture.text"]
+        // A microphone startup failure already opens the typing recovery UI.
+        // Both paths must reach the real editor before this save-flow test types.
+        let typingEntry = expectation(
+            for: NSPredicate { _, _ in editor.exists || typeInstead.exists },
+            evaluatedWith: app
+        )
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [typingEntry], timeout: 8), .completed,
+            "typing entry or voice-startup recovery", file: file, line: line
+        )
+        if !editor.exists {
+            for _ in 0..<5 where !editor.exists && !typeInstead.isHittable { app.swipeUp() }
+            if !editor.exists {
+                XCTAssertTrue(typeInstead.isHittable, app.debugDescription, file: file, line: line)
+                typeInstead.coordinate(withNormalizedOffset: CGVector(dx: 0.90, dy: 0.5)).tap()
+            }
+        }
+
         XCTAssertTrue(editor.waitForExistence(timeout: 6), app.debugDescription, file: file, line: line)
         for _ in 0..<5 where !editor.isHittable { app.swipeUp() }
         editor.tap()
@@ -2641,6 +2733,7 @@ And email Jonah the final volunteer rota once Priya has approved it. She has loo
 
     private func launchApp(
         _ extraArguments: String...,
+        environment: [String: String] = [:],
         file: StaticString = #filePath,
         line: UInt = #line
     ) -> XCUIApplication {
@@ -2653,6 +2746,7 @@ And email Jonah the final volunteer rota once Priya has approved it. She has loo
         // These assertions measure UI and persistence, not simulator model
         // availability. Runtime integration has dedicated native fixtures.
         app.launchEnvironment["SPEAKIT_RUNTIME_EXAMPLES"] = "0"
+        app.launchEnvironment.merge(environment, uniquingKeysWith: { _, override in override })
         app.launch()
         if extraArguments.contains(where: { $0.hasPrefix("--load-") }) {
             waitForLaunchWorkToFinish(in: app, file: file, line: line)
@@ -2818,5 +2912,135 @@ And email Jonah the final volunteer rota once Priya has approved it. She has loo
             for: [XCTNSPredicateExpectation(predicate: predicate, object: element)],
             timeout: timeout
         ) == .completed
+    }
+}
+
+extension SpeakItUITests {
+    func testMidnightDeadlineIsReadableOnTodayAndEditorInLightAndLargestDarkText() throws {
+        let deadlineCaption = NSPredicate(format:
+            "label BEGINSWITH %@ AND label CONTAINS[c] %@", "By end of ", "midnight")
+        for (appearance, largestText) in [("light", false), ("dark", true)] {
+            let scenario = appearance + (largestText ? "-AXXXL" : "-regular")
+            let app = XCUIApplication()
+            app.terminate()
+            app.launchArguments = ["--ui-testing", "--ui-testing-reset", "--ui-testing-skip-welcome",
+                "-SpeakIt.appearance", appearance]
+            if largestText { app.launchArguments.append("--ui-testing-dynamic-type-axxxl") }
+            app.launchEnvironment = ["SPEAKIT_UI_QA_STORE_ID": UUID().uuidString,
+                "SPEAKIT_RUNTIME_EXAMPLES": "0"]
+            app.launch()
+            waitForLaunchWorkToFinish(in: app)
+            let captureStarted = Date.now
+            let captureCalendar = Calendar.current
+            let captureZone = TimeZone.autoupdatingCurrent
+            guard let day = captureCalendar.dateInterval(of: .day, for: captureStarted),
+                  day.end.timeIntervalSince(captureStarted) > 5 * 60 else {
+                app.terminate()
+                throw XCTSkip("The live-clock UI fixture requires more than five minutes before local midnight")
+            }
+            let weekdayFormatter = DateFormatter()
+            weekdayFormatter.locale = Locale(identifier: "en_US_POSIX")
+            weekdayFormatter.calendar = captureCalendar
+            weekdayFormatter.timeZone = captureZone
+            weekdayFormatter.dateFormat = "EEEE"
+            let weekday = weekdayFormatter.string(from: captureStarted)
+            let source = "Submit the report by " + weekday + " midnight."
+            let timestamp = ISO8601DateFormatter()
+            timestamp.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            let clock = XCTAttachment(string: "scenario=\(scenario)\nstartUTC=\(timestamp.string(from: captureStarted))\nrunnerTimeZone=\(captureZone.identifier)\nweekday=\(weekday)\nsource=\(source)\nUI wall clock is not pinned; simulator/runner zone agreement is an environment prerequisite, not date-resolution proof.")
+            clock.name = "midnight-deadline-clock-" + scenario
+            clock.lifetime = .keepAlways
+            add(clock)
+            saveTypedCapture(source, in: app)
+            let closeReceipt = app.buttons["capture.close"]
+            if closeReceipt.waitForExistence(timeout: 2), closeReceipt.isHittable { closeReceipt.tap() }
+            let edit = app.buttons.matching(NSPredicate(format:
+                "identifier BEGINSWITH %@ AND label CONTAINS[c] %@ AND label CONTAINS[c] %@",
+                "item.edit.", "submit", "report")).firstMatch
+            for _ in 0..<8 where !edit.exists || !edit.isHittable { app.swipeUp() }
+            XCTAssertTrue(edit.waitForExistence(timeout: 10), scenario + ": the saved task must appear on Today")
+            XCTAssertTrue(app.staticTexts["Now"].exists, scenario + ": due today belongs in Now")
+            XCTAssertTrue(waitFor(edit, timeout: 5) { element in
+                guard let value = element.value as? String else { return false }
+                return value.hasPrefix("By end of ")
+                    && value.localizedCaseInsensitiveContains("midnight")
+                    && value.localizedCaseInsensitiveContains(weekday)
+            }, scenario + ": Today must expose the complete named-day deadline as the Edit button's accessibility value")
+            for _ in 0..<8 where !edit.isHittable
+                || !app.windows.firstMatch.frame.contains(edit.frame) { app.swipeUp() }
+            XCTAssertTrue(edit.isHittable, scenario + ": the deadline row must be reachable")
+            XCTAssertTrue(app.windows.firstMatch.frame.contains(edit.frame),
+                scenario + ": the full Edit button must fit the visible window; screenshot checks caption wrapping")
+            let spokenCaption = try XCTUnwrap(edit.value as? String, scenario)
+            XCTAssertTrue(spokenCaption.localizedCaseInsensitiveContains(weekday),
+                scenario + ": the visible deadline must retain the named weekday")
+            XCTAssertTrue(spokenCaption.localizedCaseInsensitiveContains("midnight"), scenario)
+            XCTAssertFalse(spokenCaption.contains("Tomorrow"), scenario)
+            captureFlowScreenshot("midnight-deadline-today-" + scenario)
+            for _ in 0..<8 where !edit.isHittable { app.swipeDown() }
+            assertMinimumTouchTarget(edit)
+            edit.tap()
+            XCTAssertTrue(app.navigationBars["Edit Thought"].waitForExistence(timeout: 5), scenario)
+            let form = app.collectionViews.firstMatch
+            XCTAssertTrue(form.waitForExistence(timeout: 5), scenario)
+            let editorCaption = form.staticTexts.matching(deadlineCaption).firstMatch
+            for _ in 0..<10 where !editorCaption.exists || !editorCaption.isHittable
+                || !app.windows.firstMatch.frame.contains(editorCaption.frame) { form.swipeUp() }
+            XCTAssertTrue(editorCaption.waitForExistence(timeout: 5), scenario)
+            XCTAssertTrue(editorCaption.isHittable, scenario)
+            XCTAssertEqual(editorCaption.label, spokenCaption,
+                scenario + ": opening the editor must preserve the same logical deadline caption")
+            XCTAssertTrue(app.windows.firstMatch.frame.contains(editorCaption.frame),
+                scenario + ": the editor summary must remain readable when it wraps")
+            captureFlowScreenshot("midnight-deadline-editor-" + scenario)
+            let reminder = form.switches["editor.remindAtTime"]
+            for _ in 0..<8 where !reminder.exists || !reminder.isHittable { form.swipeUp() }
+            XCTAssertTrue(reminder.waitForExistence(timeout: 5), scenario)
+            XCTAssertEqual(reminder.value as? String, "0",
+                scenario + ": a due-only deadline must not silently enable a reminder")
+            let cancel = app.buttons["editor.cancel"]
+            for (edge, verticalOffset) in [("top", -21.5), ("bottom", 21.5)] {
+                let navigation = app.navigationBars["Edit Thought"]
+                XCTAssertTrue(navigation.waitForExistence(timeout: 5), scenario)
+                XCTAssertTrue(waitFor(cancel, timeout: 5) { $0.isHittable }, scenario)
+                let frame = cancel.frame
+                XCTAssertGreaterThanOrEqual(frame.width, 44 - 0.01, scenario)
+                // Native Toolbar accessibility height need not equal its hit
+                // region. Probe the original 44pt vertical region directly.
+                let point = CGPoint(x: frame.midX, y: frame.midY + verticalOffset)
+                let windowFrame = app.windows.firstMatch.frame
+                let sheet = app.sheets.firstMatch
+                let containerFrame = sheet.exists ? sheet.frame : windowFrame
+                let bounds = XCTAttachment(string: "scenario=\(scenario)\nedge=\(edge)\ncancelAccessibilityFrame=\(frame)\neditorNavigationBarFrame=\(navigation.frame)\nappWindowFrame=\(windowFrame)\ncontainerKind=\(sheet.exists ? "sheet" : "appWindow")\ncontainerFrame=\(containerFrame)\nactualTapPoint=(\(point.x), \(point.y))\nverticalOffset=\(verticalOffset)")
+                bounds.name = "midnight-cancel-hit-region-" + scenario + "-" + edge
+                bounds.lifetime = .keepAlways
+                add(bounds)
+                XCTAssertTrue(navigation.frame.contains(point),
+                    scenario + ": the edge tap must remain inside the actual editor toolbar")
+                XCTAssertTrue(windowFrame.contains(point), scenario)
+                XCTAssertTrue(containerFrame.contains(point),
+                    scenario + ": an outside-sheet dismissal cannot prove Cancel's hit region")
+                app.coordinate(withNormalizedOffset: .zero)
+                    .withOffset(CGVector(dx: point.x, dy: point.y)).tap()
+                XCTAssertTrue(waitForNonExistence(of: navigation, timeout: 5),
+                    scenario + ": Cancel must respond at the " + edge + " edge of the 44pt region")
+                let sameItems = app.buttons.matching(NSPredicate(format:
+                    "identifier BEGINSWITH %@ AND label CONTAINS[c] %@ AND label CONTAINS[c] %@",
+                    "item.edit.", "submit", "report"))
+                XCTAssertTrue(sameItems.firstMatch.waitForExistence(timeout: 5), scenario)
+                XCTAssertEqual(sameItems.count, 1, scenario + ": Cancel must leave the same Today item")
+                XCTAssertEqual(sameItems.firstMatch.value as? String, spokenCaption,
+                    scenario + ": the edge tap must not change the saved deadline")
+                if edge == "top" {
+                    for _ in 0..<8 where !edit.isHittable { app.swipeDown() }
+                    XCTAssertTrue(edit.isHittable, scenario)
+                    edit.tap()
+                    XCTAssertTrue(navigation.waitForExistence(timeout: 5), scenario)
+                }
+            }
+            XCTAssertTrue(captureCalendar.isDate(captureStarted, inSameDayAs: .now),
+                scenario + ": this UI fixture must finish within the same local calendar day")
+            app.terminate()
+        }
     }
 }

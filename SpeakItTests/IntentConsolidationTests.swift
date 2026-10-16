@@ -1,4 +1,5 @@
 import XCTest
+import SwiftData
 import NaturalLanguage
 @testable import SpeakIt
 
@@ -15,6 +16,166 @@ import NaturalLanguage
 /// the default whenever the wording is not positively narrative.
 @MainActor
 final class IntentConsolidationTests: XCTestCase {
+    func testExplicitDayClockBoundaryPreservesOwnedActionAndLeavesRequestedAlertsUnscheduled() throws {
+        var calendar=Calendar(identifier:.gregorian)
+        calendar.timeZone=try XCTUnwrap(TimeZone(identifier:"America/Toronto"))
+        let previous=SentenceContext.taggerDisabledForEvaluation,zone=NSTimeZone.default
+        NSTimeZone.default=calendar.timeZone
+        defer { SentenceContext.taggerDisabledForEvaluation=previous;SentenceContextCache.invalidate();NSTimeZone.default=zone }
+        let reference=try XCTUnwrap(calendar.date(from:DateComponents(year:2026,month:11,day:17,hour:9)))
+        let lateWednesday=try XCTUnwrap(calendar.date(from:DateComponents(year:2026,month:11,day:18,hour:19)))
+        let cases:[(String,ClockBoundary,Int,Int,ItemType,Bool)]=[
+            ("Pick up the costume rack from Lorraine's garage on Wednesday after six.",.after,18,0,.task,false),
+            ("Clean the shelving before 8 PM on Wednesday.",.before,20,0,.task,false),
+            ("Before 8 PM on Wednesday, clean the shelving.",.before,20,0,.task,false),
+            ("Remind me on Wednesday after six to clean the shelving.",.after,18,0,.task,true),
+            ("Remind me to clean the shelving on Wednesday after six.",.after,18,0,.task,true),
+            ("Call Mom on Wednesday after six.",.after,18,0,.personFollowUp,false),
+            ("Buy milk on Wednesday before 7:30 PM.",.before,19,30,.shopping,false),
+            ("Clean the qavren panel tomorrow after 8 PM.",.after,20,0,.task,false),
+            ("Return the hedge trimmer to Marcus Wednesday after 7 PM.",.after,19,0,.task,false),
+            ("Clean the shelving before 3:30 in the afternoon on Wednesday.",.before,15,30,.task,false),
+            ("Remind me on Wednesday after eight in the evening to clean the shelving.",.after,20,0,.task,true),
+            ("Before eleven thirty PM on Wednesday, clean the shelving.",.before,23,30,.task,false),
+            ("Remind me on Wednesday before 8 PM to clean the shelving.",.before,20,0,.task,true)
+        ]
+        for disabled in [false,true] {
+            SentenceContext.taggerDisabledForEvaluation=disabled;SentenceContextCache.invalidate()
+            for (source,boundary,hour,minute,kind,requestsAlert) in cases {
+                let proved=try XCTUnwrap(ThoughtOrganizer.clockBoundaryTiming(in:source,referenceDate:reference,calendar:calendar),source)
+                let organization=ThoughtOrganizer.organize(source,referenceDate:reference,calendar:calendar)
+                XCTAssertEqual(organization.itemType,kind,source)
+                XCTAssertEqual(organization.temporalIntent,proved.intent,source)
+                XCTAssertEqual(organization.temporalIntent.clockBoundary,boundary,source)
+                XCTAssertEqual(organization.temporalIntent.day,CalendarDay(year:2026,month:11,day:18),source)
+                XCTAssertEqual(organization.temporalIntent.time,WallClockTime(hour:hour,minute:minute),source)
+                XCTAssertEqual(organization.dueDate,proved.dueDate,source)
+                XCTAssertNil(organization.reminderDate,source);XCTAssertEqual(organization.reminderDelivery,.none,source)
+                XCTAssertNil(organization.recurrenceRule,source);XCTAssertNil(organization.locationIntent,source)
+                XCTAssertEqual(organization.needsClarification,requestsAlert,source)
+                XCTAssertEqual(organization.state,requestsAlert ? .underspecified(.ambiguousTemporalScope) : .resolved,source)
+                let resolution=TemporalResolver.resolve(proved.intent,anchor:reference,calendar:calendar,wantsReminder:true)
+                XCTAssertEqual(resolution.dueDate,proved.dueDate);XCTAssertNil(resolution.reminderDate)
+            }
+            let monthNamed=ThoughtOrganizer.organize("Clean the shelving on November 20 after 7 PM.",referenceDate:reference,calendar:calendar)
+            XCTAssertEqual(monthNamed.itemType,.task)
+            XCTAssertEqual(monthNamed.temporalIntent.clockBoundary,.after)
+            XCTAssertEqual(monthNamed.temporalIntent.day,CalendarDay(year:2026,month:11,day:20))
+            XCTAssertEqual(monthNamed.temporalIntent.time,WallClockTime(hour:19,minute:0))
+            XCTAssertEqual(monthNamed.dueDate,calendar.date(from:DateComponents(year:2026,month:11,day:20,hour:19)))
+            XCTAssertNil(monthNamed.reminderDate);XCTAssertFalse(monthNamed.needsClarification)
+            let heldEvent=ThoughtOrganizer.organize("Attend the vendor meeting on Wednesday after 9 AM.",referenceDate:reference,calendar:calendar)
+            XCTAssertEqual(heldEvent.itemType,.event,"Unsupported event boundaries retain the existing classification")
+            XCTAssertNil(heldEvent.temporalIntent.clockBoundary);XCTAssertNil(heldEvent.dueDate)
+            XCTAssertNil(heldEvent.reminderDate);XCTAssertTrue(heldEvent.needsClarification)
+            let stillWednesday=ThoughtOrganizer.organize(cases[0].0,referenceDate:lateWednesday,calendar:calendar)
+            XCTAssertEqual(stillWednesday.temporalIntent.day,CalendarDay(year:2026,month:11,day:18))
+            XCTAssertEqual(stillWednesday.temporalIntent.clockBoundary,.after)
+            XCTAssertEqual(stillWednesday.temporalIntent.time,WallClockTime(hour:18,minute:0))
+            for source in ["Clean the shelving after six.","Clean the shelving on Wednesday after six and before nine.",
+                           "Clean the shelving on Wednesday after 6 PM unknownzone time.",
+                           "Clean the shelving London time on Wednesday after six.",
+                           "Clean the shelving on Wednesday before 6 AM in the evening.",
+                           "Clean the shelving on Wednesday before 7 PM in the morning."] {
+                XCTAssertNil(ThoughtOrganizer.clockBoundaryTiming(in:source,referenceDate:reference,calendar:calendar),source)
+                let held=ThoughtOrganizer.organize(source,referenceDate:reference,calendar:calendar)
+                XCTAssertNil(held.temporalIntent.clockBoundary,source);XCTAssertNil(held.dueDate,source)
+                XCTAssertNil(held.reminderDate,source);XCTAssertTrue(held.needsClarification,source)
+            }
+            for source in ["Mara said clean the shelving on Wednesday after six.",
+                           "If Mara agrees, clean the shelving on Wednesday after six.",
+                           "Don't clean the shelving on Wednesday after six.",
+                           "Clean the shelving and call Mom on Wednesday after six.",
+                           "Return the trimmer to repair the handle on Wednesday after six.",
+                           "Buy milk for Wednesday after six.",
+                           "Call Sam about the meeting on Wednesday after six.",
+                           "Call Sam regarding the meeting on Wednesday after six.",
+                           "Call Sam concerning the meeting on Wednesday after six.",
+                           "Text Mom that we can meet on Wednesday after six.",
+                           "\"Clean the shelving on Wednesday after six.\""] {
+                XCTAssertNil(ThoughtOrganizer.clockBoundaryTiming(in:source,referenceDate:reference,calendar:calendar),source)
+                XCTAssertNil(ThoughtOrganizer.organize(source,referenceDate:reference,calendar:calendar).temporalIntent.clockBoundary,source)
+            }
+            let exact=ThoughtOrganizer.organize("Clean the shelving on Wednesday at six.",referenceDate:reference,calendar:calendar)
+            XCTAssertNil(exact.temporalIntent.clockBoundary);XCTAssertEqual(exact.temporalIntent.time,WallClockTime(hour:18,minute:0))
+            let arithmetic=ThoughtOrganizer.organize("Clean the shelving on Wednesday at quarter after six.",referenceDate:reference,calendar:calendar)
+            XCTAssertNil(arithmetic.temporalIntent.clockBoundary);XCTAssertEqual(arithmetic.temporalIntent.time,WallClockTime(hour:18,minute:15))
+            for source in ["Clean the shelving on Wednesday at twenty after seven.",
+                           "Clean the shelving on November 20 at twenty after seven."] {
+                let arithmetic=ThoughtOrganizer.organize(source,referenceDate:reference,calendar:calendar)
+                XCTAssertNil(arithmetic.temporalIntent.clockBoundary,source)
+                XCTAssertEqual(arithmetic.temporalIntent.kind,.exactDateTime,source)
+                XCTAssertEqual(arithmetic.temporalIntent.time,WallClockTime(hour:19,minute:20),source)
+                XCTAssertNotNil(arithmetic.dueDate,source);XCTAssertFalse(arithmetic.needsClarification,source)
+            }
+            for source in ["Clean the shelving on November 20 after 7 PM and before 9 PM.",
+                           "Clean the shelving on November 20 after 7 PM and November 21 before 8 PM.",
+                           "Clean the shelving on November 31 after 7 PM."] {
+                XCTAssertNil(ThoughtOrganizer.clockBoundaryTiming(in:source,referenceDate:reference,calendar:calendar),source)
+                let held=ThoughtOrganizer.organize(source,referenceDate:reference,calendar:calendar)
+                XCTAssertNil(held.temporalIntent.clockBoundary,source);XCTAssertNil(held.dueDate,source)
+                XCTAssertNil(held.reminderDate,source);XCTAssertTrue(held.needsClarification,source)
+            }
+            let mismatch=ThoughtOrganizer.organize(cases[0].0,referenceDate:reference,calendar:calendar,
+                sourceText:cases[0].0.replacingOccurrences(of:"Wednesday",with:"Thursday"))
+            XCTAssertNil(mismatch.temporalIntent.clockBoundary);XCTAssertNil(mismatch.dueDate);XCTAssertTrue(mismatch.needsClarification)
+        }
+    }
+
+    func testClockBoundaryCodableLegacyAbsenceAndInvalidPresenceNeverBecomeExactAppointments() throws {
+        var calendar=Calendar(identifier:.gregorian)
+        calendar.timeZone=try XCTUnwrap(TimeZone(identifier:"America/Toronto"))
+        let anchor=try XCTUnwrap(calendar.date(from:DateComponents(year:2026,month:11,day:18,hour:9)))
+        let endpoint=try XCTUnwrap(calendar.date(from:DateComponents(year:2026,month:11,day:18,hour:18)))
+        let intent=TemporalIntent(kind:.exactDateTime,day:.init(year:2026,month:11,day:18),
+            time:.init(hour:18,minute:0),sourceText:"on Wednesday after six",clockBoundary:.after)
+        let encoder=JSONEncoder(),decoder=JSONDecoder()
+        XCTAssertEqual(try decoder.decode(TemporalIntent.self,from:encoder.encode(intent)),intent)
+        XCTAssertEqual(intent.clockBoundaryDate(calendar:calendar),endpoint)
+        let interval=try XCTUnwrap(intent.clockBoundaryDayInterval(calendar:calendar))
+        XCTAssertEqual(interval.start,calendar.startOfDay(for:anchor))
+        XCTAssertEqual(interval.end,calendar.date(byAdding:.day,value:1,to:interval.start))
+        for (month,day,expectedHours) in [(3,8,23),(11,1,25)] {
+            var transition=intent;transition.day = .init(year:2026,month:month,day:day)
+            let ownedDay=try XCTUnwrap(transition.clockBoundaryDayInterval(calendar:calendar))
+            XCTAssertEqual(ownedDay.duration,TimeInterval(expectedHours*3600))
+            XCTAssertNotNil(transition.clockBoundaryDate(calendar:calendar))
+        }
+        let encoded=try XCTUnwrap(JSONSerialization.jsonObject(with:encoder.encode(intent)) as? [String:Any])
+        var legacy=encoded;legacy.removeValue(forKey:"clockBoundary")
+        let old=try decoder.decode(TemporalIntent.self,from:JSONSerialization.data(withJSONObject:legacy))
+        XCTAssertNil(old.clockBoundary)
+        XCTAssertEqual(TemporalResolver.resolve(old,anchor:anchor,calendar:calendar,wantsReminder:true),
+            .init(dueDate:endpoint,reminderDate:endpoint))
+        for raw in ["future-value",NSNull(),true,17] as [Any] {
+            var invalid=encoded;invalid["clockBoundary"]=raw
+            let decoded=try decoder.decode(TemporalIntent.self,from:JSONSerialization.data(withJSONObject:invalid))
+            XCTAssertNotNil(decoded.clockBoundary)
+            XCTAssertNil(decoded.clockBoundaryDate(calendar:calendar))
+            XCTAssertEqual(TemporalResolver.resolve(decoded,anchor:anchor,calendar:calendar,wantsReminder:true),
+                .init(dueDate:nil,reminderDate:nil))
+        }
+        var invalidShapes:[TemporalIntent]=[]
+        var wrong=intent;wrong.day = .init(year:2026,month:2,day:30);invalidShapes.append(wrong)
+        wrong=intent;wrong.time = .init(hour:24,minute:0);invalidShapes.append(wrong)
+        wrong=intent;wrong.deadlineBoundary = .endOfNamedDay;invalidShapes.append(wrong)
+        wrong=intent;wrong.windowEndDay = intent.day;invalidShapes.append(wrong)
+        wrong=intent;wrong.relativeSeconds = 60;invalidShapes.append(wrong)
+        wrong=intent;wrong.unsupportedTrigger = .condition;invalidShapes.append(wrong)
+        wrong=intent;wrong.isUserEdited = true;invalidShapes.append(wrong)
+        wrong=intent;wrong.timeZoneBehavior = .fixed;wrong.timeZoneIdentifier="unknown/zone";invalidShapes.append(wrong)
+        for invalid in invalidShapes {
+            XCTAssertNil(invalid.clockBoundaryDate(calendar:calendar))
+            XCTAssertEqual(TemporalResolver.resolve(invalid,anchor:anchor,calendar:calendar,wantsReminder:true),
+                .init(dueDate:nil,reminderDate:nil))
+            XCTAssertNil(TemporalResolver.nextOccurrence(of:invalid,after:anchor,calendar:calendar))
+        }
+        let edited=TemporalIntent.userEdited(dueDate:endpoint,reminderDate:nil,recurrence:nil,
+            sourceText:intent.sourceText,calendar:calendar,dueDateHasTime:true)
+        XCTAssertTrue(edited.isUserEdited);XCTAssertNil(edited.clockBoundary)
+        XCTAssertEqual(intent.clockBoundary,.after,"A separate explicit edit never mutates the original intent")
+    }
+
     static let displaySetupLongCapture = """
 I want a note about the display setup, because I keep forgetting why we arranged it this way. The taller board goes at the back so it does not block the smaller labels. The lamps point across the table rather than straight down because the glossy photographs reflect the light. Keep those as setup facts. I am not asking to move the furniture again today; this is the arrangement we already tested.
 
@@ -24,6 +185,378 @@ Remember that Amira prefers oat milk rather than soy. I was going to get drinks 
 
 There was a suggestion from the committee to print a booklet for everyone. I considered it, but I have decided on a simple web page instead because we can fix mistakes without printing everything again. Add making that page to my list. Use the final display captions as the content. The booklet is the rejected option, not another thing to produce. This is turning into quite a scattered list, but the caption correction at the start is still the first practical job.
 """
+
+    func testCompleteFollowUpRetainsMatterAndReferenceLocationWithoutEffects() async throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Toronto")!
+        let reference = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-11-16T14:00:00Z"))
+        let previous = SentenceContext.taggerDisabledForEvaluation, previousZone = NSTimeZone.default
+        NSTimeZone.default = calendar.timeZone
+        defer { SentenceContext.taggerDisabledForEvaluation = previous; SentenceContextCache.invalidate(); NSTimeZone.default = previousZone }
+        let original = "Follow up with Sun Life about the Kowalski family's rejected claim, the reference number is in the blue folder."
+        let cases = [
+            (original, "Sun Life"),
+            ("Follow up with Mara about the pending invoice, the reference number is in the red folder.", "Mara"),
+            ("Please follow up with Sam about our claim.", "Sam"),
+            ("Follow up with Dr. Neris about the Rivera family's rejected letter, the reference number is in the green file.", "Dr. Neris")
+        ]
+        for disabled in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disabled; SentenceContextCache.invalidate()
+            for (source, recipient) in cases {
+                let proof = try XCTUnwrap(ClauseScope.completeFollowUpReference(in: source), source)
+                XCTAssertEqual(String(source[proof.endpointRange]), recipient)
+                XCTAssertTrue(source[proof.topicRange].contains("claim") || source[proof.topicRange].contains("invoice") || source[proof.topicRange].contains("letter"))
+                XCTAssertEqual(proof.contextRange != nil, source.contains("reference number"))
+                XCTAssertEqual(proof.storageRange != nil, source.contains("reference number"))
+                let result = try XCTUnwrap(RuntimeShortSourceCertificate.interpret(source, referenceDate: reference, calendar: calendar), source)
+                XCTAssertEqual(result.items.count, 1); XCTAssertTrue(result.operations.isEmpty)
+                let item = try XCTUnwrap(result.items.first)
+                XCTAssertEqual(item.sourceQuote, source); XCTAssertEqual(item.rawQuote, source)
+                XCTAssertEqual(item.analysisText, source); XCTAssertFalse(item.wasRepaired)
+                XCTAssertEqual(item.sourceUnitIDs, Set(SourceUnitLedger(source).words.indices))
+                XCTAssertTrue(item.organization.itemType.isActionable)
+                XCTAssertEqual(item.organization.personName, recipient)
+                XCTAssertFalse(item.needsReview); XCTAssertFalse(item.organization.needsClarification)
+                XCTAssertEqual(item.organization.state, .resolved)
+                XCTAssertNil(item.organization.dueDate); XCTAssertEqual(item.organization.temporalIntent, .none)
+                XCTAssertNil(item.organization.reminderDate); XCTAssertEqual(item.organization.reminderDelivery, .none)
+                XCTAssertNil(item.organization.locationIntent); XCTAssertNil(item.organization.recurrenceRule)
+                XCTAssertNil(item.shoppingGroup)
+                let title = try XCTUnwrap(item.suggestedTitle)
+                XCTAssertTrue(title.localizedCaseInsensitiveContains(recipient))
+                if source.contains("reference number") { XCTAssertTrue(title.contains("reference number")); XCTAssertTrue(title.contains("folder") || title.contains("file")) }
+            }
+            let fallback = await ThoughtExtractionEngine.extract(original, referenceDate: reference,
+                calendar: calendar, permitsOnDeviceIntelligence: false)
+            XCTAssertEqual(fallback.items.count, 1); XCTAssertTrue(fallback.operations.isEmpty)
+            let kept = try XCTUnwrap(fallback.items.first)
+            XCTAssertEqual(kept.rawQuote, original); XCTAssertEqual(kept.sourceUnitIDs, Set(SourceUnitLedger(original).words.indices))
+            XCTAssertTrue(kept.organization.itemType.isActionable); XCTAssertEqual(kept.organization.personName, "Sun Life")
+            XCTAssertFalse(kept.needsReview); XCTAssertNil(kept.organization.dueDate); XCTAssertNil(kept.organization.reminderDate)
+            let separate = original + " Call Mom tomorrow."
+            XCTAssertNil(ClauseScope.completeFollowUpReference(in: separate), "A whole-source role cannot swallow a separate act")
+            let two = try XCTUnwrap(RuntimeShortSourceCertificate.interpret(separate, referenceDate: reference, calendar: calendar))
+            XCTAssertEqual(two.items.count, 2)
+            XCTAssertEqual(two.items.first?.rawQuote, original)
+            XCTAssertEqual(two.items.last?.rawQuote, "Call Mom tomorrow.")
+            XCTAssertEqual(two.items.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) }, Set(SourceUnitLedger(separate).words.indices))
+            for source in [
+                "Sam said, '" + original + "'",
+                "Do not " + original.lowercased(),
+                "If approved, " + original.lowercased(),
+                original.replacingOccurrences(of: ", the reference number is in the blue folder.", with: ", and call Mom."),
+                original.replacingOccurrences(of: "rejected claim", with: "rejected claim and the invoice"),
+                original.replacingOccurrences(of: "rejected claim", with: "call Mom claim"),
+                original.replacingOccurrences(of: "in the blue folder.", with: "in the blue folder and send the invoice."),
+                original.replacingOccurrences(of: "in the blue folder.", with: "in the blue folder if approved."),
+                original.replacingOccurrences(of: "Follow up with Sun Life", with: "Follow up with them"),
+                original.replacingOccurrences(of: "the reference number is", with: "keep a separate note that the reference number is")
+            ] {
+                XCTAssertNil(RuntimeShortSourceCertificate.interpret(source, referenceDate: reference, calendar: calendar), source)
+            }
+        }
+    }
+
+    func testCompletePaymentBeforeDayPreservesObjectDeadlineAndHasNoEffects() async throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Toronto")!
+        let reference = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-11-16T14:00:00Z"))
+        let previous = SentenceContext.taggerDisabledForEvaluation, previousZone = NSTimeZone.default
+        NSTimeZone.default = calendar.timeZone
+        defer { SentenceContext.taggerDisabledForEvaluation = previous; SentenceContextCache.invalidate(); NSTimeZone.default = previousZone }
+        let original = "Pay the cleaning company's invoice before Friday."
+        let cases: [(String, Int)] = [
+            (original, 4),
+            ("Please pay the plumber's invoice before Thursday.", 3),
+            ("Pay my invoice before tomorrow.", 1),
+            ("Pay the library's invoice before November twentieth.", 4),
+            ("Pay the Ahmed family's invoice before Saturday.", 5),
+            ("Pay our overdue invoice before Friday.", 4)
+        ]
+        for disabled in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disabled; SentenceContextCache.invalidate()
+            for (source, days) in cases {
+                let proof = try XCTUnwrap(ClauseScope.completePaymentBeforeDay(in: source), source)
+                XCTAssertTrue(source[proof.deadlineRange].hasPrefix("before "))
+                XCTAssertTrue(source[proof.objectRange].hasSuffix("invoice"))
+                XCTAssertFalse(source[proof.calendarRange].isEmpty)
+                let result = try XCTUnwrap(RuntimeShortSourceCertificate.interpret(source, referenceDate: reference, calendar: calendar), source)
+                XCTAssertEqual(result.items.count, 1); XCTAssertTrue(result.operations.isEmpty)
+                let item = try XCTUnwrap(result.items.first)
+                XCTAssertEqual(item.sourceQuote, source); XCTAssertEqual(item.rawQuote, source)
+                XCTAssertEqual(item.analysisText, source); XCTAssertFalse(item.wasRepaired)
+                XCTAssertEqual(item.sourceUnitIDs, Set(SourceUnitLedger(source).words.indices))
+                XCTAssertEqual(item.organization.itemType, .task); XCTAssertNil(item.organization.personName)
+                XCTAssertEqual(RuntimeShortSourceCertificate.purpose(source), .task)
+                XCTAssertEqual(item.organization.dueDate, calendar.date(byAdding: .day, value: days, to: calendar.startOfDay(for: reference)))
+                XCTAssertEqual(item.organization.temporalIntent.kind, .dateOnly); XCTAssertNil(item.organization.temporalIntent.time)
+                XCTAssertFalse(item.needsReview); XCTAssertFalse(item.organization.needsClarification)
+                XCTAssertEqual(item.organization.state, .resolved)
+                XCTAssertNil(item.organization.reminderDate); XCTAssertEqual(item.organization.reminderDelivery, .none)
+                XCTAssertNil(item.organization.locationIntent); XCTAssertNil(item.organization.recurrenceRule); XCTAssertNil(item.shoppingGroup)
+                XCTAssertTrue(item.suggestedTitle?.contains("before") == true)
+                XCTAssertTrue(item.suggestedTitle?.contains(String(source[proof.objectRange])) == true)
+            }
+            let fallback = await ThoughtExtractionEngine.extract(original, referenceDate: reference,
+                calendar: calendar, permitsOnDeviceIntelligence: false)
+            XCTAssertEqual(fallback.items.count, 1); XCTAssertTrue(fallback.operations.isEmpty)
+            let kept = try XCTUnwrap(fallback.items.first)
+            XCTAssertEqual(kept.rawQuote, original); XCTAssertEqual(kept.sourceQuote, original)
+            XCTAssertEqual(kept.analysisText, "Pay the cleaning company's invoice before Friday")
+            XCTAssertEqual(SourceUnitLedger(kept.analysisText).words.map(\.text), SourceUnitLedger(original).words.map(\.text))
+            XCTAssertEqual(kept.sourceUnitIDs, Set(SourceUnitLedger(original).words.indices))
+            XCTAssertEqual(kept.organization.itemType, .task); XCTAssertNil(kept.organization.personName)
+            XCTAssertFalse(kept.needsReview); XCTAssertNil(kept.organization.reminderDate)
+            XCTAssertEqual(kept.organization.dueDate, calendar.date(byAdding: .day, value: 4, to: calendar.startOfDay(for: reference)))
+            let separate = original + " Call Mom tomorrow."
+            XCTAssertNil(ClauseScope.completePaymentBeforeDay(in: separate))
+            let two = try XCTUnwrap(RuntimeShortSourceCertificate.interpret(separate, referenceDate: reference, calendar: calendar))
+            XCTAssertEqual(two.items.count, 2); XCTAssertEqual(two.items.first?.rawQuote, original)
+            XCTAssertEqual(two.items.last?.rawQuote, "Call Mom tomorrow.")
+            XCTAssertEqual(two.items.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) }, Set(SourceUnitLedger(separate).words.indices))
+            for source in [
+                "Mom said, '" + original + "'",
+                "Do not " + original.lowercased(),
+                "If approved, " + original.lowercased(),
+                "Pay the invoice before Friday or Saturday.",
+                "Pay the invoice before Friday and call Mom.",
+                "Pay the invoice before I call Mom.",
+                "Pay the invoice before Friday at 9 AM.",
+                "Pay the invoice before February thirtieth.",
+                "Pay the invoice before Friday, actually pay the plumber instead.",
+                "Pay the invoice before Friday if approved.",
+                "Pay the invoice before Friday, keep a separate note about the roof."
+            ] {
+                XCTAssertNil(RuntimeShortSourceCertificate.interpret(source, referenceDate: reference, calendar: calendar), source)
+            }
+        }
+    }
+
+    func testCompletePhoneReorderOwnsProductDistributionAndStockWithoutEffects() async throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Toronto")!
+        let reference = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-11-16T14:00:00Z"))
+        let previous = SentenceContext.taggerDisabledForEvaluation, previousZone = NSTimeZone.default
+        NSTimeZone.default = calendar.timeZone
+        defer { SentenceContext.taggerDisabledForEvaluation = previous; SentenceContextCache.invalidate(); NSTimeZone.default = previousZone }
+        let original = "Call Henry Schein and reorder the nitrile gloves, two cases each of medium and large, we're down to the last box."
+        let cases = [
+            (original, "Henry Schein", "two", ["medium", "large"], true),
+            ("Call Ibis Supply and reorder the rubber gloves, three boxes each of small and large, we are down to the last carton.", "Ibis Supply", "three", ["small", "large"], true),
+            ("Please call Dr. Neris and reorder the socks, four packs each of S and L.", "Dr. Neris", "four", ["S", "L"], false),
+            ("Call Mica Supply and reorder the socks, 5 packs each of small and medium, we are down to the last bag.", "Mica Supply", "5", ["small", "medium"], true)
+        ]
+        for disabled in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disabled; SentenceContextCache.invalidate()
+            for (source, recipient, quantity, sizes, stock) in cases {
+                let proof = try XCTUnwrap(ClauseScope.completePhoneReorder(in: source), source)
+                XCTAssertEqual(String(source[proof.recipientRange]), recipient)
+                XCTAssertEqual(String(source[proof.quantityRange]), quantity)
+                XCTAssertEqual(proof.sizeRanges.map { String(source[$0]) }, sizes)
+                XCTAssertEqual(proof.stockContextRange != nil, stock)
+                let result = try XCTUnwrap(RuntimeShortSourceCertificate.interpret(source, referenceDate: reference, calendar: calendar), source)
+                XCTAssertEqual(result.items.count, 1); XCTAssertTrue(result.operations.isEmpty)
+                let item = try XCTUnwrap(result.items.first)
+                XCTAssertEqual(item.sourceQuote, source); XCTAssertEqual(item.rawQuote, source)
+                XCTAssertEqual(item.analysisText, source); XCTAssertFalse(item.wasRepaired)
+                XCTAssertEqual(item.sourceUnitIDs, Set(SourceUnitLedger(source).words.indices))
+                XCTAssertEqual(item.organization.itemType, .personFollowUp); XCTAssertEqual(item.organization.personName, recipient)
+                XCTAssertEqual(RuntimeShortSourceCertificate.purpose(source), .personFollowUp)
+                XCTAssertNil(item.organization.dueDate); XCTAssertEqual(item.organization.temporalIntent, .none)
+                XCTAssertFalse(item.needsReview); XCTAssertFalse(item.organization.needsClarification); XCTAssertEqual(item.organization.state, .resolved)
+                XCTAssertNil(item.organization.reminderDate); XCTAssertEqual(item.organization.reminderDelivery, .none)
+                XCTAssertNil(item.organization.locationIntent); XCTAssertNil(item.organization.recurrenceRule); XCTAssertNil(item.shoppingGroup)
+                let title = try XCTUnwrap(item.suggestedTitle)
+                XCTAssertTrue(title.contains(String(source[proof.productRange])))
+                XCTAssertTrue(title.contains(String(source[proof.quantityRange])))
+                if let context = proof.stockContextRange { XCTAssertTrue(title.contains(String(source[context]))) }
+            }
+            let fallback = await ThoughtExtractionEngine.extract(original, referenceDate: reference,
+                calendar: calendar, permitsOnDeviceIntelligence: false)
+            XCTAssertEqual(fallback.items.count, 1); XCTAssertTrue(fallback.operations.isEmpty)
+            let kept = try XCTUnwrap(fallback.items.first)
+            XCTAssertEqual(kept.rawQuote, original)
+            XCTAssertEqual(SourceUnitLedger(kept.analysisText).words.map(\.text), SourceUnitLedger(original).words.map(\.text))
+            XCTAssertEqual(kept.sourceUnitIDs, Set(SourceUnitLedger(original).words.indices))
+            XCTAssertTrue(kept.organization.itemType.isActionable); XCTAssertEqual(kept.organization.personName, "Henry Schein")
+            XCTAssertFalse(kept.needsReview); XCTAssertNil(kept.organization.dueDate); XCTAssertNil(kept.organization.reminderDate)
+            // A complete source role cannot erase preprocessing or prior
+            // timing/alert/list effects. Exercise the same admission directly.
+            let whole = try XCTUnwrap(RuntimeShortSourceCertificate.interpret(original,
+                referenceDate: reference, calendar: calendar)?.items.first)
+            func baseline(_ organization: OrganizedThought, repaired: Bool = false,
+                          group: String? = nil) -> ThoughtExtractionResult {
+                .init(items: [.init(sourceQuote: whole.sourceQuote, rawQuote: whole.rawQuote,
+                    wasRepaired: repaired, analysisText: whole.analysisText,
+                    suggestedTitle: whole.suggestedTitle, organization: organization,
+                    confidence: whole.confidence, needsReview: whole.needsReview,
+                    sourceUnitIDs: whole.sourceUnitIDs, shoppingGroup: group)], method: .rules)
+            }
+            func withEffect(due: Date? = nil, reminder: Date? = nil,
+                            delivery: ReminderDelivery = .none,
+                            temporal: TemporalIntent = .none) -> OrganizedThought {
+                let value = whole.organization
+                return .init(itemType: value.itemType, category: value.category,
+                    priority: value.priority, personName: value.personName,
+                    dueDate: due, reminderDate: reminder, reminderDelivery: delivery,
+                    recurrenceRule: value.recurrenceRule, needsClarification: value.needsClarification,
+                    temporalIntent: temporal, locationIntent: value.locationIntent, state: value.state)
+            }
+            var edited = whole.organization.temporalIntent
+            edited.isUserEdited = true
+            for prior in [baseline(whole.organization, repaired: true),
+                baseline(withEffect(due: reference)),
+                baseline(withEffect(reminder: reference, delivery: .notification)),
+                baseline(withEffect(temporal: edited))] {
+                XCTAssertNil(RuntimeCompleteLiteralCertificate.interpret(original,
+                    referenceDate: reference, calendar: calendar, rules: prior))
+            }
+            // Generic alignment retains a prior group rather than erasing
+            // it through the new no-effects phone handoff.
+            let grouped = try XCTUnwrap(RuntimeCompleteLiteralCertificate.interpret(original,
+                referenceDate: reference, calendar: calendar,
+                rules: baseline(whole.organization, group: "Groceries")))
+            XCTAssertEqual(grouped.items.first?.shoppingGroup, "Groceries")
+            XCTAssertEqual(grouped.items.first?.rawQuote, original)
+            // Exercise the actual configured runtime path, without injecting
+            // a result: this whole source certificate precedes context/bank/SDK.
+            let configuration = RuntimeExampleConfiguration(
+                libraryURL: URL(fileURLWithPath: "/unused-complete-phone-source-certificate"),
+                allowProposed: false, retrievalEnabled: false)
+            let configured = await RuntimeExampleConfiguration.$testConfiguration.withValue(configuration) {
+                await ThoughtExtractionEngine.extract(original, referenceDate: reference,
+                    calendar: calendar, permitsOnDeviceIntelligence: true,
+                    runtimeContextProvider: {
+                        XCTFail("Complete phone source must return before loading context")
+                        return .empty
+                    })
+            }
+            XCTAssertEqual(configured, fallback)
+            XCTAssertEqual(ThoughtExtractionEngine.extractWithRules(original,
+                referenceDate: reference, calendar: calendar), fallback)
+            let separate = original + " Call Mom tomorrow."
+            XCTAssertNil(ClauseScope.completePhoneReorder(in: separate))
+            let two = try XCTUnwrap(RuntimeShortSourceCertificate.interpret(separate, referenceDate: reference, calendar: calendar))
+            XCTAssertEqual(two.items.count, 2); XCTAssertEqual(two.items.first?.rawQuote, original)
+            XCTAssertEqual(two.items.last?.rawQuote, "Call Mom tomorrow.")
+            XCTAssertEqual(two.items.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) }, Set(SourceUnitLedger(separate).words.indices))
+            for source in [
+                "Mom said, '" + original + "'",
+                "Do not " + original.lowercased(),
+                "If approved, " + original.lowercased(),
+                original.replacingOccurrences(of: "medium and large", with: "m and medium"),
+                original.replacingOccurrences(of: "medium and large", with: "large and L"),
+                original.replacingOccurrences(of: "medium and large", with: "medium and medium"),
+                original.replacingOccurrences(of: "the nitrile gloves", with: "the socks gloves"),
+                original.replacingOccurrences(of: "the nitrile gloves", with: "the shirts gloves"),
+                original.replacingOccurrences(of: "the nitrile gloves", with: "the qavren hues"),
+                original.replacingOccurrences(of: "two cases", with: "zero cases"),
+                original.replacingOccurrences(of: "the last box.", with: "the last box of socks."),
+                original.replacingOccurrences(of: "we're down", with: "he's down"),
+                original.replacingOccurrences(of: "the last box.", with: "the last box, and call Mom."),
+                original.replacingOccurrences(of: "Henry Schein", with: "them"),
+                original + " Actually don't reorder anything."
+            ] {
+                XCTAssertNil(RuntimeShortSourceCertificate.interpret(source, referenceDate: reference, calendar: calendar), source)
+            }
+        }
+    }
+
+    func testCompleteAddressedChoiceQuestionOwnsWholePayloadAndOnlyMatrixTiming() async throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Toronto")!
+        let reference = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-11-16T14:00:00Z"))
+        let previous = SentenceContext.taggerDisabledForEvaluation, previousZone = NSTimeZone.default
+        NSTimeZone.default = calendar.timeZone
+        defer { SentenceContext.taggerDisabledForEvaluation = previous; SentenceContextCache.invalidate(); NSTimeZone.default = previousZone }
+        let original = "Ask Dr. Patel whether she wants the staff lunch on December eleventh or the eighteenth, she gets the final say."
+        let cases: [(String, String, ItemType, Bool)] = [
+            (original, "Dr. Patel", .personFollowUp, false),
+            ("Check with Dr. Chen if he needs the rehearsal on April ninth or the sixteenth, he has the final say.", "Dr. Chen", .task, false),
+            ("Please ask Sam if they want the meeting on Monday or if they need the appointment on Tuesday, they have the final say.", "Sam", .personFollowUp, false),
+            ("Ask Mom tomorrow whether she wants the lunch on Friday or Saturday, she gets the final say.", "Mom", .personFollowUp, true),
+            ("Ask Sam whether he wants the rehearsal on Monday or tomorrow.", "Sam", .personFollowUp, false)
+        ]
+        for disabled in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disabled; SentenceContextCache.invalidate()
+            for (source, recipient, kind, hasMatrixDay) in cases {
+                let proof = try XCTUnwrap(ClauseScope.completeAddressedChoiceQuestion(in: source), source)
+                XCTAssertNil(TemporalCommitment.unsettled(in: source),
+                    "Question alternatives do not unsettle the independently owned asking day: " + source)
+                XCTAssertEqual(String(source[proof.recipientRange]), recipient)
+                XCTAssertEqual(proof.alternativeRanges.count, 2)
+                XCTAssertTrue(proof.alternativeRanges.allSatisfy {
+                    proof.questionRange.lowerBound <= $0.lowerBound && $0.upperBound <= proof.questionRange.upperBound
+                })
+                XCTAssertEqual(proof.matrixTimingRange != nil, hasMatrixDay)
+                XCTAssertEqual(ClauseScope.instructionText(source), String(source[proof.executionRange]).trimmingCharacters(in: .whitespacesAndNewlines))
+                let reading = try XCTUnwrap(RuntimeShortSourceCertificate.interpret(source, referenceDate: reference, calendar: calendar), source)
+                XCTAssertEqual(reading.items.count, 1); XCTAssertTrue(reading.operations.isEmpty)
+                let item = try XCTUnwrap(reading.items.first)
+                XCTAssertEqual(item.sourceQuote, source); XCTAssertEqual(item.rawQuote, source)
+                XCTAssertEqual(item.analysisText, source); XCTAssertFalse(item.wasRepaired)
+                XCTAssertEqual(item.sourceUnitIDs, Set(SourceUnitLedger(source).words.indices))
+                XCTAssertEqual(item.organization.itemType, kind); XCTAssertEqual(item.organization.personName, recipient)
+                XCTAssertEqual(RuntimeShortSourceCertificate.purpose(source), kind)
+                XCTAssertFalse(item.needsReview); XCTAssertFalse(item.organization.needsClarification)
+                XCTAssertEqual(item.organization.state, .resolved)
+                XCTAssertNil(item.organization.reminderDate); XCTAssertEqual(item.organization.reminderDelivery, .none)
+                XCTAssertNil(item.organization.locationIntent); XCTAssertNil(item.organization.recurrenceRule)
+                XCTAssertNil(item.shoppingGroup)
+                XCTAssertTrue(item.suggestedTitle?.contains(String(source[proof.questionRange])) == true)
+                if let context = proof.decisionContextRange {
+                    XCTAssertTrue(item.suggestedTitle?.contains(String(source[context])) == true)
+                }
+                if hasMatrixDay {
+                    XCTAssertEqual(item.organization.dueDate, calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: reference)))
+                    XCTAssertEqual(item.organization.temporalIntent.kind, .dateOnly)
+                    XCTAssertNil(item.organization.temporalIntent.time)
+                } else {
+                    XCTAssertNil(item.organization.dueDate); XCTAssertEqual(item.organization.temporalIntent, .none)
+                }
+            }
+            let unsettledMatrix = "Ask Mom Friday or Saturday whether she wants the lunch on Monday or Tuesday."
+            XCTAssertNil(ClauseScope.completeAddressedChoiceQuestion(in: unsettledMatrix))
+            XCTAssertEqual(TemporalCommitment.unsettled(in: unsettledMatrix), .competingDays,
+                "An unchosen matrix day cannot borrow settled status from its question")
+            let held = ThoughtOrganizer.organize(unsettledMatrix, referenceDate: reference, calendar: calendar)
+            XCTAssertTrue(held.needsClarification); XCTAssertEqual(held.state, .underspecified(.ambiguousTemporalScope))
+            XCTAssertNil(held.dueDate); XCTAssertNil(held.reminderDate)
+            XCTAssertNil(RuntimeShortSourceCertificate.interpret(unsettledMatrix, referenceDate: reference, calendar: calendar))
+
+            // Exercise the actual no-model Engine fallback, including the
+            // comma and dotted title that its generic literal reader declines.
+            let fallback = await ThoughtExtractionEngine.extract(original, referenceDate: reference,
+                calendar: calendar, permitsOnDeviceIntelligence: false)
+            XCTAssertEqual(fallback.items.count, 1); XCTAssertTrue(fallback.operations.isEmpty)
+            let kept = try XCTUnwrap(fallback.items.first)
+            XCTAssertEqual(kept.rawQuote, original); XCTAssertEqual(kept.sourceQuote, original)
+            XCTAssertEqual(kept.sourceUnitIDs, Set(SourceUnitLedger(original).words.indices))
+            XCTAssertEqual(kept.organization.personName, "Dr. Patel")
+            XCTAssertTrue(kept.organization.itemType.isActionable)
+            XCTAssertNil(kept.organization.dueDate); XCTAssertNil(kept.organization.reminderDate)
+            XCTAssertEqual(kept.organization.temporalIntent, .none); XCTAssertFalse(kept.needsReview)
+
+            for source in [
+                "Sam said, '" + original + "'",
+                "Sam asked Dr. Patel whether she wants the staff lunch on December eleventh or the eighteenth.",
+                "Do not ask Dr. Patel whether she wants the staff lunch on December eleventh or the eighteenth.",
+                "If Sam agrees, ask Dr. Patel whether she wants the staff lunch on December eleventh or the eighteenth.",
+                "Ask Sam whether he wants the rehearsal on Monday or Tuesday, and email Mom.",
+                "Ask Sam whether he wants the rehearsal on Monday or Tuesday, keep a separate note about the roof.",
+                "Ask Sam whether he wants the rehearsal on Monday or Tuesday, she gets the final say.",
+                "Ask Sam whether he wants the rehearsal on Monday or",
+                "Ask Sam whether he wants the rehearsal on Monday or the eighteenth.",
+                "Ask Sam whether he wants the call Mom rehearsal on Monday or Tuesday."
+            ] {
+                XCTAssertNil(ClauseScope.completeAddressedChoiceQuestion(in: source), source)
+                XCTAssertNil(RuntimeShortSourceCertificate.interpret(source, referenceDate: reference, calendar: calendar), source)
+            }
+            let unresolved = "Ask them whether they want the rehearsal on Monday or Tuesday."
+            XCTAssertNil(RuntimeShortSourceCertificate.interpret(unresolved, referenceDate: reference, calendar: calendar),
+                "A syntactic question slot cannot invent a resolved contact")
+        }
+    }
 
     func testMultiwordFiniteCauseKeepsSpeakersResultiveCommitmentSeparate() {
         for source in [
@@ -150,33 +683,60 @@ There was a suggestion from the committee to print a booklet for everyone. I con
     }
 
     func testResolvedChoiceSuppliesMatchingCreationObjectWithoutAdoptingReports() {
-        let original = ThoughtExtractionEngine.extractWithRules(Self.displaySetupLongCapture).items
-        let page = original.first { $0.sourceQuote.contains("Add making that page") }
-        XCTAssertEqual(page?.organization.itemType, .task)
-        XCTAssertTrue(page?.analysisText.lowercased().contains("simple web page") == true)
-        XCTAssertTrue(page?.sourceQuote.contains("decided on a simple web page") == true)
-        XCTAssertTrue(page?.sourceQuote.contains("Use the final display captions as the content") == true)
-        XCTAssertFalse(original.contains { $0.sourceQuote.contains("Use the final display captions") && !$0.sourceQuote.contains("Add making that page") })
+        let previousTaggerMode = SentenceContext.taggerDisabledForEvaluation
+        defer {
+            SentenceContext.taggerDisabledForEvaluation = previousTaggerMode
+            SentenceContextCache.invalidate()
+        }
+        for disabled in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disabled
+            SentenceContextCache.invalidate()
+            let original = ThoughtExtractionEngine.extractWithRules(Self.displaySetupLongCapture).items
+            let page = original.first { $0.sourceQuote.contains("Add making that page") }
+            XCTAssertEqual(page?.organization.itemType, .task)
+            XCTAssertTrue(page?.analysisText.lowercased().contains("simple web page") == true)
+            XCTAssertTrue(page?.sourceQuote.contains("decided on a simple web page") == true)
+            XCTAssertTrue(page?.sourceQuote.contains("Use the final display captions as the content") == true)
+            XCTAssertFalse(original.contains { $0.sourceQuote.contains("Use the final display captions") && !$0.sourceQuote.contains("Add making that page") })
 
-        let selected = ThoughtExtractionEngine.extractWithRules("I decided on a small wooden cabinet. Add making that cabinet to my list. Use oak panels as the material.").items
-        let cabinet = selected.first { $0.organization.itemType == .task }
-        XCTAssertEqual(selected.count, 1)
-        XCTAssertTrue(cabinet?.analysisText.lowercased().contains("small wooden cabinet") == true)
-        XCTAssertTrue(cabinet?.sourceQuote.contains("oak panels") == true)
-        XCTAssertNil(cabinet?.organization.dueDate)
-        XCTAssertNil(cabinet?.organization.reminderDate)
-        for source in [
-            "Nora said, 'I decided on a red cabinet.' Add making that cabinet to my list.",
-            "I decided on a small wooden cabinet. Add making that shelf to my list.",
-            "I decided on a cabinet and shelf. Add making that shelf to my list.",
-            "I decided on a small wooden cabinet. Call Nora tomorrow. Add making that cabinet to my list."
-        ] {
-            let rows = ThoughtExtractionEngine.extractWithRules(source).items
-            let action = rows.first { $0.sourceQuote.contains("Add making") }
-            XCTAssertNotNil(action)
-            XCTAssertFalse(action?.analysisText.lowercased().contains("small wooden cabinet") == true, source)
-            XCTAssertFalse(action?.analysisText.lowercased().contains("red cabinet") == true, source)
-            XCTAssertFalse(action?.analysisText.lowercased().contains("cabinet and shelf") == true, source)
+            let selected = ThoughtExtractionEngine.extractWithRules("I decided on a small wooden cabinet. Add making that cabinet to my list. Use oak panels as the material.").items
+            let cabinet = selected.first { $0.organization.itemType == .task }
+            XCTAssertEqual(selected.count, 1)
+            XCTAssertTrue(cabinet?.analysisText.lowercased().contains("small wooden cabinet") == true)
+            XCTAssertTrue(cabinet?.sourceQuote.contains("oak panels") == true)
+            XCTAssertNil(cabinet?.organization.dueDate)
+            XCTAssertNil(cabinet?.organization.reminderDate)
+            let selection = "I decided on a small wooden cabinet. Add making that cabinet to my list. "
+            for source in [
+                selection + "Use the cabinet in the workshop.",
+                selection + "Use oak panels as the material tomorrow.",
+                "Make a cabinet. Use oak panels as the material."
+            ] {
+                let rows = ThoughtExtractionEngine.extractWithRules(source).items
+                XCTAssertTrue(rows.contains { $0.sourceQuote.contains("Use ")
+                    && !$0.sourceQuote.contains("Add making")
+                    && !$0.sourceQuote.contains("Make a cabinet") }, source)
+            }
+            let extra = ThoughtExtractionEngine.extractWithRules(
+                selection + "Use oak panels as the material and call Nora."
+            ).items
+            XCTAssertTrue(extra.contains { $0.organization.itemType.isActionable
+                && $0.organization.personName == "Nora" }, String(reflecting: extra))
+            XCTAssertFalse(extra.contains { $0.sourceQuote.contains("Add making")
+                && $0.sourceQuote.contains("call Nora") }, String(reflecting: extra))
+            for source in [
+                "Nora said, 'I decided on a red cabinet.' Add making that cabinet to my list.",
+                "I decided on a small wooden cabinet. Add making that shelf to my list.",
+                "I decided on a cabinet and shelf. Add making that shelf to my list.",
+                "I decided on a small wooden cabinet. Call Nora tomorrow. Add making that cabinet to my list."
+            ] {
+                let rows = ThoughtExtractionEngine.extractWithRules(source).items
+                let action = rows.first { $0.sourceQuote.contains("Add making") }
+                XCTAssertNotNil(action)
+                XCTAssertFalse(action?.analysisText.lowercased().contains("small wooden cabinet") == true, source)
+                XCTAssertFalse(action?.analysisText.lowercased().contains("red cabinet") == true, source)
+                XCTAssertFalse(action?.analysisText.lowercased().contains("cabinet and shelf") == true, source)
+            }
         }
     }
 
@@ -578,8 +1138,10 @@ And email Jonah the final volunteer rota once Priya has approved it. She has loo
         let ideaThenTask = read("There is an idea for next time, a quiet corner. Keep that as an idea. Book the hall for Friday.")
         XCTAssertEqual(ideaThenTask.count, 2)
         XCTAssertTrue(ideaThenTask.contains { $0.organization.itemType == .idea && $0.organization.temporalIntent.day == nil })
-        XCTAssertTrue(ideaThenTask.contains { $0.organization.itemType.isActionable
-            && $0.organization.temporalIntent.day == CalendarDay(year: 2026, month: 10, day: 9) })
+        XCTAssertTrue(ideaThenTask.contains { $0.organization.itemType == .task
+            && $0.organization.dueDate == nil && $0.organization.reminderDate == nil
+            && $0.organization.temporalIntent.kind == .none
+            && ($0.suggestedTitle ?? $0.analysisText).localizedCaseInsensitiveContains("for Friday") })
         // A pronoun restatement supplies its day to the action it repeats.
         let restated = read("Call the plumber about the leak. Do that tomorrow.")
         XCTAssertEqual(restated.count, 1)
@@ -767,32 +1329,50 @@ And email Jonah the final volunteer rota once Priya has approved it. She has loo
     }
 
     func testAnaphoricCommitmentDeclarationDoesNotInventAnotherTask() {
-        let metadata = "That is a separate commitment from me, and it should become a task."
-        XCTAssertEqual(ActionabilityReader.read(metadata), .knowledge)
-        let task = "I will take the extension lead myself."
-        let items = ThoughtExtractionEngine.extractWithRules(
-            task + " " + metadata + " I have not specified a day or reminder time."
-        ).items
-        XCTAssertEqual(items.count, 1, items.map(\.analysisText).joined(separator: " | "))
-        XCTAssertTrue(items.first?.organization.itemType.isActionable == true)
-        XCTAssertFalse(items.first?.needsReview == true)
-        XCTAssertNil(items.first?.organization.dueDate)
-        XCTAssertTrue(items.first?.sourceQuote.contains(metadata) == true)
-        for source in [
-            metadata,
-            "Mara said to take the torch. " + metadata,
-            task + " I will return the keys. " + metadata
-        ] {
-            XCTAssertTrue(ThoughtExtractionEngine.extractWithRules(source).items.contains { $0.needsReview }, source)
+        let previousTaggerMode = SentenceContext.taggerDisabledForEvaluation
+        defer {
+            SentenceContext.taggerDisabledForEvaluation = previousTaggerMode
+            SentenceContextCache.invalidate()
         }
-        let independent = ThoughtExtractionEngine.extractWithRules(
-            task + " " + metadata + " Buy batteries. The door code is 3812."
-        ).items
-        XCTAssertTrue(independent.contains { $0.organization.itemType.isActionable && $0.analysisText.contains("batteries") })
-        XCTAssertTrue(independent.contains { $0.analysisText.contains("3812") && !$0.analysisText.contains("extension lead") })
-        XCTAssertFalse(ActionabilityReader.isAnaphoricTaskDeclaration(
-            "That is a separate commitment from me: I will bring a ladder."
-        ))
+        // Exercise the system's actual tags and the explicit missing-assets
+        // path without allowing a cached reading to stand in for either.
+        for disablesTagger in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disablesTagger
+            SentenceContextCache.invalidate()
+            let metadata = "That is a separate commitment from me, and it should become a task."
+            XCTAssertEqual(ActionabilityReader.read(metadata), .knowledge)
+            XCTAssertEqual(RuleBasedThoughtExtractor.splitIndependentConjuncts(metadata), [metadata],
+                "A complete anaphoric declaration cannot manufacture an independent task at its coordinator")
+            let task = "I will take the extension lead myself."
+            let items = ThoughtExtractionEngine.extractWithRules(
+                task + " " + metadata + " I have not specified a day or reminder time."
+            ).items
+            XCTAssertEqual(items.count, 1, items.map(\.analysisText).joined(separator: " | "))
+            XCTAssertTrue(items.first?.organization.itemType.isActionable == true)
+            XCTAssertFalse(items.first?.needsReview == true)
+            XCTAssertNil(items.first?.organization.dueDate)
+            XCTAssertTrue(items.first?.sourceQuote.contains(metadata) == true)
+            for source in [
+                metadata,
+                "Mara said to take the torch. " + metadata,
+                task + " I will return the keys. " + metadata
+            ] {
+                XCTAssertTrue(ThoughtExtractionEngine.extractWithRules(source).items.contains { $0.needsReview }, source)
+            }
+            let independent = ThoughtExtractionEngine.extractWithRules(
+                task + " " + metadata + " Buy batteries. The door code is 3812."
+            ).items
+            XCTAssertTrue(independent.contains { $0.organization.itemType.isActionable && $0.analysisText.contains("batteries") })
+            XCTAssertTrue(independent.contains { $0.analysisText.contains("3812") && !$0.analysisText.contains("extension lead") })
+            XCTAssertFalse(ActionabilityReader.isAnaphoricTaskDeclaration(
+                "That is a separate commitment from me: I will bring a ladder."
+            ))
+            let independentCommitment = "That is a separate commitment from me, and I will print the form."
+            XCTAssertFalse(ActionabilityReader.isAnaphoricTaskDeclaration(independentCommitment))
+            XCTAssertEqual(RuleBasedThoughtExtractor.splitClauses(independentCommitment),
+                ["That is a separate commitment from me", "I will print the form"],
+                "An explicit independent commitment must still split from the preceding declaration")
+        }
     }
 
     func testDocumentReportedAgreementDoesNotAdoptItsQuotedSpeaker() {
@@ -1243,6 +1823,54 @@ And email Jonah the final volunteer rota once Priya has approved it. She has loo
             "Mara said, 'I agree: I will bring the notebook.'"
         ).items
         XCTAssertTrue(attributedAgreement.allSatisfy { !$0.organization.itemType.isActionable })
+    }
+
+    func testBareExplicitAdoptionRequiresOwnCommandAndKeepsIndependentRemainder() throws {
+        let previous = SentenceContext.taggerDisabledForEvaluation
+        defer {
+            SentenceContext.taggerDisabledForEvaluation = previous
+            SentenceContextCache.invalidate()
+        }
+        for disabled in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disabled
+            SentenceContextCache.invalidate()
+            for source in [
+                "Pat said to photograph the resin flange. I agree: photograph the resin flange.",
+                "Pat said, 'Photograph the resin flange tomorrow.' I agree: photograph it.",
+                "Pat said to measure the cork disk. We commit: please measure the cork disk."
+            ] {
+                let proof = try XCTUnwrap(ClauseScope.explicitAdoption(in: source), source)
+                XCTAssertEqual(proof.sourceQuote, source)
+                XCTAssertTrue(proof.remainder.isEmpty)
+                XCTAssertFalse(proof.action.lowercased().hasPrefix("i photograph"))
+                let items = ThoughtExtractionEngine.extractWithRules(source).items
+                XCTAssertEqual(items.count, 1, source)
+                XCTAssertTrue(items.first?.organization.itemType.isActionable == true, source)
+                XCTAssertFalse(items.first?.needsReview ?? true, source)
+                XCTAssertEqual(items.first?.rawQuote, source)
+                XCTAssertNil(items.first?.organization.dueDate, "A reported tomorrow cannot date the adopted command")
+            }
+            let source = "Pat said to photograph the resin flange. I agree: photograph the resin flange. Call Noor tomorrow. The cabinet has a blue door."
+            let proof = try XCTUnwrap(ClauseScope.explicitAdoption(in: source))
+            XCTAssertEqual(proof.remainder.trimmingCharacters(in: .whitespacesAndNewlines), "Call Noor tomorrow. The cabinet has a blue door.")
+            let rows = ThoughtExtractionEngine.extractWithRules(source).items
+            XCTAssertEqual(rows.count, 3)
+            XCTAssertTrue(rows.contains { $0.organization.itemType.isActionable && $0.analysisText.contains("Call Noor") })
+            XCTAssertTrue(rows.contains { $0.organization.itemType == .note && $0.sourceQuote.contains("blue door") && !$0.sourceQuote.contains("photograph") })
+            for opposed in [
+                "Pat said to photograph the flange. I agree: the photograph is clear.",
+                "Pat said to photograph the flange. I agree: I photograph it every week.",
+                "Pat said to photograph the flange. I agree: if it is safe photograph the flange.",
+                "Pat said to photograph the flange. I do not agree: photograph the flange.",
+                "Pat said to photograph the flange. Nora agrees: photograph the flange.",
+                "Pat said, 'Bring the flange. I agree: photograph the flange.'",
+                "Pat said to photograph the flange and the disk. I agree: photograph it.",
+                "'Photograph the flange.' I agree: photograph it.",
+                "Pat said to photograph the flange. The cabinet is locked. I agree: photograph the flange."
+            ] {
+                XCTAssertNil(ClauseScope.explicitAdoption(in: opposed), opposed)
+            }
+        }
     }
 
     func testOneReferenceNoteOwnsItsInstructionStepsAndWarningButNotLaterErrand() {
@@ -2346,19 +2974,30 @@ And email Jonah the final volunteer rota once Priya has approved it. She has loo
     }
 
     func testSectionLeadsOwnTheFollowingAction() {
-        for source in [
-            "For action, schedule the pickup tomorrow",
-            "First, before I forget, call the contractor",
-            "Right at the end: bring the spare cable"
-        ] {
-            let items = ThoughtExtractionEngine.extractWithRules(source).items
-            XCTAssertEqual(items.count, 1, source)
-            XCTAssertTrue(items[0].organization.itemType.isActionable, source)
-            XCTAssertEqual(items[0].rawQuote, source, source)
+        let previousTaggerMode = SentenceContext.taggerDisabledForEvaluation
+        defer {
+            SentenceContext.taggerDisabledForEvaluation = previousTaggerMode
+            SentenceContextCache.invalidate()
         }
-        XCTAssertEqual(ThoughtExtractionEngine.extractWithRules(
-            "The first action film club met yesterday"
-        ).items.count, 1)
+        for disablesTagger in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disablesTagger
+            SentenceContextCache.invalidate()
+            for source in [
+                "For action, schedule the pickup tomorrow",
+                "First, before I forget, call the contractor",
+                "Right at the end: bring the spare cable"
+            ] {
+                let items = ThoughtExtractionEngine.extractWithRules(source).items
+                XCTAssertEqual(items.count, 1, source)
+                XCTAssertTrue(items[0].organization.itemType.isActionable, source)
+                XCTAssertEqual(items[0].rawQuote, source, source)
+            }
+            let ordinaryFact = ThoughtExtractionEngine.extractWithRules(
+                "The first action film club met yesterday"
+            ).items
+            XCTAssertEqual(ordinaryFact.count, 1)
+            XCTAssertTrue(ordinaryFact.allSatisfy { !$0.organization.itemType.isActionable })
+        }
     }
 
     func testExplicitDiscourseFramesRouteTheirContentBeforeTheFrame() {
@@ -2969,11 +3608,16 @@ And email Jonah the final volunteer rota once Priya has approved it. She has loo
             "Clean the stain around the bathroom tap. Not the tap itself, the tiles are blue."
         ).items
         XCTAssertTrue(finiteFact.contains { $0.organization.itemType == .note && $0.sourceQuote.contains("tiles are blue") })
-        let adoption = ThoughtExtractionEngine.extractWithRules(
-            "Pat said photograph the damage beside the garage door. I agree: photograph the damage beside the garage door. Not the door itself, the brickwork beside it where the crack runs."
-        ).items
-        XCTAssertEqual(adoption.filter { $0.organization.itemType.isActionable }.count, 1)
-        XCTAssertTrue(adoption.contains { $0.organization.itemType.isActionable && $0.sourceQuote.contains("brickwork") })
+        for report in ["Pat said photograph the damage beside the garage door.",
+                       "Pat said, 'Photograph the damage beside the garage door.'"] {
+            for commitment in ["I agree: photograph the damage beside the garage door.",
+                               "I agree: I will photograph the damage beside the garage door."] {
+                let source = report + " " + commitment + " Not the door itself, the brickwork beside it where the crack runs."
+                let adoption = ThoughtExtractionEngine.extractWithRules(source).items
+                XCTAssertEqual(adoption.filter { $0.organization.itemType.isActionable }.count, 1, source)
+                XCTAssertTrue(adoption.contains { $0.organization.itemType.isActionable && $0.sourceQuote.contains("brickwork") }, source)
+            }
+        }
         let reported = ThoughtExtractionEngine.extractWithRules(
             "Pat said clean the stain around the bathroom tap. Not the tap itself, the tiles around it where the water collects."
         ).items
@@ -3147,26 +3791,38 @@ And email Jonah the final volunteer rota once Priya has approved it. She has loo
     }
 
     func testOutputStateAndRetentionOnlyDescribeExistingIntentions() {
-        let complete = ThoughtExtractionEngine.extractWithRules(
-            "Print the form. Remember the cabinet is locked. Call Amy. The first task still has no date, and the note above is still a Memory. Do not lose this last obligation.").items
-        XCTAssertEqual(complete.count, 3, complete.map(\.sourceQuote).joined(separator: " | "))
-        XCTAssertTrue(complete.allSatisfy { !$0.needsReview })
-        XCTAssertTrue(complete.contains { $0.organization.itemType.isActionable && $0.sourceQuote.contains("Print") && $0.sourceQuote.contains("first task still") })
-        XCTAssertTrue(complete.contains { $0.organization.itemType.isActionable && $0.sourceQuote.contains("Call Amy") && $0.sourceQuote.contains("last obligation") })
-        let conflict = ThoughtExtractionEngine.extractWithRules(
-            "Print the form tomorrow. The first task still has no date.").items
-        XCTAssertTrue(conflict.contains { $0.needsReview })
-        XCTAssertTrue(conflict.contains { $0.organization.dueDate != nil })
-        let physical = ThoughtExtractionEngine.extractWithRules("Do not lose the passport.").items
-        XCTAssertTrue(physical.contains { $0.sourceQuote.contains("passport") })
-        let independent = ThoughtExtractionEngine.extractWithRules(
-            "Print the form. Do not lose this last task and call Amy.").items
-        XCTAssertTrue(independent.contains { $0.organization.itemType.isActionable && $0.sourceQuote.lowercased().contains("call amy") })
-        let missing = ThoughtExtractionEngine.extractWithRules("Do not omit the final task.").items
-        XCTAssertTrue(missing.contains { $0.needsReview })
-        let ambiguousMemory = ThoughtExtractionEngine.extractWithRules(
-            "Print the form. Remember the cabinet is locked. Remember the gate code is 3421. The first task still has no date, and the note above is still a Memory.").items
-        XCTAssertTrue(ambiguousMemory.contains { $0.needsReview })
+        let previousTaggerMode = SentenceContext.taggerDisabledForEvaluation
+        defer {
+            SentenceContext.taggerDisabledForEvaluation = previousTaggerMode
+            SentenceContextCache.invalidate()
+        }
+        for disablesTagger in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disablesTagger
+            SentenceContextCache.invalidate()
+            let metadata = "The first task still has no date, and the note above is still a Memory."
+            XCTAssertEqual(RuleBasedThoughtExtractor.splitIndependentConjuncts(metadata), [metadata],
+                "A complete output-state reference must reach ownership before generic coordination")
+            let complete = ThoughtExtractionEngine.extractWithRules(
+                "Print the form. Remember the cabinet is locked. Call Amy. The first task still has no date, and the note above is still a Memory. Do not lose this last obligation.").items
+            XCTAssertEqual(complete.count, 3, complete.map(\.sourceQuote).joined(separator: " | "))
+            XCTAssertTrue(complete.allSatisfy { !$0.needsReview })
+            XCTAssertTrue(complete.contains { $0.organization.itemType.isActionable && $0.sourceQuote.contains("Print") && $0.sourceQuote.contains("first task still") })
+            XCTAssertTrue(complete.contains { $0.organization.itemType.isActionable && $0.sourceQuote.contains("Call Amy") && $0.sourceQuote.contains("last obligation") })
+            let conflict = ThoughtExtractionEngine.extractWithRules(
+                "Print the form tomorrow. The first task still has no date.").items
+            XCTAssertTrue(conflict.contains { $0.needsReview })
+            XCTAssertTrue(conflict.contains { $0.organization.dueDate != nil })
+            let physical = ThoughtExtractionEngine.extractWithRules("Do not lose the passport.").items
+            XCTAssertTrue(physical.contains { $0.sourceQuote.contains("passport") })
+            let independent = ThoughtExtractionEngine.extractWithRules(
+                "Print the form. Do not lose this last task and call Amy.").items
+            XCTAssertTrue(independent.contains { $0.organization.itemType.isActionable && $0.sourceQuote.lowercased().contains("call amy") })
+            let missing = ThoughtExtractionEngine.extractWithRules("Do not omit the final task.").items
+            XCTAssertTrue(missing.contains { $0.needsReview })
+            let ambiguousMemory = ThoughtExtractionEngine.extractWithRules(
+                "Print the form. Remember the cabinet is locked. Remember the gate code is 3421. The first task still has no date, and the note above is still a Memory.").items
+            XCTAssertTrue(ambiguousMemory.contains { $0.needsReview })
+        }
     }
 
     func testOrdinalDetailsAndExplanationsRequireEstablishedOwner() {
@@ -5708,6 +6364,44 @@ actually i already replaced the mug this morning take that purchase out of what 
         XCTAssertNil(message.items.first?.organization.reminderDate)
     }
 
+    func testCommunicationObjectConditionKeepsFiniteMessagesDistinctWithAndWithoutTags() {
+        let previousTaggerMode = SentenceContext.taggerDisabledForEvaluation
+        defer {
+            SentenceContext.taggerDisabledForEvaluation = previousTaggerMode
+            SentenceContextCache.invalidate()
+        }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Toronto")!
+        let reference = calendar.date(from: DateComponents(year: 2026, month: 8, day: 3, hour: 10))!
+        let cases: [(String, ClauseScope.SpeechAct)] = [
+            ("Email June the final volunteer rota once Priya has approved it.", .direct),
+            ("Email June that Priya has approved the rota on Tuesday.", .communicating),
+            ("Email June the printer has failed after Priya replaced it on Tuesday.", .communicating)
+        ]
+        for disablesTagger in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disablesTagger
+            SentenceContextCache.invalidate()
+            for (source, expectedAct) in cases {
+                let scope = ClauseScope.read(source)
+                XCTAssertEqual(scope.act, expectedAct, source)
+                XCTAssertEqual(scope.recipient, "June", source)
+                XCTAssertEqual(scope.recipientRange.map { String(source[$0]) }, "June", source)
+                XCTAssertEqual(scope.complementRange == nil, expectedAct == .direct, source)
+                let result = ThoughtExtractionEngine.extractWithRules(source,
+                    referenceDate: reference, calendar: calendar)
+                XCTAssertTrue(result.operations.isEmpty, source)
+                XCTAssertEqual(result.items.count, 1, source)
+                let item = result.items.first
+                XCTAssertEqual(item?.organization.personName, "June", source)
+                XCTAssertFalse(item?.needsReview ?? true, source)
+                XCTAssertEqual(item?.sourceQuote, source, source)
+                XCTAssertNil(item?.organization.dueDate,
+                    "The approval condition and historical message date cannot schedule sending: " + source)
+                XCTAssertNil(item?.organization.reminderDate, source)
+            }
+        }
+    }
+
     func testDeniedComplementOccurrencesSurviveMissingMatrixPunctuation() {
         let source = "i am sorting out the little things for the studio not planning a whole new project put replacing the cracked mug on my list i only need one replacement and i want the wide handle because the small handles are awkward to hold\n\nthen there is the printer i need to check whether it takes the cartridge ending in eighty two or eighty three before ordering anything looking up the cartridge is the task buying both would be a mistake\n\nsend jules the photograph of the wall measurements as well it is the picture with the tape measure still visible so the numbers can be checked rather than trusted from my memory\n\nactually i already replaced the mug this morning take that purchase out of what i just said keep the printer check and the message to jules i am correcting this recording not asking you to search for and delete any older mug reminders"
         let ranges = ClauseScope.deniedRequestComplementRanges(in: source)
@@ -6174,4 +6868,1845 @@ actually i already replaced the mug this morning take that purchase out of what 
         XCTAssertTrue(IntentConsolidator.isSubstantive("the storage code is 4821"))
     }
 
+    func testCoordinatedSendTargetsShareOneSpokenObject() throws {
+        let previous = SentenceContext.taggerDisabledForEvaluation
+        defer {
+            SentenceContext.taggerDisabledForEvaluation = previous
+            SentenceContextCache.invalidate()
+        }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Toronto")!
+        let anchor = calendar.date(from: DateComponents(year: 2026, month: 11, day: 16, hour: 9))!
+        let due = calendar.date(from: DateComponents(year: 2026, month: 11, day: 17, hour: 20))!
+        let original = "For the marketing group project, send Jordan and Aisha my slides on competitor pricing by Tuesday night so they can merge everything."
+        let opaque = "send velan and sorin my sketches by Tuesday night so they can merge everything."
+        for disabled in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disabled
+            SentenceContextCache.invalidate()
+            for (source, targets) in [(original, "Jordan and Aisha"), (opaque, "velan and sorin")] {
+                XCTAssertEqual(RuleBasedThoughtExtractor.splitIndependentConjuncts(source), [source])
+                let result = ThoughtExtractionEngine.extractWithRules(source,
+                    referenceDate: anchor, calendar: calendar)
+                XCTAssertEqual(result.items.count, 1, source)
+                let row = try XCTUnwrap(result.items.first, source)
+                XCTAssertEqual(row.organization.itemType, .task, source)
+                XCTAssertEqual(row.organization.state, .resolved, source)
+                XCTAssertFalse(row.needsReview, source)
+                XCTAssertFalse(row.organization.needsClarification, source)
+                XCTAssertEqual(row.organization.dueDate, due, source)
+                XCTAssertEqual(row.organization.temporalIntent.kind, .exactDateTime, source)
+                XCTAssertNil(row.organization.reminderDate, source)
+                XCTAssertNil(row.organization.locationIntent, source)
+                XCTAssertNil(row.organization.recurrenceRule, source)
+                XCTAssertNil(row.shoppingGroup, source)
+                XCTAssertNotEqual(row.organization.personName, targets, "No composite contact identity")
+                XCTAssertTrue(row.analysisText.contains(targets), source)
+                XCTAssertTrue(row.analysisText.contains("so they can merge everything"), source)
+                XCTAssertTrue(row.sourceQuote.contains(targets), source)
+                let literal = try XCTUnwrap(source.range(of: row.sourceQuote), source)
+                let ledger = SourceUnitLedger(source)
+                XCTAssertEqual(ledger.ids(in: literal), Set(ledger.words.indices), source)
+                XCTAssertEqual(row.sourceUnitIDs, ledger.ids(in: literal), source)
+                XCTAssertEqual(SourceUnitLedger(row.rawQuote).words.map(\.text), ledger.words.map(\.text), source)
+                XCTAssertTrue(result.operations.isEmpty, source)
+            }
+            let originalRow = try XCTUnwrap(ThoughtExtractionEngine.extractWithRules(original,
+                referenceDate: anchor, calendar: calendar).items.first)
+            XCTAssertEqual(originalRow.sourceQuote.lowercased()
+                .components(separatedBy: "for the marketing group project").count - 1, 1)
+            XCTAssertEqual((originalRow.suggestedTitle ?? originalRow.analysisText).lowercased()
+                .components(separatedBy: "for the marketing group project").count - 1, 1)
+            let shipment = "Send Jordan and Aisha a parcel tomorrow."
+            let shipped = ThoughtExtractionEngine.extractWithRules(shipment,
+                referenceDate: anchor, calendar: calendar)
+            let single = try XCTUnwrap(ThoughtExtractionEngine.extractWithRules(
+                "Send Jordan a parcel tomorrow.", referenceDate: anchor, calendar: calendar).items.first)
+            XCTAssertEqual(shipped.items.count, 1)
+            let parcel = try XCTUnwrap(shipped.items.first)
+            XCTAssertEqual(parcel.organization.itemType, .task)
+            XCTAssertEqual(parcel.organization.personName, single.organization.personName)
+            XCTAssertEqual(parcel.organization.dueDate, single.organization.dueDate)
+            XCTAssertEqual(parcel.organization.temporalIntent.kind, single.organization.temporalIntent.kind)
+            XCTAssertNil(parcel.organization.reminderDate)
+            XCTAssertNil(parcel.organization.locationIntent)
+            XCTAssertNil(parcel.organization.recurrenceRule)
+            XCTAssertNil(parcel.shoppingGroup)
+            XCTAssertEqual(ClauseScope.read(shipment).act, .direct)
+            XCTAssertNil(ClauseScope.read(shipment).complementRange)
+            XCTAssertEqual(ClauseScope.instructionText(shipment), shipment)
+            for source in ["Call Alex and email Casey.",
+                           "Send Jordan and Aisha my slides and email Casey my notes.",
+                           "Send Jordan my slides and email Aisha my notes.",
+                           "Send Jordan my slides and Aisha my notes."] {
+                XCTAssertEqual(RuleBasedThoughtExtractor.splitIndependentConjuncts(source).count, 2, source)
+                XCTAssertEqual(ThoughtExtractionEngine.extractWithRules(source,
+                    referenceDate: anchor, calendar: calendar).items.count, 2, source)
+            }
+            for source in ["Send Jordan and then Aisha my slides.",
+                           "Send Jordan and drop off my slides.",
+                           "Send Jordan and pick up my slides.",
+                           "Send Jordan, and Aisha my slides.",
+                           "Send Jordan and I will bring my slides.",
+                           "Send Jordan and Aisha is bringing her slides.",
+                           "Send Jordan and Aisha tomorrow."] {
+                let boundary = try XCTUnwrap(source.range(
+                    of: #"(?i)\s+and\s+(?:(?:then|also)\s+)?"#, options: .regularExpression))
+                XCTAssertFalse(RuleBasedThoughtExtractor.isSendRecipientCoordinator(in: source,
+                    boundary: boundary, head: source.startIndex..<boundary.lowerBound,
+                    right: boundary.upperBound..<source.endIndex, reading: ClauseScope.read(source)), source)
+                // The initial native run kept and-then, comma-and and the
+                // no-object-tomorrow case as one through other existing paths.
+                // This local guard promises only to decline those shapes.
+                if !["Send Jordan and then Aisha my slides.", "Send Jordan, and Aisha my slides.",
+                     "Send Jordan and Aisha tomorrow."].contains(source) {
+                    XCTAssertEqual(RuleBasedThoughtExtractor.splitIndependentConjuncts(source).count, 2, source)
+                }
+            }
+            for source in ["Sarah said, \"Send Jordan and Aisha my slides by Tuesday.\"",
+                           "The note reads, \"Send Jordan and Aisha my slides by Tuesday.\"",
+                           "I will not send Jordan and Aisha my slides by Tuesday.",
+                           "We won't send Jordan and Aisha my slides by Tuesday.",
+                           "If it rains, send Jordan and Aisha my slides by Tuesday."] {
+                let held = ThoughtExtractionEngine.extractWithRules(source,
+                    referenceDate: anchor, calendar: calendar)
+                XCTAssertFalse(held.items.contains { $0.organization.itemType.isActionable && !$0.needsReview }, source)
+                XCTAssertTrue(held.items.allSatisfy { $0.organization.reminderDate == nil }, source)
+                XCTAssertTrue(held.operations.isEmpty, source)
+            }
+            let denied = "I will not send Jordan and Aisha my slides by Tuesday."
+            let deniedBoundary = try XCTUnwrap(denied.range(of: " and "))
+            XCTAssertFalse(RuleBasedThoughtExtractor.isSendRecipientCoordinator(in: denied,
+                boundary: deniedBoundary, head: denied.startIndex..<deniedBoundary.lowerBound,
+                right: deniedBoundary.upperBound..<denied.endIndex, reading: ClauseScope.read(denied)))
+            XCTAssertTrue(ThoughtOrganizer.isNegatedOwnCommitment(denied.lowercased()))
+            XCTAssertEqual(ClauseScope.read(denied).act, .direct)
+            XCTAssertFalse(ClauseScope.read(denied).deniesComplement)
+            XCTAssertEqual(RuleBasedThoughtExtractor.splitIndependentConjuncts(denied), [denied])
+            let deniedPlural = "We won't send Jordan and Aisha my slides by Tuesday."
+            XCTAssertEqual(RuleBasedThoughtExtractor.splitIndependentConjuncts(deniedPlural), [deniedPlural])
+            let later = "I will not send Jordan and Aisha my slides, and email Casey my notes on Friday."
+            let laterRows = ThoughtExtractionEngine.extractWithRules(later,
+                referenceDate: anchor, calendar: calendar).items
+            XCTAssertEqual(laterRows.count, 2, later)
+            XCTAssertTrue(laterRows.contains { $0.organization.itemType.isActionable
+                && $0.analysisText.localizedCaseInsensitiveContains("email Casey") }, later)
+            XCTAssertFalse(laterRows.contains { $0.organization.itemType.isActionable
+                && $0.analysisText.contains("Aisha") }, later)
+            let deferred = "I will not send Jordan and Aisha my slides until I hear from them."
+            XCTAssertFalse(ThoughtOrganizer.isNegatedOwnCommitment(deferred.lowercased()))
+            let question = "Call Sam and ask if the office is open, and pay rent on Friday."
+            let questionRows = ThoughtExtractionEngine.extractWithRules(question,
+                referenceDate: anchor, calendar: calendar).items
+            XCTAssertEqual(questionRows.count, 2, question)
+            XCTAssertEqual(questionRows.filter { $0.organization.personName == "Sam" }.count, 1)
+            XCTAssertEqual(questionRows.filter { $0.analysisText.localizedCaseInsensitiveContains("pay rent") }.count, 1)
+            for source in ["While I am at home I should call Sam and ask if the office is open, and pay rent on Friday.",
+                           "Call Sam and ask if the office is open and pay rent on Friday.",
+                           "Call Sam and ask if the office is open, and tell him I'm late.",
+                           "Call Sam and ask if the office is open, and he can pay rent.",
+                           "Call Sam and ask if the office is open, and will pay rent.",
+                           "Call Sam and ask if the office is open, and open.",
+                           "Call Sam and ask if the office is open, and open on Friday.",
+                           "Call Sam and ask if the office is open, and pay rent if it rains."] {
+                let boundary = try XCTUnwrap(source.range(of: " and ", options: .backwards))
+                XCTAssertFalse(ClauseScope.hasCoordinatedQuestionCommandBoundary(boundary,
+                    rightConjunct: boundary.upperBound..<source.endIndex,
+                    in: SentenceContextCache.context(for: source), reading: ClauseScope.read(source)), source)
+            }
+            for source in ["Jordan and Aisha have my slides.", "Pick up Jordan and Aisha from school."] {
+                let rows = ThoughtExtractionEngine.extractWithRules(source,
+                    referenceDate: anchor, calendar: calendar).items
+                XCTAssertFalse(rows.contains { $0.organization.itemType == .shopping }, source)
+                XCTAssertTrue(rows.allSatisfy { $0.organization.reminderDate == nil
+                    && $0.organization.locationIntent == nil && $0.shoppingGroup == nil }, source)
+                XCTAssertNotEqual(ClauseScope.read(source).act, .communicating, source)
+            }
+        }
+    }
+
+
+    func testDeterminedObjectCoordinatorKeepsSharedDirectionalComplement() throws {
+        let previous = SentenceContext.taggerDisabledForEvaluation
+        defer {
+            SentenceContext.taggerDisabledForEvaluation = previous
+            SentenceContextCache.invalidate()
+        }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Toronto")!
+        let anchor = calendar.date(from: DateComponents(year: 2026, month: 11, day: 16, hour: 9))!
+        let positive: [(String, [String])] = [
+            ("Move the towels and the hamper into the hall closet.", ["the towels", "the hamper", "into the hall closet"]),
+            ("Put the clean towels and the laundry hamper into the hall closet.", ["the clean towels", "the laundry hamper", "into the hall closet"]),
+            ("Please carry my winter coats and the spare blankets onto the top shelf.", ["my winter coats", "the spare blankets", "onto the top shelf"]),
+            ("Transfer the velan and the sorin into the quara chamber.", ["the velan", "the sorin", "into the quara chamber"]),
+        ]
+        for disabled in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disabled
+            SentenceContextCache.invalidate()
+            func groupingProof(_ source: String) throws -> Bool {
+                let boundary = try XCTUnwrap(source.range(of: " and "))
+                return RuleBasedThoughtExtractor.isCoordinatedObjectLocativeBoundary(in: source,
+                    boundary: boundary, head: source.startIndex..<boundary.lowerBound,
+                    right: boundary.upperBound..<source.endIndex, reading: ClauseScope.read(source))
+            }
+            for (source, arguments) in positive {
+                XCTAssertTrue(try groupingProof(source), source)
+                XCTAssertEqual(RuleBasedThoughtExtractor.splitIndependentConjuncts(source), [source])
+                let result = ThoughtExtractionEngine.extractWithRules(source, referenceDate: anchor, calendar: calendar)
+                XCTAssertEqual(result.items.count, 1, source)
+                let row = try XCTUnwrap(result.items.first, source)
+                XCTAssertEqual(row.organization.itemType, .task, source)
+                XCTAssertEqual(row.organization.state, .resolved, source)
+                XCTAssertFalse(row.needsReview, source)
+                XCTAssertFalse(row.organization.needsClarification, source)
+                for argument in arguments {
+                    XCTAssertTrue(row.sourceQuote.localizedCaseInsensitiveContains(argument), source)
+                    XCTAssertTrue(row.analysisText.localizedCaseInsensitiveContains(argument), source)
+                    XCTAssertTrue((row.suggestedTitle ?? row.analysisText).localizedCaseInsensitiveContains(argument), source)
+                }
+                let ledger = SourceUnitLedger(source)
+                XCTAssertEqual(row.sourceUnitIDs, Set(ledger.words.indices), source)
+                XCTAssertEqual(SourceUnitLedger(row.rawQuote).words.map(\.text), ledger.words.map(\.text), source)
+                XCTAssertNil(row.organization.personName, source)
+                XCTAssertNil(row.organization.dueDate, source)
+                XCTAssertNil(row.organization.reminderDate, source)
+                XCTAssertEqual(row.organization.temporalIntent.kind, .none, source)
+                XCTAssertNil(row.organization.locationIntent, source)
+                XCTAssertNil(row.organization.recurrenceRule, source)
+                XCTAssertNil(row.shoppingGroup, source)
+                XCTAssertTrue(result.operations.isEmpty, source)
+            }
+            let later = "Put the clean towels and the laundry hamper into the hall closet and call the plumber."
+            let parts = RuleBasedThoughtExtractor.splitIndependentConjuncts(later)
+            XCTAssertEqual(parts.count, 2, later)
+            XCTAssertTrue(parts[0].contains("the clean towels and the laundry hamper into the hall closet"))
+            XCTAssertTrue(parts[1].localizedCaseInsensitiveContains("call the plumber"))
+            let result = ThoughtExtractionEngine.extractWithRules(later, referenceDate: anchor, calendar: calendar)
+            XCTAssertEqual(result.items.count, 2, later)
+            XCTAssertTrue(result.items.allSatisfy { $0.organization.itemType == .task && !$0.needsReview })
+            let grouped = try XCTUnwrap(result.items.first { $0.analysisText.localizedCaseInsensitiveContains("put the clean towels") })
+            let literal = try XCTUnwrap(later.range(of: grouped.sourceQuote))
+            XCTAssertEqual(grouped.sourceUnitIDs, SourceUnitLedger(later).ids(in: literal))
+            XCTAssertTrue(grouped.sourceQuote.contains(" and the laundry hamper into the hall closet"))
+            XCTAssertTrue(result.items.contains { $0.analysisText.localizedCaseInsensitiveContains("call the plumber") })
+            XCTAssertTrue(result.operations.isEmpty)
+            // Refusal controls make no claim about unsupported legacy outputs.
+            for source in [
+                "Move the tray and the old guard walks into the storage room.",
+                "Take the dog and the kids get into the car.",
+                "Move the bags and the boys load into the van.",
+                "Move the tray and the pedestal is broken into the storage room.",
+                "Move the tray Monday and the pedestal Thursday into the storage room.",
+                "Move the tray and clean the pedestal into the storage room.",
+                "Move the tray from the kitchen and the pedestal into the storage room.",
+                "Move the tray and the pedestal to the storage room.",
+                "Move the tray, actually the board and the pedestal into the storage room.",
+                "Do not move the tray and the pedestal into the storage room.",
+                "I will not move the tray and the pedestal into the storage room.",
+                "I need to move the tray and the pedestal into the storage room.",
+                "Pat said to move the tray and the pedestal into the storage room.",
+                "The note says \"Move the tray and the pedestal into the storage room.\"",
+                "If Pat agrees, move the tray and the pedestal into the storage room.",
+                "Remember to move the tray and the pedestal into the storage room.",
+                "Move the steel files and the pedestal into the storage room.",
+            ] { XCTAssertFalse(try groupingProof(source), source) }
+        }
+    }
+
+    func testOwnedCommunicationQuestionsKeepVisiblePayloadAndScopedTime() throws {
+        let previous = SentenceContext.taggerDisabledForEvaluation
+        defer { SentenceContext.taggerDisabledForEvaluation = previous; SentenceContextCache.invalidate() }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Toronto")!
+        let anchor = calendar.date(from: DateComponents(year: 2026, month: 11, day: 16, hour: 9))!
+        let original = "Call Marco the tile guy to confirm he's starting Thursday at eight, and ask whether he needs the old vanity out first."
+        for disabled in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disabled; SentenceContextCache.invalidate()
+            for source in [original,
+                "Call Amina the electrician to confirm she's arriving Monday at nine, and ask whether she needs the fuse board cleared.",
+                "Phone Dev the surveyor to check he has the permit, and ask if he wants the side gate unlocked first."] {
+                var trace: RuntimeRuleTrace?
+                let result = RuleBasedThoughtExtractor.process(source, referenceDate: anchor, calendar: calendar,
+                    traceObserver: { trace = $0 })
+                XCTAssertEqual(result.items.count, 1, source)
+                let item = try XCTUnwrap(result.items.first, source)
+                let gap = try XCTUnwrap(source.range(of: #"(?i),?\s+and\s+(?=ask\b)"#, options: .regularExpression))
+                let question = String(source[gap.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+                let edgeCount = trace?.group?.edges.filter { $0.kind == "communicationQuestion" }.count ?? 0
+                if edgeCount != 1 {
+                    XCTAssertEqual(edgeCount, 0, "An inline proved purpose needs no synthetic grouping edge")
+                    let inline = try XCTUnwrap(ClauseScope.finiteContactPurpose(in: item.sourceQuote))
+                    let raw = try XCTUnwrap(ClauseScope.finiteContactPurpose(in: item.rawQuote))
+                    XCTAssertTrue(inline.matchesOriginal(raw,
+                        normalizedSource: item.sourceQuote, originalSource: item.rawQuote))
+                    XCTAssertEqual(SourceUnitLedger(item.sourceQuote).words.map(\.text),
+                        SourceUnitLedger(source).words.map(\.text))
+                    XCTAssertEqual(item.sourceUnitIDs, Set(SourceUnitLedger(source).words.indices))
+                }
+                XCTAssertTrue(item.analysisText.contains(question), source)
+                let title = ThoughtTitleFormatter.polished(item.suggestedTitle ?? item.sourceQuote,
+                    itemType: item.organization.itemType, personName: item.organization.personName)
+                XCTAssertTrue(title.localizedCaseInsensitiveContains(question.trimmingCharacters(in: .punctuationCharacters)), source)
+                let ledger = SourceUnitLedger(source)
+                let ids = ledger.ids(in: source.startIndex..<gap.lowerBound)
+                    .union(ledger.ids(in: gap.upperBound..<source.endIndex))
+                XCTAssertTrue(ids.isSubset(of: item.sourceUnitIDs), source)
+                XCTAssertTrue(item.sourceUnitIDs.subtracting(ids).isSubset(of: ledger.ids(in: gap)), source)
+                XCTAssertEqual(SourceUnitLedger(item.rawQuote).words.map(\.text), item.sourceUnitIDs.sorted().map { ledger.words[$0].text })
+                XCTAssertTrue(item.organization.itemType.isActionable); XCTAssertFalse(item.needsReview)
+                XCTAssertEqual(item.organization.state, .resolved); XCTAssertFalse(item.organization.needsClarification)
+                XCTAssertNil(item.organization.dueDate); XCTAssertNil(item.organization.reminderDate)
+                XCTAssertEqual(item.organization.temporalIntent.kind, .none)
+                XCTAssertNil(item.organization.locationIntent); XCTAssertNil(item.organization.recurrenceRule)
+                XCTAssertNil(item.shoppingGroup); XCTAssertTrue(result.operations.isEmpty)
+            }
+            let timed = "Call Amina tomorrow to confirm she's starting Thursday at nine, and ask whether she needs the garage empty first."
+            let owner = try XCTUnwrap(ThoughtExtractionEngine.extractWithRules(
+                "Call Amina tomorrow to confirm she's starting Thursday at nine.", referenceDate: anchor, calendar: calendar).items.first)
+            let timedResult = ThoughtExtractionEngine.extractWithRules(timed,
+                referenceDate: anchor, calendar: calendar)
+            let timedMode = disabled ? "forcedMissing" : "native"
+            let timedMessage = "\(timedMode): \(timedResult.items.map(\.analysisText))"
+            XCTAssertEqual(timedResult.items.count, 1, timedMessage)
+            let combined = try XCTUnwrap(timedResult.items.first)
+            XCTAssertTrue(combined.analysisText.contains("ask whether she needs the garage empty first"), timedMessage)
+            XCTAssertTrue((combined.suggestedTitle ?? combined.sourceQuote)
+                .localizedCaseInsensitiveContains("ask whether she needs the garage empty first"), timedMessage)
+            XCTAssertEqual(SourceUnitLedger(combined.rawQuote).words.map(\.text),
+                combined.sourceUnitIDs.sorted().map { SourceUnitLedger(timed).words[$0].text })
+            XCTAssertEqual(combined.organization, owner.organization, "Question contents cannot reschedule the call")
+            XCTAssertEqual(combined.organization.temporalIntent.kind, .dateOnly)
+            XCTAssertEqual(combined.organization.temporalIntent.day, CalendarDay(year: 2026, month: 11, day: 17))
+            for contact in [
+                "Call Noor to confirm he’s starting Thursday at eight.",
+                "Phone Ellis to check she’s arriving Monday at nine."] {
+                let proof = try XCTUnwrap(ClauseScope.finiteContactPurpose(in: contact))
+                XCTAssertFalse(proof.executionText(in: contact).contains("Thursday"))
+                let item = try XCTUnwrap(ThoughtExtractionEngine.extractWithRules(contact,
+                    referenceDate: anchor, calendar: calendar).items.first)
+                XCTAssertNil(item.organization.dueDate)
+                XCTAssertEqual(item.organization.temporalIntent.kind, .none)
+            }
+            let outerClock = "Call Amina tomorrow at nine to confirm she's starting Thursday at eight."
+            let clocked = try XCTUnwrap(ThoughtExtractionEngine.extractWithRules(outerClock,
+                referenceDate: anchor, calendar: calendar).items.first)
+            XCTAssertEqual(clocked.organization.temporalIntent.kind, .exactDateTime)
+            XCTAssertEqual(clocked.organization.temporalIntent.day, CalendarDay(year: 2026, month: 11, day: 17))
+            XCTAssertEqual(clocked.organization.dueDate.map { calendar.component(.hour, from: $0) }, 9)
+            let portable = "Call Amina tomorrow to confirm she's starting Thursday at nine."
+            let proof = try XCTUnwrap(ClauseScope.finiteContactPurpose(in: portable))
+            XCTAssertTrue(proof.matchesOriginal(proof, normalizedSource: portable, originalSource: portable))
+            let different = "Call Amina tomorrow to confirm she's starting Monday at eight."
+            let differentProof = try XCTUnwrap(ClauseScope.finiteContactPurpose(in: different))
+            XCTAssertFalse(proof.matchesOriginal(differentProof,
+                normalizedSource: portable, originalSource: different))
+            let bodyDigit = "Call Marco to confirm he's coming at 9."
+            let bodyWord = "Call Marco to confirm he's coming at nine."
+            for (normalized, raw) in [(bodyDigit, bodyWord), (bodyWord, bodyDigit)] {
+                let normalizedProof = try XCTUnwrap(ClauseScope.finiteContactPurpose(in: normalized))
+                let rawProof = try XCTUnwrap(ClauseScope.finiteContactPurpose(in: raw))
+                XCTAssertFalse(normalizedProof.matchesOriginal(rawProof,
+                    normalizedSource: normalized, originalSource: raw))
+                XCTAssertTrue(normalizedProof.sameExecutionScope(rawProof,
+                    normalizedSource: normalized, originalSource: raw))
+                let organized = ThoughtOrganizer.organize(normalized,
+                    referenceDate: anchor, calendar: calendar, sourceText: raw)
+                XCTAssertNil(organized.dueDate)
+                XCTAssertNil(organized.reminderDate)
+                XCTAssertEqual(organized.temporalIntent.kind, .none)
+                XCTAssertEqual(organized.reminderDelivery, .none)
+            }
+            let ownDigit = "Call Marco at 9 to confirm he's coming."
+            let ownWord = "Call Marco at nine to confirm he's coming."
+            let ownDigitProof = try XCTUnwrap(ClauseScope.finiteContactPurpose(in: ownDigit))
+            let ownWordProof = try XCTUnwrap(ClauseScope.finiteContactPurpose(in: ownWord))
+            XCTAssertFalse(ownDigitProof.sameExecutionScope(ownWordProof,
+                normalizedSource: ownDigit, originalSource: ownWord))
+            let thatMarker = "Call Marco to confirm that he's coming at 9."
+            let thatProof = try XCTUnwrap(ClauseScope.finiteContactPurpose(in: thatMarker))
+            let bareProof = try XCTUnwrap(ClauseScope.finiteContactPurpose(in: bodyDigit))
+            XCTAssertFalse(thatProof.sameExecutionScope(bareProof,
+                normalizedSource: thatMarker, originalSource: bodyDigit))
+            for declined in [
+                "Maya said call Amina to confirm she's starting Thursday at nine.",
+                "\"Call Amina to confirm she's starting Thursday at nine.\"",
+                "Don't call Amina to confirm she's starting Thursday at nine.",
+                "If Maya agrees, call Amina to confirm she's starting Thursday at nine.",
+                "Call Amina if she agrees to confirm she's starting Thursday at nine.",
+                "Remind me to call Amina to confirm she's starting Thursday at nine.",
+                "Call Amina to confirm the appointment at eight.",
+                "Call Amina to check on the tile at five.",
+                "Call Amina to confirm that's fine at eight.",
+                "Call Amina to confirm she's starting Thursday at nine, then call Noor at five.",
+                "Call Amina to confirm she's starting Thursday at nine and ask him tomorrow whether he has the keys."
+            ] { XCTAssertNil(ClauseScope.finiteContactPurpose(in: declined), declined) }
+            // Complete outer frames retain their existing authority. The
+            // explicit reminder keeps its literal outer clock; an external
+            // prerequisite stays held and cannot authorize an alert.
+            for (source, isConditional) in [
+                ("Remind me to call Marco to confirm he's coming at eight.", false),
+                ("If he's late, call Marco to confirm he's coming at 9.", true)
+            ] {
+                let held = ThoughtExtractionEngine.extractWithRules(source,
+                    referenceDate: anchor, calendar: calendar)
+                XCTAssertEqual(held.items.count, 1, source)
+                XCTAssertTrue(held.operations.isEmpty, source)
+                let item = try XCTUnwrap(held.items.first, source)
+                if isConditional {
+                    XCTAssertTrue(item.needsReview, source)
+                    XCTAssertNil(item.organization.dueDate, source)
+                    XCTAssertNil(item.organization.reminderDate, source)
+                    XCTAssertEqual(item.organization.reminderDelivery, .none, source)
+                } else {
+                    let simple = ThoughtExtractionEngine.extractWithRules(
+                        "Remind me to call Marco at eight.", referenceDate: anchor, calendar: calendar)
+                    XCTAssertEqual(simple.items.count, 1)
+                    let literalReminder = try XCTUnwrap(simple.items.first)
+                    XCTAssertFalse(item.needsReview, source)
+                    XCTAssertEqual(item.organization.state, .resolved, source)
+                    let due = try XCTUnwrap(item.organization.dueDate, source)
+                    XCTAssertNotNil(item.organization.reminderDate, source)
+                    XCTAssertEqual(item.organization.dueDate, literalReminder.organization.dueDate, source)
+                    XCTAssertEqual(item.organization.reminderDate, literalReminder.organization.reminderDate, source)
+                    XCTAssertEqual(item.organization.reminderDelivery, .notification, source)
+                    XCTAssertEqual(calendar.component(.hour, from: due), 20, source)
+                }
+                let ledger = SourceUnitLedger(source)
+                XCTAssertEqual(SourceUnitLedger(item.rawQuote).words.map(\.text),
+                    ledger.words.map(\.text), source)
+                XCTAssertEqual(item.sourceUnitIDs, Set(ledger.words.indices), source)
+                if isConditional {
+                    XCTAssertEqual(item.organization.state, .unsupported(.unsupportedCondition), source)
+                }
+            }
+            let later = String(original.dropLast()) + ", and print the invoice."
+            let rows = ThoughtExtractionEngine.extractWithRules(later, referenceDate: anchor, calendar: calendar).items
+            XCTAssertEqual(rows.count, 2)
+            XCTAssertEqual(rows.filter { $0.analysisText.contains("ask whether he needs the old vanity out first") }.count, 1)
+            XCTAssertEqual(rows.filter { $0.analysisText.localizedCaseInsensitiveContains("print the invoice") }.count, 1)
+            for opposed in [
+                "Maya said, " + original, "The note says \"" + original + "\"",
+                "I will not call Marco the tile guy to confirm he's starting Thursday at eight, and ask whether he needs the old vanity out first.",
+                "If Maya agrees, " + original,
+                "Call Amina the electrician, and ask Priya whether she has the permit."
+            ] {
+                var trace: RuntimeRuleTrace?
+                _ = RuleBasedThoughtExtractor.process(opposed, referenceDate: anchor, calendar: calendar, traceObserver: { trace = $0 })
+                XCTAssertFalse(trace?.group?.edges.contains { $0.kind == "communicationQuestion" } == true, opposed)
+            }
+        }
+    }
+
+
+    func testOutgoingArtifactDeadlineRestatementKeepsItsOwnTemporalSpan() throws {
+        let previous = SentenceContext.taggerDisabledForEvaluation
+        let previousZone = NSTimeZone.default
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Toronto"))
+        NSTimeZone.default = calendar.timeZone
+        defer {
+            SentenceContext.taggerDisabledForEvaluation = previous
+            SentenceContextCache.invalidate()
+            NSTimeZone.default = previousZone
+        }
+        let anchor = try XCTUnwrap(calendar.date(from:
+            DateComponents(year: 2026, month: 11, day: 16, hour: 9)))
+        let original = "Email the condo board the renovation notice; they want forty-eight hours' warning, so it has to go out by Tuesday morning."
+        let fresh = "Email the housing committee the inspection summary; they need two days' notice, so it must go out by Friday morning."
+        for disabled in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disabled
+            SentenceContextCache.invalidate()
+            for (source, day) in [(original, 17), (fresh, 20)] {
+                let proof = try XCTUnwrap(ClauseScope.outgoingArtifactDeadline(in: source), source)
+                XCTAssertTrue(proof.matchesOriginal(proof,
+                    normalizedSource: source, originalSource: source))
+                XCTAssertTrue(String(source[proof.deadlineRange]).hasPrefix("by "))
+                XCTAssertFalse(proof.executionText(in: source).contains("they "))
+                var trace: RuntimeRuleTrace?
+                let result = RuleBasedThoughtExtractor.process(source, referenceDate: anchor,
+                    calendar: calendar, traceObserver: { trace = $0 })
+                XCTAssertTrue(result.operations.isEmpty)
+                XCTAssertEqual(result.items.count, 1, String(reflecting: result))
+                let row = try XCTUnwrap(result.items.first)
+                XCTAssertEqual(row.organization.itemType, .task)
+                XCTAssertFalse(row.needsReview)
+                XCTAssertEqual(row.sourceQuote, source)
+                XCTAssertEqual(row.rawQuote, source)
+                XCTAssertTrue(row.analysisText.contains(String(source[proof.artifactRange])))
+                XCTAssertTrue(row.analysisText.contains(String(source[proof.reasonRange])))
+                XCTAssertEqual(row.organization.temporalIntent.day,
+                    CalendarDay(year: 2026, month: 11, day: day))
+                // Existing morning convention resolves 9 AM; the source/gold
+                // states a morning deadline, not an explicitly spoken hour.
+                XCTAssertEqual(row.organization.dueDate, calendar.date(from:
+                    DateComponents(year: 2026, month: 11, day: day, hour: 9)))
+                XCTAssertNil(row.organization.reminderDate)
+                XCTAssertNil(row.organization.recurrenceRule)
+                XCTAssertNil(row.organization.locationIntent)
+                let traced = try XCTUnwrap(trace)
+                XCTAssertEqual(traced.segmentQuotes.count, 1)
+                let ledger = SourceUnitLedger(traced.creating)
+                XCTAssertEqual(row.sourceUnitIDs, Set(ledger.words.indices))
+                XCTAssertTrue(ledger.unownedMeaningfulIDs(after: result.items).isEmpty)
+            }
+            let changed = original.replacingOccurrences(of: "Tuesday", with: "Friday")
+            let originalProof = try XCTUnwrap(ClauseScope.outgoingArtifactDeadline(in: original))
+            let changedProof = try XCTUnwrap(ClauseScope.outgoingArtifactDeadline(in: changed))
+            XCTAssertFalse(changedProof.matchesOriginal(originalProof,
+                normalizedSource: changed, originalSource: original))
+            let changedReason = original.replacingOccurrences(of: "forty-eight", with: "two")
+            let changedReasonProof = try XCTUnwrap(ClauseScope.outgoingArtifactDeadline(in: changedReason))
+            XCTAssertFalse(changedReasonProof.matchesOriginal(originalProof,
+                normalizedSource: changedReason, originalSource: original),
+                "An independently valid reason cannot replace the original witness")
+            for opposed in [
+                "Email the board that the notice is ready; they want two days' warning, so it has to go out by Tuesday morning.",
+                "Mara said, Email the board the notice; they want two days' warning, so it has to go out by Tuesday morning.",
+                "Email the board ‘the notice’; they want two days' warning, so it has to go out by Tuesday morning.",
+                "Email the board the notice; they want the contractor to start by Tuesday morning.",
+                "Email the board the notice; they need the old bathtub outside, so it has to go out by Tuesday morning.",
+                "Email the board the notice; they need two days' notice and the old bathtub outside, so it has to go out by Tuesday morning.",
+                "Email the board the notice; they need zero days' warning, so it has to go out by Tuesday morning.",
+                "Email the board the notice; they want two days' warning, so the contractor has to go out by Tuesday morning.",
+                "Email the board the notice; they want two days' warning, so it does not have to go out by Tuesday morning.",
+                "Email the board the notice; they want two days' warning, so if approved, it has to go out by Tuesday morning.",
+                "Email the board the notice; they want two days' warning, so it might go out by Tuesday morning.",
+                "Email the board the notice at 9 AM on Wednesday; they want two days' warning, so it has to go out by Tuesday morning.",
+                "Email the board the notice and the draft; they want two days' warning, so it has to go out by Tuesday morning.",
+                "Email the board the notice; print the flyer; they want two days' warning, so it has to go out by Tuesday morning.",
+                "Email the board the notice in two days; they want two days' warning, so it has to go out by Tuesday morning.",
+                "Email the board the notice next week; they want two days' warning, so it has to go out by Tuesday morning.",
+                "Email the board the notice in an hour; they want two days' warning, so it has to go out by Tuesday morning.",
+                "Email the board the notice later; they want two days' warning, so it has to go out by Tuesday morning.",
+                "Email the Friday crew the notice; they want two days' warning, so it has to go out by Tuesday morning.",
+                "Email the board the two notices; they want two days' warning, so it has to go out by Tuesday morning.",
+                "Email the board the notice; they want two days' warning, so it has to go out by after the plumber leaves.",
+                "Email the board the notice; they want two days' warning, so it has to go out by before the plumber leaves.",
+                "Email the board the notice; they want two days' warning, so it has to go out by during the meeting.",
+                "Email the board the notice; they want two days' warning, so it has to go out by every Tuesday morning.",
+                "Email the board the notice; they want two days' warning, so it has to go out by each Tuesday morning."
+            ] {
+                XCTAssertNil(ClauseScope.outgoingArtifactDeadline(in: opposed), opposed)
+            }
+        }
+    }
+}
+
+
+extension IntentConsolidationTests {
+    func testPartialNumberedWorkKeepsLiteralObjectAndOwnedDeadline() throws {
+        let previous = SentenceContext.taggerDisabledForEvaluation, previousZone = NSTimeZone.default
+        defer { NSTimeZone.default = previousZone; SentenceContext.taggerDisabledForEvaluation = previous; SentenceContextCache.invalidate() }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Toronto"))
+        NSTimeZone.default = calendar.timeZone
+        let anchor = try XCTUnwrap(calendar.date(from:
+            DateComponents(year: 2026, month: 11, day: 16, hour: 9)))
+        let original = "The stats problem set is due Wednesday at midnight and I've only done questions one through four, so I need to finish five through nine."
+        for disabled in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disabled; SentenceContextCache.invalidate()
+            let mode = "taggerDisabled=\(disabled)"
+            for (source, artifact, unit, remaining, day, hour) in [
+                (original, "The stats problem set", "questions", "five through nine", 18, 0),
+                ("My calculus assignment is due Friday at noon and I have only completed exercises one through two, so I need to finish three through six.",
+                 "My calculus assignment", "exercises", "three through six", 20, 12),
+                ("Our algebra problem set is due Thursday at noon and we've only finished questions two through five, so we have to complete six through eight.",
+                 "Our algebra problem set", "questions", "six through eight", 19, 12)
+            ] {
+                let message = mode + ": " + source
+                let role = try XCTUnwrap(ClauseScope.partialNumberedWork(in: source), message)
+                XCTAssertEqual(String(source[role.artifactRange]), artifact, message)
+                XCTAssertEqual(String(source[role.unitRange]), unit, message)
+                XCTAssertEqual(String(source[role.remainingRange]), remaining, message)
+                var trace: RuntimeRuleTrace?
+                let result = RuleBasedThoughtExtractor.process(source, referenceDate: anchor,
+                    calendar: calendar, traceObserver: { trace = $0 })
+                XCTAssertEqual(result.items.count, 1, message)
+                let row = try XCTUnwrap(result.items.first, message)
+                XCTAssertEqual(row.organization.itemType, .task, message)
+                XCTAssertEqual(row.organization.state, .resolved, message)
+                XCTAssertFalse(row.needsReview, message)
+                XCTAssertFalse(row.organization.needsClarification, message)
+                XCTAssertEqual(row.sourceQuote, source, message)
+                XCTAssertEqual(row.rawQuote, source, message)
+                XCTAssertEqual(row.analysisText, source, message)
+                let title = try XCTUnwrap(row.suggestedTitle, message)
+                XCTAssertTrue(title.localizedCaseInsensitiveContains(artifact), message)
+                XCTAssertTrue(title.localizedCaseInsensitiveContains(unit + " " + remaining), message)
+                // Intentional deadline contract: the spoken day remains the
+                // named day; literal midnight resolves at its exclusive end.
+                XCTAssertEqual(row.organization.dueDate, calendar.date(from:
+                    DateComponents(year: 2026, month: 11, day: hour == 0 ? day + 1 : day, hour: hour)), message)
+                XCTAssertEqual(row.organization.temporalIntent.deadlineBoundary,
+                    hour == 0 ? .endOfNamedDay : nil, message)
+                XCTAssertEqual(row.organization.temporalIntent.day,
+                    CalendarDay(year: 2026, month: 11, day: day), message)
+                XCTAssertEqual(row.organization.temporalIntent.time,
+                    WallClockTime(hour: hour, minute: 0), message)
+                XCTAssertNil(row.organization.reminderDate, message)
+                XCTAssertEqual(row.organization.reminderDelivery, .none, message)
+                XCTAssertNil(row.organization.personName, message)
+                XCTAssertNil(row.organization.locationIntent, message)
+                XCTAssertNil(row.organization.recurrenceRule, message)
+                XCTAssertNil(row.shoppingGroup, message)
+                XCTAssertTrue(result.operations.isEmpty, message)
+                let proof = try XCTUnwrap(trace, message)
+                XCTAssertEqual(proof.output, result.items, message)
+                XCTAssertEqual(proof.segmentQuotes.count, 1, message)
+                let ledger = SourceUnitLedger(proof.creating)
+                XCTAssertEqual(row.sourceUnitIDs, Set(ledger.words.indices), message)
+                XCTAssertTrue(ledger.unownedMeaningfulIDs(after: result.items).isEmpty, message)
+            }
+            let changed = original.replacingOccurrences(of: "five through nine", with: "five through ten")
+            let sourceProof = try XCTUnwrap(ClauseScope.partialNumberedWork(in: original), mode)
+            let changedProof = try XCTUnwrap(ClauseScope.partialNumberedWork(in: changed), mode)
+            XCTAssertFalse(changedProof.matchesOriginal(sourceProof,
+                normalizedSource: changed, originalSource: original), mode)
+            let mismatched = ThoughtOrganizer.organize(changed, referenceDate: anchor,
+                calendar: calendar, sourceText: original)
+            XCTAssertTrue(mismatched.needsClarification, mode)
+            XCTAssertNil(mismatched.dueDate, mode)
+            for opposed in [
+                "Mara said, " + original,
+                "\"" + original + "\"",
+                "If approved, " + original,
+                original.replacingOccurrences(of: "I've only done", with: "Mara has only done"),
+                original.replacingOccurrences(of: "I need to finish", with: "Mara needs to finish"),
+                original.replacingOccurrences(of: "I've only done", with: "I haven't done"),
+                original.replacingOccurrences(of: "I need to finish", with: "I do not need to finish"),
+                original.replacingOccurrences(of: "problem set is", with: "problem set and the assignment is"),
+                original.replacingOccurrences(of: "so I need", with: "actually, so I need"),
+                original.replacingOccurrences(of: "one through four", with: "four through one"),
+                original.replacingOccurrences(of: "Wednesday at midnight", with: "Monday and Tuesday"),
+                original.replacingOccurrences(of: "Wednesday at midnight", with: "Friday or Monday"),
+                original.replacingOccurrences(of: "Wednesday at midnight", with: "before Monday and Tuesday"),
+                original.replacingOccurrences(of: "Wednesday at midnight", with: "after Monday or Tuesday"),
+                original.replacingOccurrences(of: "five through nine", with: "four through nine"),
+                original.replacingOccurrences(of: "five through nine", with: "nine through five"),
+                original.replacingOccurrences(of: "I need to finish", with: "we need to finish"),
+                "The library book is due Wednesday at midnight and I've only done chapters one through four, so I need to finish five through nine.",
+                "The stats problem set is due Wednesday at midnight and I've only done hours one through four, so I need to finish five through nine.",
+                original + " Call Pat."
+            ] {
+                // These are source-role refusals, not new claims about old
+                // unsupported pipeline outcomes.
+                XCTAssertNil(ClauseScope.partialNumberedWork(in: opposed), mode + ": " + opposed)
+            }
+            let later = original + " Call Pat."
+            let result = RuleBasedThoughtExtractor.process(later, referenceDate: anchor, calendar: calendar)
+            XCTAssertEqual(result.items.count, 2, mode)
+            let work = try XCTUnwrap(result.items.first { ClauseScope.partialNumberedWork(in: $0.sourceQuote) != nil }, mode)
+            let call = try XCTUnwrap(result.items.first { $0.analysisText.localizedCaseInsensitiveContains("call Pat") }, mode)
+            XCTAssertEqual(work.sourceQuote, original, mode)
+            XCTAssertTrue(work.sourceUnitIDs.isDisjoint(with: call.sourceUnitIDs), mode)
+            XCTAssertEqual(work.sourceUnitIDs.union(call.sourceUnitIDs), Set(SourceUnitLedger(later).words.indices), mode)
+            XCTAssertTrue(result.operations.isEmpty, mode)
+        }
+    }
+    func testOwnedRetailCartBindsOnlyItsExactResolvedPurchaseGroup() throws {
+        let previous = SentenceContext.taggerDisabledForEvaluation, previousZone = NSTimeZone.default
+        defer {
+            SentenceContext.taggerDisabledForEvaluation = previous; SentenceContextCache.invalidate()
+            NSTimeZone.default = previousZone
+        }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Toronto"))
+        NSTimeZone.default = calendar.timeZone
+        let anchor = try XCTUnwrap(calendar.date(from:
+            DateComponents(year: 2026, month: 11, day: 16, hour: 9)))
+        let original = "Order the thirty-six inch white vanity that's sitting in my Wayfair cart today, because shipping says five to seven days."
+        for disabled in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disabled; SentenceContextCache.invalidate()
+            let mode = "disabled=\(disabled)"
+            for (source, store) in [
+                (original, "Wayfair"),
+                ("Buy batteries in my Costco cart today.", "Costco"),
+                ("Order a lamp that's sitting in our IKEA cart today.", "Ikea"),
+                ("Buy batteries in my Amazon shopping cart today.", "Amazon")
+            ] {
+                let cart = try XCTUnwrap(ShoppingGroupParser.ownedRetailCartContext(in: source), mode)
+                XCTAssertEqual(cart.store.caseInsensitiveCompare(store), .orderedSame, mode)
+                XCTAssertTrue(cart.matchesOriginal(cart, source: source, originalSource: source), mode)
+                XCTAssertTrue(String(source[cart.cartRange]).contains("cart"), mode)
+                var trace: RuntimeRuleTrace?
+                let result = RuleBasedThoughtExtractor.process(source, referenceDate: anchor,
+                    calendar: calendar, traceObserver: { trace = $0 })
+                XCTAssertEqual(result.items.count, 1, mode + String(reflecting: result))
+                let row = try XCTUnwrap(result.items.first, mode)
+                XCTAssertEqual(row.organization.itemType, .shopping, mode)
+                XCTAssertFalse(row.needsReview, mode)
+                XCTAssertEqual(row.organization.state, .resolved, mode)
+                XCTAssertEqual(row.shoppingGroup, cart.store, mode)
+                XCTAssertEqual(row.sourceQuote, source, mode); XCTAssertEqual(row.rawQuote, source, mode)
+                XCTAssertEqual(row.organization.temporalIntent.kind, .dateOnly, mode)
+                XCTAssertEqual(row.organization.temporalIntent.day, CalendarDay(year: 2026, month: 11, day: 16), mode)
+                XCTAssertNil(row.organization.temporalIntent.time, mode)
+                XCTAssertEqual(row.organization.dueDate, calendar.startOfDay(for: anchor), mode)
+                XCTAssertNil(row.organization.reminderDate, mode); XCTAssertNil(row.organization.personName, mode)
+                XCTAssertNil(row.organization.locationIntent, mode); XCTAssertNil(row.organization.recurrenceRule, mode)
+                XCTAssertTrue(result.operations.isEmpty, mode)
+                let traced = try XCTUnwrap(trace, mode)
+                XCTAssertEqual(row.sourceUnitIDs, Set(SourceUnitLedger(traced.creating).words.indices), mode)
+                var proposed = row; proposed.shoppingGroup = "Home Depot"
+                let regrouped = ThoughtExtractionEngine.shapingShoppingResult(
+                    .init(items: [proposed], method: .appleIntelligence), transcript: source)
+                XCTAssertEqual(regrouped.items, [row], mode + ": grouping is the only changed row field")
+                var generic = row; generic.shoppingGroup = ShoppingGroupStore.fallbackGroup
+                let fabricated = ThoughtExtractionEngine.shapingShoppingResult(
+                    .init(items: [generic], method: .appleIntelligence), transcript: "Print the invoice.")
+                XCTAssertEqual(fabricated.items.first?.shoppingGroup, ShoppingGroupStore.fallbackGroup,
+                    mode + ": matching row quote fields cannot invent a capture occurrence")
+            }
+            for merchant in ["Wayfair", "Etsy", "eBay", "Chewy", "Best Buy", "No Frills"] {
+                XCTAssertTrue(ShoppingGroupParser.isRecognizedStoreName(merchant), mode + ": " + merchant)
+                XCTAssertNotNil(ShoppingGroupParser.ownedRetailCartContext(
+                    in: "Buy batteries in my \(merchant) cart today."), mode + ": " + merchant)
+            }
+            let raw = try XCTUnwrap(ShoppingGroupParser.ownedRetailCartContext(in: original), mode)
+            for changed in [original.replacingOccurrences(of: "Wayfair", with: "Costco"),
+                            original.replacingOccurrences(of: "today", with: "tomorrow"),
+                            original.replacingOccurrences(of: "thirty-six", with: "forty-eight")] {
+                let current = try XCTUnwrap(ShoppingGroupParser.ownedRetailCartContext(in: changed), mode)
+                XCTAssertFalse(current.matchesOriginal(raw, source: changed, originalSource: original), mode)
+            }
+            for opposed in [
+                "Buy batteries in my Cartwood cart today.",
+                "Buy batteries in Mom's Costco cart today.",
+                "Buy batteries in my Mom's Costco cart today.",
+                "Buy batteries in my red Costco cart today.",
+                "Buy batteries in my red grocery cart today.",
+                "Buy batteries in my Costco grocery cart today.",
+                "Buy batteries in my Alice Hardware cart today.",
+                "Buy batteries actually in my No Frills cart today.",
+                "Buy batteries wait in my No Frills cart today.",
+                "Buy batteries from IKEA in my Costco cart today.",
+                "Buy new batteries, not the ones in my Costco cart today.",
+                "Mara said, Buy batteries in my Costco cart today.",
+                "\"Buy batteries in my Costco cart today.\"",
+                "Do not buy batteries in my Costco cart today.",
+                "Buy batteries in my Costco cart today if approved.",
+                "Buy batteries in my Costco cart today and call Mom.",
+                "Buy the lamp in my IKEA cart today, so email Lee.",
+                "Buy the lamp in my IKEA cart today call Lee.",
+                "Buy the lamp in my Wayfair cart on Amazon.",
+                "Buy the lamp in my Wayfair cart for the cabin list.",
+                "Buy the lamp in my Wayfair cart today, Sam cancels the mirror.",
+                "Buy the lamp in my Wayfair cart today, because shipping is from Amazon.",
+                "Buy the lamp in my Wayfair cart today, because this is for the cabin list.",
+                "The Costco cart is packed for Friday."
+            ] {
+                XCTAssertNil(ShoppingGroupParser.ownedRetailCartContext(in: opposed), mode + opposed)
+            }
+            let mixed = original + " Buy screws at Home Depot. Call Mom tomorrow."
+            let result = ThoughtExtractionEngine.extractWithRules(mixed, referenceDate: anchor, calendar: calendar)
+            let vanity = try XCTUnwrap(result.items.first { $0.sourceQuote == original }, mode)
+            let screws = try XCTUnwrap(result.items.first { $0.analysisText.localizedCaseInsensitiveContains("buy screws") }, mode)
+            XCTAssertEqual(vanity.shoppingGroup, "Wayfair", mode)
+            XCTAssertEqual(screws.shoppingGroup, "Home Depot", mode)
+            XCTAssertTrue(vanity.sourceUnitIDs.isDisjoint(with: screws.sourceUnitIDs), mode)
+            XCTAssertTrue(result.items.contains { $0.organization.personName == "Mom" && $0.shoppingGroup == nil }, mode)
+        }
+    }
+
+}
+
+
+extension IntentConsolidationTests {
+    func testLiteralMidnightDeadlineKeepsSpokenDayAndRequiresGoverningRole() throws {
+        let previous = SentenceContext.taggerDisabledForEvaluation, previousZone = NSTimeZone.default
+        defer {
+            SentenceContext.taggerDisabledForEvaluation = previous; SentenceContextCache.invalidate()
+            NSTimeZone.default = previousZone
+        }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Toronto"))
+        NSTimeZone.default = calendar.timeZone
+        let monday = try XCTUnwrap(calendar.date(from:
+            DateComponents(year: 2026, month: 11, day: 16, hour: 9)))
+        let wednesday = try XCTUnwrap(calendar.date(from:
+            DateComponents(year: 2026, month: 11, day: 18, hour: 0, minute: 30)))
+        let endpoint = try XCTUnwrap(calendar.date(from:
+            DateComponents(year: 2026, month: 11, day: 19, hour: 0)))
+        for disabled in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disabled; SentenceContextCache.invalidate()
+            for source in [
+                "Submit the report by Wednesday at midnight.",
+                "I need to finish the draft no later than Wednesday midnight.",
+                "Submit the report by November eighteenth at midnight."
+            ] {
+                let message = "taggerDisabled=\(disabled): " + source
+                let proof = try XCTUnwrap(ClauseScope.midnightDeadline(in: source), message)
+                XCTAssertTrue(String(source[proof.deadlineRange]).localizedCaseInsensitiveContains("midnight"), message)
+                XCTAssertFalse(String(source[proof.calendarRange]).localizedCaseInsensitiveContains("midnight"), message)
+                for anchor in [monday, wednesday] {
+                    let direct = ThoughtOrganizer.organize(source, referenceDate: anchor,
+                        calendar: calendar, sourceText: source)
+                    XCTAssertEqual(direct.itemType, .task, message)
+                    XCTAssertEqual(direct.state, .resolved, message)
+                    XCTAssertFalse(direct.needsClarification, message)
+                    XCTAssertEqual(direct.temporalIntent.deadlineBoundary, .endOfNamedDay, message)
+                    XCTAssertEqual(direct.temporalIntent.day, CalendarDay(year: 2026, month: 11, day: 18), message)
+                    XCTAssertEqual(direct.temporalIntent.time, WallClockTime(hour: 0, minute: 0), message)
+                    XCTAssertEqual(direct.dueDate, endpoint, message)
+                    XCTAssertNil(direct.reminderDate, message)
+                    XCTAssertEqual(direct.reminderDelivery, .none, message)
+                    XCTAssertNil(direct.recurrenceRule, message); XCTAssertNil(direct.locationIntent, message)
+                    let result = RuleBasedThoughtExtractor.process(source, referenceDate: anchor, calendar: calendar)
+                    XCTAssertEqual(result.items.count, 1, message)
+                    let row = try XCTUnwrap(result.items.first, message)
+                    XCTAssertEqual(row.sourceQuote, source, message); XCTAssertEqual(row.rawQuote, source, message)
+                    XCTAssertEqual(row.organization.temporalIntent, direct.temporalIntent, message)
+                    XCTAssertEqual(row.organization.dueDate, endpoint, message)
+                    XCTAssertFalse(row.needsReview, message); XCTAssertTrue(result.operations.isEmpty, message)
+                    XCTAssertEqual(row.sourceUnitIDs, Set(SourceUnitLedger(source).words.indices), message)
+                }
+                let drift = source.replacingOccurrences(of: "Wednesday", with: "Thursday")
+                    .replacingOccurrences(of: "eighteenth", with: "nineteenth")
+                XCTAssertNil(ThoughtOrganizer.organize(source, referenceDate: monday,
+                    calendar: calendar, sourceText: drift).temporalIntent.deadlineBoundary, message)
+            }
+            // A complete primary IS DUE source role does not grant task
+            // typing. This existing Event remains outside the Task-only
+            // deadline-boundary contract in both lexical modes.
+            let eventSource = "The assignment is due at midnight Wednesday."
+            let eventProof = try XCTUnwrap(ClauseScope.midnightDeadline(in: eventSource))
+            XCTAssertEqual(String(eventSource[eventProof.calendarRange]), "Wednesday")
+            for anchor in [monday, wednesday] {
+                let event = ThoughtOrganizer.organize(eventSource, referenceDate: anchor,
+                    calendar: calendar, sourceText: eventSource)
+                XCTAssertEqual(event.itemType, .event)
+                XCTAssertNil(event.temporalIntent.deadlineBoundary)
+                let eventRows = RuleBasedThoughtExtractor.process(eventSource,
+                    referenceDate: anchor, calendar: calendar)
+                XCTAssertEqual(eventRows.items.count, 1)
+                XCTAssertEqual(eventRows.items.first?.organization.itemType, .event)
+                XCTAssertNil(eventRows.items.first?.organization.temporalIntent.deadlineBoundary)
+            }
+            let outsideMarker = "I need to finish the draft actually no later than Wednesday midnight."
+            XCTAssertTrue(SelfCorrectionResolver.hasCorrectionJunction(in: outsideMarker))
+            XCTAssertNil(ClauseScope.midnightDeadline(in: outsideMarker),
+                "only the governing no-later-than occurrence is exempt")
+            let next = ThoughtOrganizer.organize("Submit the report by next Wednesday at midnight.",
+                referenceDate: wednesday, calendar: calendar)
+            XCTAssertEqual(next.temporalIntent.deadlineBoundary, .endOfNamedDay)
+            XCTAssertEqual(next.temporalIntent.day, CalendarDay(year: 2026, month: 11, day: 25))
+            XCTAssertEqual(next.dueDate, calendar.date(from:
+                DateComponents(year: 2026, month: 11, day: 26, hour: 0)))
+            for source in [
+                "Remind me at midnight Wednesday.",
+                "Book a table for Wednesday at midnight.",
+                "The event starts Wednesday at midnight.",
+                "Submit the report by Wednesday at 12 AM.",
+                "Submit the report by Wednesday at 11:59 PM.",
+                "Submit the report by every Wednesday at midnight.",
+                "Submit the report by Wednesday or Thursday at midnight.",
+                "Submit the report by the beginning of Wednesday at midnight.",
+                "Submit the report before Wednesday at midnight.",
+                "Submit the report by Wednesday at midnight Pacific time.",
+                "Photocopy the letter that's due Wednesday at midnight.",
+                "The form that is due Wednesday at midnight.",
+                "Sam said submit the report by Wednesday at midnight.",
+                "If Sam agrees, submit the report by Wednesday at midnight.",
+                "I will not submit the report by Wednesday at midnight.",
+                "Record 'Submit the report by Wednesday at midnight.'",
+                "Submit the report at 9 AM by Wednesday at midnight.",
+                "Submit the report actually by Wednesday midnight.",
+                "I need to finish the draft actually no later than Wednesday midnight."
+            ] {
+                let message = "taggerDisabled=\(disabled): opposed " + source
+                XCTAssertNil(ClauseScope.midnightDeadline(in: source), message)
+                XCTAssertNil(ThoughtOrganizer.organize(source, referenceDate: monday,
+                    calendar: calendar, sourceText: source).temporalIntent.deadlineBoundary, message)
+            }
+        }
+    }
+}
+
+
+extension IntentConsolidationTests {
+    func testReservationForTimingIsAValidatedVisibleTargetNotExecution() throws {
+        let previous = SentenceContext.taggerDisabledForEvaluation, previousZone = NSTimeZone.default
+        defer { NSTimeZone.default = previousZone; SentenceContext.taggerDisabledForEvaluation = previous; SentenceContextCache.invalidate() }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Toronto"))
+        NSTimeZone.default = calendar.timeZone
+        let anchor = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 8, day: 3, hour: 10)))
+        let original = "Book a study room at the engineering library for Friday afternoon for the three of us."
+        for disabled in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disabled; SentenceContextCache.invalidate()
+            let message = "taggerDisabled=\(disabled)"
+            let proof = try XCTUnwrap(ClauseScope.bookingTarget(in: original), message)
+            XCTAssertEqual(proof.targetRanges.map { String(original[$0]) }, ["for Friday afternoon"], message)
+            XCTAssertEqual(proof.partyRange.map { String(original[$0]).trimmingCharacters(in: .whitespaces) },
+                "for the three of us", message)
+            XCTAssertEqual(String(original[proof.objectRange]).trimmingCharacters(in: .whitespaces),
+                "a study room at the engineering library", message)
+            let result = ThoughtExtractionEngine.extractWithRules(original, referenceDate: anchor, calendar: calendar)
+            XCTAssertEqual(result.items.count, 1, message)
+            let row = try XCTUnwrap(result.items.first, message)
+            XCTAssertEqual(row.organization.itemType, .task, message)
+            XCTAssertEqual(row.organization.state, .resolved, message); XCTAssertFalse(row.needsReview, message)
+            XCTAssertEqual(row.organization.temporalIntent, .none, message)
+            XCTAssertNil(row.organization.dueDate, message); XCTAssertNil(row.organization.reminderDate, message)
+            XCTAssertEqual(row.organization.reminderDelivery, .none, message)
+            XCTAssertNil(row.organization.recurrenceRule, message); XCTAssertNil(row.organization.locationIntent, message)
+            XCTAssertEqual(row.sourceQuote, original, message); XCTAssertEqual(row.rawQuote, original, message)
+            XCTAssertEqual(row.sourceUnitIDs, Set(SourceUnitLedger(original).words.indices), message)
+            XCTAssertTrue((row.suggestedTitle ?? row.analysisText).contains("Friday afternoon"), message)
+            XCTAssertTrue((row.suggestedTitle ?? row.analysisText).contains("for the three of us"), message)
+            XCTAssertTrue(result.operations.isEmpty, message)
+            for source in ["Reserve a zorblax for Saturday.", "Book a table for 7 PM.",
+                           "Book the hall for Sunday this week.", "Book the hotel for next week.",
+                           "Book the room for Friday for four people.", "Reserve the court for 8 tonight.",
+                           "Book a table for Friday at Nobu.", "Book a table for 8 tonight at Nobu.",
+                           "Book a table for Friday for 4 people at 7 PM.",
+                           "Book the Morning Glory room for Friday."] {
+                let target = try XCTUnwrap(ClauseScope.bookingTarget(in: source), message + source)
+                XCTAssertNotNil(ThoughtOrganizer.bookingTargetTiming(String(source[target.targetRanges[0]]),
+                    referenceDate: anchor, calendar: calendar), source)
+                let item = ThoughtOrganizer.organize(source, referenceDate: anchor, calendar: calendar, sourceText: source)
+                XCTAssertEqual(item.itemType, .task, source); XCTAssertFalse(item.needsClarification, source)
+                XCTAssertEqual(item.temporalIntent, .none, source); XCTAssertNil(item.dueDate, source)
+                XCTAssertNil(item.reminderDate, source); XCTAssertEqual(item.reminderDelivery, .none, source)
+                if source.contains("Morning Glory") {
+                    XCTAssertEqual(String(source[target.objectRange]).trimmingCharacters(in: .whitespaces),
+                        "the Morning Glory room", source)
+                    XCTAssertTrue(target.executionRanges.isEmpty, source)
+                    XCTAssertEqual(target.targetRanges.map { String(source[$0]) }, ["for Friday"], source)
+                }
+            }
+            // Date validity remains tested even though a valid reservation
+            // target never becomes a booking-execution date.
+            for (literal, day) in [
+                ("February 29", CalendarDay(year: 2028, month: 2, day: 29)),
+                ("February 28", CalendarDay(year: 2027, month: 2, day: 28)),
+                ("June 30", CalendarDay(year: 2027, month: 6, day: 30)),
+                ("15th August", CalendarDay(year: 2026, month: 8, day: 15)),
+                ("the twelfth", CalendarDay(year: 2026, month: 8, day: 12))
+            ] {
+                let target = try XCTUnwrap(ThoughtOrganizer.bookingTargetTiming("for " + literal,
+                    referenceDate: anchor, calendar: calendar), literal)
+                XCTAssertEqual(target.day, day, literal)
+                let source = "Book the zorblax for " + literal + "."
+                let item = ThoughtOrganizer.organize(source, referenceDate: anchor, calendar: calendar, sourceText: source)
+                XCTAssertFalse(item.needsClarification, source); XCTAssertNil(item.dueDate, source)
+                XCTAssertEqual(item.temporalIntent, .none, source)
+            }
+            for source in ["Book the appointment for June 31.", "Book the appointment for February 30.",
+                           "Book the room for Friday for Monday.", "Book the Friday room for Saturday.",
+                           "Book a room at Friday Harbor for Sunday.",
+                           "Book a room for Sunday at Friday Harbor."] {
+                XCTAssertNotNil(ClauseScope.bookingTarget(in: source), source)
+                let item = ThoughtOrganizer.organize(source, referenceDate: anchor, calendar: calendar, sourceText: source)
+                XCTAssertTrue(item.needsClarification, source)
+                XCTAssertEqual(item.state, .underspecified(.ambiguousTemporalScope), source)
+                XCTAssertNil(item.dueDate, source); XCTAssertNil(item.reminderDate, source)
+                XCTAssertEqual(item.reminderDelivery, .none, source)
+            }
+            for (source, day, hour) in [
+                ("Book the room on Friday.", 7, Optional<Int>.none),
+                ("Book the room by Wednesday for Friday.", 5, Optional<Int>.none),
+                ("Book the room tomorrow at 10 AM for Friday afternoon.", 4, Optional(10)),
+                ("Book the room Wednesday.", 5, Optional<Int>.none),
+                ("Book the room at 9 AM for Friday.", 4, Optional(9))
+            ] {
+                let item = ThoughtOrganizer.organize(source, referenceDate: anchor, calendar: calendar, sourceText: source)
+                XCTAssertEqual(item.temporalIntent.day, CalendarDay(year: 2026, month: 8, day: day), source)
+                XCTAssertEqual(item.temporalIntent.time, hour.map { WallClockTime(hour: $0, minute: 0) }, source)
+                XCTAssertNotNil(item.dueDate, source); XCTAssertNil(item.reminderDate, source)
+            }
+            let window = ThoughtOrganizer.organize("Book the car for the tire change next week.",
+                referenceDate: anchor, calendar: calendar)
+            XCTAssertEqual(window.temporalIntent.kind, .calendarWindow); XCTAssertNil(window.dueDate)
+            let count = "Reserve a table for two people at 7 PM."
+            XCTAssertNil(ClauseScope.bookingTarget(in: count))
+            XCTAssertEqual(ThoughtOrganizer.organize(count, referenceDate: anchor, calendar: calendar)
+                .temporalIntent.time, WallClockTime(hour: 19, minute: 0))
+            for source in ["Sam said book the room for Friday.", "Sam will book the room for Friday.",
+                           "Do not book the room for Friday.", "I will not book the room for Friday.",
+                           "If Sam agrees, book the room for Friday.", "Book the room for Friday if Sam agrees.",
+                           "Record 'Book the room for Friday.'", "Book 'Friday Night Lights' tomorrow.",
+                           "Book the room for Friday and call Sam.", "Reserve a table for two people.",
+                           "Buy wine for 9 AM.", "Prepare slides for Monday.", "Did I book the dentist for Tuesday?",
+                           "Book report for Friday.", "Reserve fund for Saturday.", "Book that room for Friday."] {
+                XCTAssertNil(ClauseScope.bookingTarget(in: source), message + source)
+            }
+            for source in ["Book the Room 7 for Friday.", "Please book suite 12 for Friday."] {
+                let role = try XCTUnwrap(ClauseScope.bookingTarget(in: source), source)
+                XCTAssertTrue(role.executionRanges.isEmpty, source)
+                XCTAssertTrue(String(source[role.objectRange]).contains(source.contains("Room") ? "Room 7" : "suite 12"), source)
+                let heldOrUntimed = ThoughtOrganizer.organize(source, referenceDate: anchor,
+                    calendar: calendar, sourceText: source)
+                XCTAssertEqual(heldOrUntimed.itemType, .task, source)
+                XCTAssertNil(heldOrUntimed.dueDate, source); XCTAssertNil(heldOrUntimed.reminderDate, source)
+                XCTAssertEqual(heldOrUntimed.temporalIntent.kind, .none, source)
+            }
+            let retained = ThoughtOrganizer.organize("Book the appointment for June 31.",
+                referenceDate: anchor, calendar: calendar, contentScopeIsMemory: true)
+            XCTAssertEqual(retained.itemType, .note)
+            XCTAssertEqual(retained.state, .resolved); XCTAssertFalse(retained.needsClarification)
+            XCTAssertNil(retained.dueDate); XCTAssertNil(retained.reminderDate)
+            for rawMismatch in ["Book the room for Thursday.", "Dana already booked the room for Friday."] {
+                let held = ThoughtOrganizer.organize("Book the room for Friday.",
+                    referenceDate: anchor, calendar: calendar, sourceText: rawMismatch)
+                XCTAssertEqual(held.itemType, .task)
+                XCTAssertTrue(held.needsClarification); XCTAssertFalse(held.state.permitsAction)
+                XCTAssertEqual(held.state, .underspecified(.ambiguousTemporalScope))
+                XCTAssertNil(held.dueDate); XCTAssertNil(held.reminderDate)
+                XCTAssertNil(held.recurrenceRule); XCTAssertNil(held.locationIntent)
+            }
+            let raw = "Book the room at 9 AM for Friday."
+            let same = try XCTUnwrap(ClauseScope.bookingTarget(in: raw))
+            for changed in ["Book the room at 10 AM for Friday.", "Book the room for Friday.",
+                            "Book the room at 9 AM for Saturday."] {
+                let other = try XCTUnwrap(ClauseScope.bookingTarget(in: changed))
+                XCTAssertFalse(other.matchesOriginal(same, normalizedSource: changed, originalSource: raw), changed)
+            }
+        }
+    }
+}
+
+#if DEBUG
+extension IntentConsolidationTests {
+    func testContactTimingPreferenceKeepsCallContextWithoutBorrowingItsClock() throws {
+        let previous = SentenceContext.taggerDisabledForEvaluation, previousZone = NSTimeZone.default
+        defer { NSTimeZone.default = previousZone; SentenceContext.taggerDisabledForEvaluation = previous; SentenceContextCache.invalidate() }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Toronto"))
+        NSTimeZone.default = calendar.timeZone
+        let anchor = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 11, day: 16, hour: 9)))
+        let original = "Call Grandma Ruth on Saturday morning because it's her birthday, and she likes a call before ten."
+        for disabled in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disabled; SentenceContextCache.invalidate()
+            let mode = "taggerDisabled=\(disabled)"
+            for (source, execution, person, day, hour) in [
+                (original, "Call Grandma Ruth on Saturday morning", "Grandma Ruth", 21, 9),
+                ("Phone Uncle Luis on Friday morning because it's his day off, and he prefers a phone call before eleven.",
+                    "Phone Uncle Luis on Friday morning", "Uncle Luis", 20, 9),
+                ("Call Catherine tomorrow at eleven AM, and Catherine prefers a call before ten.",
+                    "Call Catherine tomorrow at eleven AM", "Catherine", 17, 11)
+            ] {
+                let message = mode + ": " + source
+                let relation = try XCTUnwrap(ClauseScope.contactTimingPreference(in: source), message)
+                XCTAssertEqual(relation.executionText(in: source), execution, message)
+                XCTAssertTrue(relation.matchesOriginal(relation, normalizedSource: source, originalSource: source), message)
+                let result = ThoughtExtractionEngine.extractWithRules(source, referenceDate: anchor, calendar: calendar)
+                XCTAssertEqual(result.items.count, 1, message)
+                let item = try XCTUnwrap(result.items.first, message)
+                XCTAssertEqual(item.sourceQuote, source, message)
+                XCTAssertEqual(item.analysisText, source, message)
+                XCTAssertEqual(SourceUnitLedger(item.rawQuote).words.map(\.text), SourceUnitLedger(source).words.map(\.text), message)
+                XCTAssertEqual(item.sourceUnitIDs, Set(SourceUnitLedger(source).words.indices), message)
+                XCTAssertEqual(item.organization.itemType, .personFollowUp, message)
+                XCTAssertEqual(item.organization.personName, person, message)
+                XCTAssertEqual(item.organization.state, .resolved, message)
+                XCTAssertFalse(item.needsReview, message); XCTAssertFalse(item.organization.needsClarification, message)
+                XCTAssertEqual(item.organization.dueDate, calendar.date(from:
+                    DateComponents(year: 2026, month: 11, day: day, hour: hour)), message)
+                XCTAssertEqual(item.organization.temporalIntent.sourceText, execution.lowercased(), message)
+                XCTAssertNil(item.organization.reminderDate, message)
+                XCTAssertEqual(item.organization.reminderDelivery, .none, message)
+                XCTAssertNil(item.organization.locationIntent, message); XCTAssertNil(item.organization.recurrenceRule, message)
+                XCTAssertNil(item.shoppingGroup, message); XCTAssertTrue(result.operations.isEmpty, message)
+                let title = ThoughtTitleFormatter.polished(item.suggestedTitle ?? item.sourceQuote,
+                    itemType: item.organization.itemType, personName: item.organization.personName)
+                let preference = String(source[relation.preferenceRange]).trimmingCharacters(in: .punctuationCharacters)
+                XCTAssertTrue(title.localizedCaseInsensitiveContains(preference), message)
+                if source == original { XCTAssertTrue(title.contains("birthday"), message) }
+            }
+            // Independent knowledge and later commitments keep their own rows.
+            let sushi = "Call Catherine tomorrow, and she likes sushi."
+            XCTAssertNil(ClauseScope.contactTimingPreference(in: sushi), mode)
+            let independent = ThoughtExtractionEngine.extractWithRules(sushi, referenceDate: anchor, calendar: calendar)
+            XCTAssertEqual(independent.items.count, 2, mode)
+            XCTAssertTrue(independent.items.contains { $0.organization.itemType.isActionable }, mode)
+            XCTAssertTrue(independent.items.contains { !$0.organization.itemType.isActionable
+                && $0.sourceQuote.contains("she likes sushi") }, mode)
+            let later = String(original.dropLast()) + " and call Pat tomorrow."
+            let continued = ThoughtExtractionEngine.extractWithRules(later, referenceDate: anchor, calendar: calendar)
+            XCTAssertEqual(continued.items.count, 2, mode + ": " + later)
+            let call = try XCTUnwrap(continued.items.first { $0.organization.personName == "Grandma Ruth" }, mode)
+            XCTAssertTrue(call.analysisText.contains("she likes a call before ten"), mode)
+            XCTAssertEqual(call.organization.dueDate, calendar.date(from:
+                DateComponents(year: 2026, month: 11, day: 21, hour: 9)), mode)
+            let pat = try XCTUnwrap(continued.items.first { $0.organization.personName == "Pat" }, mode)
+            XCTAssertTrue(call.sourceUnitIDs.isDisjoint(with: pat.sourceUnitIDs), mode)
+            let independentLink = try XCTUnwrap(later.range(of: " and call Pat", options: .backwards), mode)
+            let linkEnd = later.index(independentLink.lowerBound, offsetBy: " and ".count)
+            let ledger = SourceUnitLedger(later)
+            let connectiveIDs = ledger.ids(in: independentLink.lowerBound..<linkEnd)
+            XCTAssertEqual(connectiveIDs.sorted().map { ledger.words[$0].text }, ["and"], mode)
+            XCTAssertEqual(SourceUnitLedger(call.sourceQuote).words.map(\.text),
+                SourceUnitLedger(original).words.map(\.text), mode)
+            XCTAssertEqual(SourceUnitLedger(pat.sourceQuote).words.map(\.text), ["call", "pat", "tomorrow"], mode)
+            XCTAssertEqual(continued.items.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) },
+                Set(ledger.words.indices).subtracting(connectiveIDs), mode)
+            for declined in [
+                "Call Catherine tomorrow, and she likes a call before ten.",
+                "Call the florist on Saturday morning because it's her birthday, and she likes a call before ten.",
+                "Call Grandma Ruth on Saturday morning because it's his birthday, and he likes a call before ten.",
+                "Call her mom tomorrow, and she likes a call before ten.",
+                "Call their uncle tomorrow, and he likes a call before ten.",
+                "Call our sisters tomorrow, and they prefer a call before ten.",
+                "Call Grandma Ruth tomorrow because it's her friend pat, and she likes a call before ten.",
+                "Call Catherine tomorrow, and she prefers emails before ten.",
+                "Call Catherine tomorrow, and Noor likes a call before ten.",
+                "Call Catherine tomorrow, and it likes a call before ten.",
+                "Call Catherine and Noor tomorrow, and she likes a call before ten.",
+                "Call Catherine tomorrow and print the invoice, and she likes a call before ten.",
+                "Call Catherine tomorrow because it's his day off, and she likes a call before ten.",
+                "Call Catherine tomorrow because it's her meeting with Noor, and she likes a call before ten.",
+                "Mara said to call Catherine tomorrow, and she likes a call before ten.",
+                "\"Call Catherine tomorrow, and she likes a call before ten.\"",
+                "If she's home, call Catherine tomorrow, and she likes a call before ten.",
+                "Do not call Catherine tomorrow, and she likes a call before ten."
+            ] { XCTAssertNil(ClauseScope.contactTimingPreference(in: declined), mode + ": " + declined) }
+            for (pronoun, recipient, expected) in [
+                ("she", "my mom", true), ("he", "our uncle", true), ("they", "my mother", true),
+                ("he", "Grandma Ruth", false), ("she", "Uncle Luis", false),
+                ("she", "Catherine", false), ("she", "her mom", false), ("they", "our sisters", false)
+            ] {
+                XCTAssertEqual(PersonMentionResolver.communicationRelationSupportsPronoun(pronoun,
+                    recipient: recipient), expected, mode + ": " + recipient + " / " + pronoun)
+            }
+            let foreign = "Dad is visiting. Call Grandma Ruth on Saturday morning because it's his birthday, and he likes a call before ten."
+            let foreignResult = ThoughtExtractionEngine.extractWithRules(foreign, referenceDate: anchor, calendar: calendar)
+            XCTAssertTrue(foreignResult.items.contains { !$0.organization.itemType.isActionable
+                && $0.analysisText.contains("he likes a call before ten") }, mode + ": " + foreign)
+            XCTAssertFalse(foreignResult.items.contains { $0.organization.itemType.isActionable
+                && $0.analysisText.contains("he likes a call before ten") }, mode + ": " + foreign)
+            let changed = original.replacingOccurrences(of: "before ten", with: "before eleven")
+            let originalProof = try XCTUnwrap(ClauseScope.contactTimingPreference(in: original))
+            let changedProof = try XCTUnwrap(ClauseScope.contactTimingPreference(in: changed))
+            XCTAssertFalse(originalProof.matchesOriginal(changedProof, normalizedSource: original, originalSource: changed), mode)
+            let mismatch = ThoughtOrganizer.organize(original, referenceDate: anchor, calendar: calendar, sourceText: changed)
+            XCTAssertTrue(mismatch.needsClarification, mode)
+            XCTAssertNil(mismatch.dueDate, mode); XCTAssertNil(mismatch.reminderDate, mode)
+        }
+    }
+}
+#endif
+
+
+extension IntentConsolidationTests {
+    func testOriginalSentenceLexicalProjectionPreservesOwnedObjectContext() throws {
+        let previous = SentenceContext.taggerDisabledForEvaluation
+        defer { SentenceContext.taggerDisabledForEvaluation = previous; SentenceContextCache.invalidate() }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Toronto"))
+        let anchor = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 11, day: 16, hour: 9)))
+        let sentence = "Cover the barbecue and the patio set."
+        let part = String(sentence.dropLast())
+        for disabled in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disabled
+            SentenceContextCache.invalidate()
+            let mode = "taggerDisabled=\(disabled)"
+            let parent = SentenceContext(sentence)
+            let set = try XCTUnwrap(parent.tokens.last { $0.text == "set" }, mode)
+            // This milestone needs the real sentence's native noun reading;
+            // missing or different native evidence must fail, not be skipped.
+            XCTAssertEqual(set.lexicalClass, disabled ? .otherWord : .noun, mode)
+            func project(_ source: String, _ literal: String, _ range: Range<String.Index>) throws -> SentenceContext {
+                let context = SentenceContext(source)
+                let original = NSRange(range, in: source)
+                let projected = try XCTUnwrap(context.projectingLiteralPart(literal, range: original), mode)
+                XCTAssertEqual(Data(projected.text.utf8), Data(literal.utf8), mode)
+                let expected = context.tokens.filter {
+                    let token = NSRange($0.range, in: source)
+                    return token.location >= original.location && NSMaxRange(token) <= NSMaxRange(original)
+                }
+                XCTAssertEqual(projected.tokens.count, expected.count, mode)
+                for (actual, retained) in zip(projected.tokens, expected) {
+                    let before = NSRange(retained.range, in: source)
+                    let after = NSRange(actual.range, in: literal)
+                    XCTAssertEqual(actual.text, retained.text, mode)
+                    XCTAssertEqual(actual.lexicalClass, retained.lexicalClass, mode)
+                    XCTAssertEqual(actual.isPersonalName, retained.isPersonalName, mode)
+                    XCTAssertEqual(actual.isOrganizationName, retained.isOrganizationName, mode)
+                    XCTAssertEqual(after, NSRange(location: before.location - original.location, length: before.length), mode)
+                    XCTAssertGreaterThanOrEqual(after.location, 0, mode)
+                    XCTAssertLessThanOrEqual(NSMaxRange(after), literal.utf16.count, mode)
+                    XCTAssertEqual(String(literal[actual.range]), retained.text, mode)
+                }
+                return projected
+            }
+            let literalRange = try XCTUnwrap(sentence.range(of: part, options: .literal), mode)
+            let projected = try project(sentence, part, literalRange)
+            XCTAssertEqual(RuleBasedThoughtExtractor.splitIndependentConjuncts(part, lexicalContext: projected), [part], mode)
+            let unicodeParent = "🧭 Café note. " + sentence + " Call Vera."
+            let unicodeRange = try XCTUnwrap(unicodeParent.range(of: part, options: .literal), mode)
+            XCTAssertNotEqual(NSRange(unicodeRange, in: unicodeParent).location,
+                unicodeParent[..<unicodeRange.lowerBound].utf8.count, mode)
+            _ = try project(unicodeParent, part, unicodeRange)
+            let partial = try XCTUnwrap(sentence.range(of: "arbecue", options: .literal), mode)
+            XCTAssertNil(parent.projectingLiteralPart("arbecue", range: NSRange(partial, in: sentence)), mode)
+            XCTAssertNil(parent.projectingLiteralPart("Call Vera", range: NSRange(literalRange, in: sentence)), mode)
+            XCTAssertNil(parent.projectingLiteralPart("x", range: NSRange(location: sentence.utf16.count + 1, length: 1)), mode)
+            XCTAssertNil(parent.projectingLiteralPart("", range: NSRange(location: 0, length: 0)), mode)
+            let fallback = RuleBasedThoughtExtractor.splitIndependentConjuncts(part)
+            XCTAssertEqual(RuleBasedThoughtExtractor.splitIndependentConjuncts(part,
+                lexicalContext: SentenceContext("Call Vera.")), fallback, mode)
+            let repeated = sentence + " " + sentence
+            let first = try XCTUnwrap(repeated.range(of: part, options: .literal), mode)
+            let second = try XCTUnwrap(repeated.range(of: part, options: .literal,
+                range: first.upperBound..<repeated.endIndex), mode)
+            _ = try project(repeated, part, first)
+            _ = try project(repeated, part, second)
+            // Unique-source lookup declines repeated literals; its existing
+            // fragment reading remains the fallback for both occurrences.
+            XCTAssertEqual(RuleBasedThoughtExtractor.splitClauses(repeated), fallback + fallback, mode)
+            var providerReads = 0
+            func suppliedContext() -> SentenceContext? { providerReads += 1; return projected }
+            XCTAssertEqual(RuleBasedThoughtExtractor.splitIndependentConjuncts("Call Vera",
+                lexicalContext: suppliedContext()), ["Call Vera"], mode)
+            XCTAssertEqual(providerReads, 0, mode)
+            _ = RuleBasedThoughtExtractor.splitIndependentConjuncts(part, lexicalContext: suppliedContext())
+            XCTAssertEqual(providerReads, 1, mode)
+            for source in [sentence, "The café is closed. " + sentence + " Call Vera."] {
+                let result = ThoughtExtractionEngine.extractWithRules(source, referenceDate: anchor, calendar: calendar)
+                let covers = result.items.filter { $0.analysisText.localizedCaseInsensitiveContains("cover the barbecue") }
+                XCTAssertEqual(covers.count, 1, mode + ": " + source)
+                let row = try XCTUnwrap(covers.first, mode)
+                XCTAssertEqual(row.organization.itemType, .task, mode)
+                XCTAssertEqual(row.organization.state, .resolved, mode)
+                XCTAssertFalse(row.needsReview, mode); XCTAssertFalse(row.organization.needsClarification, mode)
+                XCTAssertEqual(SourceUnitLedger(row.sourceQuote).words.map(\.text), SourceUnitLedger(sentence).words.map(\.text), mode)
+                XCTAssertEqual(SourceUnitLedger(row.rawQuote).words.map(\.text), SourceUnitLedger(sentence).words.map(\.text), mode)
+                for words in ["the barbecue", "the patio set"] {
+                    XCTAssertTrue(row.analysisText.contains(words), mode)
+                    XCTAssertTrue((row.suggestedTitle ?? row.analysisText).contains(words), mode)
+                }
+                let occurrence = try XCTUnwrap(source.range(of: sentence, options: .literal), mode)
+                XCTAssertEqual(row.sourceUnitIDs, SourceUnitLedger(source).ids(in: occurrence), mode)
+                XCTAssertNil(row.organization.dueDate, mode); XCTAssertNil(row.organization.reminderDate, mode)
+                XCTAssertEqual(row.organization.temporalIntent.kind, .none, mode)
+                XCTAssertNil(row.organization.personName, mode); XCTAssertNil(row.organization.locationIntent, mode)
+                XCTAssertNil(row.organization.recurrenceRule, mode); XCTAssertNil(row.shoppingGroup, mode)
+                XCTAssertTrue(result.operations.isEmpty, mode)
+                if source != sentence {
+                    let call = try XCTUnwrap(result.items.first { $0.analysisText.localizedCaseInsensitiveContains("call Vera") }, mode)
+                    XCTAssertEqual(call.organization.itemType, .personFollowUp, mode)
+                    XCTAssertEqual(call.organization.personName, "Vera", mode)
+                    XCTAssertTrue(row.sourceUnitIDs.isDisjoint(with: call.sourceUnitIDs), mode)
+                } else { XCTAssertEqual(result.items.count, 1, mode) }
+            }
+            for source in ["Cover the bicycle and call Vera.", "Cover the bicycle and Sarah hates rain."] {
+                XCTAssertEqual(RuleBasedThoughtExtractor.splitClauses(source).count, 2, mode + ": " + source)
+            }
+            let finite = "Cover the bicycle and the patio set is broken."
+            let finitePart = String(finite.dropLast())
+            _ = try project(finite, finitePart, try XCTUnwrap(finite.range(of: finitePart, options: .literal), mode))
+            // Multiword copula behavior without tagging assets is not qualified
+            // by this projection change. A following explicit act still owns
+            // its separate source component in either configuration.
+            let withCall = finite + " Call Vera."
+            let finiteRows = ThoughtExtractionEngine.extractWithRules(withCall, referenceDate: anchor, calendar: calendar)
+            let call = try XCTUnwrap(finiteRows.items.first { $0.analysisText.localizedCaseInsensitiveContains("call Vera") }, mode)
+            XCTAssertEqual(SourceUnitLedger(call.sourceQuote).words.map(\.text), ["call", "vera"], mode)
+            XCTAssertTrue(finiteRows.items.filter { $0.sourceQuote.contains("patio") }.allSatisfy {
+                $0.sourceUnitIDs.isDisjoint(with: call.sourceUnitIDs)
+            }, mode)
+        }
+    }
+}
+
+
+extension IntentConsolidationTests {
+    func testBookingBarePartySizeLeavesAdjacentAtClockWithTheEstablishedParser() throws {
+        let previous=SentenceContext.taggerDisabledForEvaluation,oldZone=NSTimeZone.default
+        defer { NSTimeZone.default=oldZone;SentenceContext.taggerDisabledForEvaluation=previous;SentenceContextCache.invalidate() }
+        var calendar=Calendar(identifier:.gregorian)
+        calendar.timeZone=try XCTUnwrap(TimeZone(identifier:"America/Toronto"))
+        NSTimeZone.default=calendar.timeZone
+        let anchor=try XCTUnwrap(calendar.date(from:DateComponents(year:2026,month:8,day:3,hour:10)))
+        for disabled in [false,true] {
+            SentenceContext.taggerDisabledForEvaluation=disabled;SentenceContextCache.invalidate()
+            let mode="taggerDisabled=\(disabled)"
+            for (source,count,day,hour) in [
+                ("Book a table for four at 7 on Friday","four",7,19),
+                ("Book a table for 4 at 7 PM.","4",3,19),
+                ("Reserve a table for 3 at 8 PM on Thursday.","3",6,20),
+                ("Book a table for six at nine PM on Wednesday.","six",5,21)
+            ] {
+                let message=mode+": "+source
+                XCTAssertNil(ClauseScope.bookingTarget(in:source),message)
+                let organization=ThoughtOrganizer.organize(source,referenceDate:anchor,calendar:calendar,sourceText:source)
+                let due=try XCTUnwrap(calendar.date(from:DateComponents(year:2026,month:8,day:day,hour:hour)))
+                XCTAssertEqual(organization.itemType,.task,message)
+                XCTAssertEqual(organization.state,.resolved,message);XCTAssertFalse(organization.needsClarification,message)
+                XCTAssertEqual(organization.dueDate,due,message)
+                XCTAssertEqual(organization.temporalIntent.kind,.exactDateTime,message)
+                XCTAssertEqual(organization.temporalIntent.day,CalendarDay(year:2026,month:8,day:day),message)
+                XCTAssertEqual(organization.temporalIntent.time,WallClockTime(hour:hour,minute:0),message)
+                XCTAssertNil(organization.reminderDate,message)
+                XCTAssertEqual(organization.reminderDelivery,.none,message)
+                let result=ThoughtExtractionEngine.extractWithRules(source,referenceDate:anchor,calendar:calendar)
+                XCTAssertEqual(result.items.count,1,message)
+                let item=try XCTUnwrap(result.items.first,message)
+                XCTAssertEqual(item.organization.itemType,.task,message)
+                XCTAssertEqual(item.organization.dueDate,due,message)
+                XCTAssertFalse(item.needsReview,message);XCTAssertFalse(item.organization.needsClarification,message)
+                XCTAssertNil(item.organization.reminderDate,message);XCTAssertNil(item.organization.personName,message)
+                XCTAssertNil(item.organization.locationIntent,message);XCTAssertNil(item.organization.recurrenceRule,message)
+                XCTAssertNil(item.shoppingGroup,message);XCTAssertTrue(result.operations.isEmpty,message)
+                XCTAssertEqual(SourceUnitLedger(item.sourceQuote).words.map(\.text),SourceUnitLedger(source).words.map(\.text),message)
+                XCTAssertEqual(SourceUnitLedger(item.rawQuote).words.map(\.text),SourceUnitLedger(source).words.map(\.text),message)
+                XCTAssertEqual(item.sourceUnitIDs,Set(SourceUnitLedger(source).words.indices),message)
+                XCTAssertTrue((item.suggestedTitle ?? item.analysisText).localizedCaseInsensitiveContains("for "+count),message)
+                XCTAssertTrue((item.suggestedTitle ?? item.analysisText).localizedCaseInsensitiveContains("table"),message)
+            }
+            // A bare FOR clock remains the deliberate reservation target;
+            // explicit meridiem, colon time and calendar target do too.
+            for source in ["Book a table for 7.","Book a table for 7 PM.",
+                           "Book a table for 7:30.","Book a table for Friday at 7 PM."] {
+                XCTAssertNotNil(ClauseScope.bookingTarget(in:source),mode+": "+source)
+                let item=ThoughtOrganizer.organize(source,referenceDate:anchor,calendar:calendar,sourceText:source)
+                XCTAssertEqual(item.itemType,.task,source);XCTAssertFalse(item.needsClarification,source)
+                XCTAssertEqual(item.temporalIntent.kind,.none,source)
+                XCTAssertNil(item.dueDate,source);XCTAssertNil(item.reminderDate,source)
+            }
+            // Existing zip-gap proof declines these optional multi-FOR
+            // roles: AT material separates the slots. No held/execution
+            // outcome is newly asserted for the ordinary fallback parser.
+            for source in ["Book a table for four at 7 for 4 PM.",
+                           "Book a table for four at 7 for Saturday."] {
+                XCTAssertNil(ClauseScope.bookingTarget(in:source),mode+": "+source)
+            }
+            let conflict="Book a table for 4 PM at 7 PM."
+            XCTAssertNotNil(ClauseScope.bookingTarget(in:conflict),mode)
+            let held=ThoughtOrganizer.organize(conflict,referenceDate:anchor,calendar:calendar,sourceText:conflict)
+            XCTAssertEqual(held.itemType,.task,mode)
+            XCTAssertEqual(held.state,.underspecified(.ambiguousTemporalScope),mode)
+            XCTAssertTrue(held.needsClarification,mode)
+            XCTAssertNil(held.dueDate,mode);XCTAssertNil(held.reminderDate,mode)
+            for source in ["Sam said book a table for four at 7 on Friday.",
+                           "Book Sam for four at 7 on Friday.",
+                           "\"Book a table for four at 7 on Friday.\"",
+                           "If Sam agrees, book a table for four at 7 on Friday.",
+                           "I will not book a table for four at 7 on Friday.",
+                           "Book a table for four at 7 on Friday, actually at 8."] {
+                // Optional-role refusals retain the existing ordinary path;
+                // these assert no new permission or source-grammar expansion.
+                XCTAssertNil(ClauseScope.bookingTarget(in:source),mode+": "+source)
+            }
+        }
+    }
+}
+
+
+extension IntentConsolidationTests {
+    func testDeclaredFactCanCloseOnlyACompleteDirectCommunicationObject() throws {
+        let previous=SentenceContext.taggerDisabledForEvaluation
+        defer { SentenceContext.taggerDisabledForEvaluation=previous;SentenceContextCache.invalidate() }
+        var calendar=Calendar(identifier:.gregorian)
+        calendar.timeZone=try XCTUnwrap(TimeZone(identifier:"America/Toronto"))
+        let anchor=try XCTUnwrap(calendar.date(from:DateComponents(year:2026,month:11,day:16,hour:9)))
+        let cases=[
+            ("Email Noor the form","a fact I want to keep in the middle of this the cabinet is locked","the cabinet is locked","Noor"),
+            ("Email Mira the receipt","a note I want to save the gate is closed","the gate is closed","Mira"),
+            ("Text Sam the map","one fact I need to retain the shed is locked","the shed is locked","Sam")
+        ]
+        for disabled in [false,true] {
+            SentenceContext.taggerDisabledForEvaluation=disabled;SentenceContextCache.invalidate()
+            let mode="taggerDisabled=\(disabled)"
+            for (prefix,frame,body,person) in cases {
+                let source=prefix+" "+frame,message=mode+": "+source
+                XCTAssertEqual(ClauseScope.read(prefix).act,.direct,message)
+                XCTAssertTrue(ActionabilityReader.read(prefix).belongsOnToday,message)
+                XCTAssertNil(ThoughtCompletion.unfinished(in:prefix),message)
+                XCTAssertNotNil(ClauseScope.communicationArgumentCandidate(in:prefix),message)
+                XCTAssertEqual(ActionabilityReader.declaredFactRecordingBody(frame),body,message)
+                let result=ThoughtExtractionEngine.extractWithRules(source,referenceDate:anchor,calendar:calendar)
+                XCTAssertEqual(result.items.count,2,message)
+                let communication=try XCTUnwrap(result.items.first { $0.organization.itemType == .personFollowUp },message)
+                let fact=try XCTUnwrap(result.items.first { $0.organization.itemType == .note },message)
+                XCTAssertEqual(communication.sourceQuote,prefix,message);XCTAssertEqual(communication.rawQuote,prefix,message)
+                XCTAssertEqual(communication.analysisText,prefix,message)
+                XCTAssertEqual(communication.organization.personName,person,message)
+                XCTAssertEqual(fact.sourceQuote,frame,message);XCTAssertEqual(fact.rawQuote,frame,message)
+                XCTAssertEqual(fact.analysisText,body,message);XCTAssertNil(fact.organization.personName,message)
+                XCTAssertTrue((fact.suggestedTitle ?? fact.analysisText).localizedCaseInsensitiveContains(body),message)
+                let ledger=SourceUnitLedger(source)
+                let prefixRange=try XCTUnwrap(source.range(of:prefix,options:.literal),message)
+                let frameRange=try XCTUnwrap(source.range(of:frame,options:.literal),message)
+                XCTAssertEqual(communication.sourceUnitIDs,ledger.ids(in:prefixRange),message)
+                XCTAssertEqual(fact.sourceUnitIDs,ledger.ids(in:frameRange),message)
+                XCTAssertTrue(communication.sourceUnitIDs.isDisjoint(with:fact.sourceUnitIDs),message)
+                XCTAssertEqual(communication.sourceUnitIDs.union(fact.sourceUnitIDs),Set(ledger.words.indices),message)
+                XCTAssertTrue(communication.organization.itemType.isActionable,message)
+                XCTAssertFalse(fact.organization.itemType.isActionable,message)
+                XCTAssertTrue(result.operations.isEmpty,message)
+                for item in result.items {
+                    XCTAssertEqual(item.organization.state,.resolved,message);XCTAssertFalse(item.needsReview,message)
+                    XCTAssertFalse(item.organization.needsClarification,message)
+                    XCTAssertNil(item.organization.dueDate,message);XCTAssertNil(item.organization.reminderDate,message)
+                    XCTAssertEqual(item.organization.temporalIntent.kind,.none,message)
+                    XCTAssertEqual(item.organization.reminderDelivery,.none,message)
+                    XCTAssertNil(item.organization.locationIntent,message);XCTAssertNil(item.organization.recurrenceRule,message)
+                    XCTAssertNil(item.shoppingGroup,message)
+                }
+            }
+            for source in [
+                "Tell Noor that a fact I want to keep the cabinet is locked",
+                "Email Noor the form is ready a fact I want to keep in the middle of this the cabinet is locked",
+                "Email Noor \"the form is ready\" a fact I want to keep the cabinet is locked"
+            ] {
+                let result=ThoughtExtractionEngine.extractWithRules(source,referenceDate:anchor,calendar:calendar)
+                XCTAssertEqual(result.items.count,1,mode+": "+source)
+                let item=try XCTUnwrap(result.items.first,mode)
+                XCTAssertEqual(item.organization.itemType,.personFollowUp,mode)
+                XCTAssertEqual(item.organization.personName,"Noor",mode)
+                XCTAssertFalse(item.needsReview,mode)
+                XCTAssertEqual(SourceUnitLedger(item.sourceQuote).words.map(\.text),SourceUnitLedger(source).words.map(\.text),mode)
+                XCTAssertTrue(item.sourceQuote.contains("cabinet"),mode)
+                XCTAssertNil(item.organization.dueDate,mode);XCTAssertNil(item.organization.reminderDate,mode)
+                XCTAssertTrue(result.operations.isEmpty,mode)
+            }
+            XCTAssertTrue(ClauseScope.opensMessageComplement("Tell Noor that"),mode)
+            XCTAssertEqual(ClauseScope.read("Email Noor the form is ready").act,.communicating,mode)
+            // A recipient alone has no object slot. Check that exact existing
+            // gate, without inventing a legacy whole-output count in the
+            // non-communicating path that this change deliberately leaves alone.
+            XCTAssertEqual(ClauseScope.read("Email Noor").act,.direct,mode)
+            XCTAssertNil(ClauseScope.communicationArgumentCandidate(in:"Email Noor"),mode)
+            for source in [
+                "\"Email Noor the form a fact I want to keep the cabinet is locked\"",
+                "Pat said email Noor the form a fact I want to keep the cabinet is locked"
+            ] {
+                let result=ThoughtExtractionEngine.extractWithRules(source,referenceDate:anchor,calendar:calendar)
+                XCTAssertEqual(result.items.count,1,mode+": "+source)
+                XCTAssertFalse(result.items.contains { $0.organization.itemType.isActionable && !$0.needsReview },mode)
+                XCTAssertTrue(result.items.allSatisfy { $0.sourceQuote.contains("cabinet")
+                    && $0.organization.dueDate == nil && $0.organization.reminderDate == nil },mode)
+                XCTAssertTrue(result.operations.isEmpty,mode)
+            }
+        }
+    }
+}
+
+
+extension IntentConsolidationTests {
+    func testForcedMissingTaggerSuppressesBothNameTypesWithoutChangingTokenSpans() {
+        let previous = SentenceContext.taggerDisabledForEvaluation
+        defer {
+            SentenceContext.taggerDisabledForEvaluation = previous
+            SentenceContextCache.invalidate()
+        }
+        let sources = [
+            "Email Mira the receipt", "I spoke with Mira", "Costco sells milk",
+            "Email Noor the form", "I spoke with Noor", "IKEA sells tables"
+        ]
+        for source in sources {
+            SentenceContext.taggerDisabledForEvaluation = false
+            SentenceContextCache.invalidate()
+            let native = SentenceContextCache.context(for: source)
+            XCTAssertFalse(native.tokens.isEmpty, source)
+            XCTAssertEqual(native.text, source)
+
+            SentenceContext.taggerDisabledForEvaluation = true
+            SentenceContextCache.invalidate()
+            let missing = SentenceContextCache.context(for: source)
+            XCTAssertEqual(missing.text, source)
+            XCTAssertEqual(missing.tokens.map(\.text), native.tokens.map(\.text), source)
+            XCTAssertEqual(missing.tokens.map { NSRange($0.range, in: source) },
+                           native.tokens.map { NSRange($0.range, in: source) }, source)
+            for token in missing.tokens {
+                XCTAssertEqual(token.lexicalClass, .otherWord, source + ": " + token.text)
+                XCTAssertFalse(token.isPersonalName, source + ": " + token.text)
+                XCTAssertFalse(token.isOrganizationName, source + ": " + token.text)
+                XCTAssertEqual(String(source[token.range]), token.text, source)
+            }
+
+            // Returning to the ordinary mode restores its actual local reading;
+            // this contract does not require any tagging assets to be installed.
+            SentenceContext.taggerDisabledForEvaluation = false
+            SentenceContextCache.invalidate()
+            let restored = SentenceContextCache.context(for: source)
+            XCTAssertEqual(restored.tokens.map(\.text), native.tokens.map(\.text), source)
+            XCTAssertEqual(restored.tokens.map { NSRange($0.range, in: source) },
+                           native.tokens.map { NSRange($0.range, in: source) }, source)
+            XCTAssertEqual(restored.tokens.map(\.lexicalClass), native.tokens.map(\.lexicalClass), source)
+            XCTAssertEqual(restored.tokens.map(\.isPersonalName), native.tokens.map(\.isPersonalName), source)
+            XCTAssertEqual(restored.tokens.map(\.isOrganizationName), native.tokens.map(\.isOrganizationName), source)
+        }
+    }
+}
+
+@MainActor
+final class HypotheticalQuotedReferenceTests: XCTestCase {
+    private let original = "I'm describing my Saturday market routine so I can find it later. "
+        + "I visit the bread stall and then the flower stand. "
+        + "The shared context belongs on the whole note. "
+        + "If I say 'pick up' while describing that routine, it is not a shopping task."
+
+    func testCompleteCitedWordFrameKeepsOriginalMemoryAndIndependentCall() throws {
+        let previous = SentenceContext.taggerDisabledForEvaluation, previousZone = NSTimeZone.default
+        defer { NSTimeZone.default = previousZone; SentenceContext.taggerDisabledForEvaluation = previous; SentenceContextCache.invalidate() }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Toronto"))
+        NSTimeZone.default = calendar.timeZone
+        let anchor = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 11, day: 16, hour: 9)))
+        let leaf = "If I say 'pick up' while describing that routine, it is not a shopping task."
+        for disabled in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disabled; SentenceContextCache.invalidate()
+            let mode = "taggerDisabled=\(disabled)"
+            for source in [leaf,
+                "When I say ‘rinse the jar’, it is not an instruction.",
+                "If I say “email Noor” while describing our blue daxen, that is not a request.",
+                "If I say 'pick up,' while describing my violet quorven, this is not a shopping task."] {
+                XCTAssertTrue(QuotedSpeechScope.citesQuoteAsNonAction(source), mode + source)
+                XCTAssertEqual(QuotedSpeechScope.matrixVoice(in: source), .reported, mode + source)
+                let quote = try XCTUnwrap(QuotedSpeechScope.ranges(in: source).first, mode)
+                XCTAssertTrue("'‘“".contains(source[quote.lowerBound]), mode)
+                XCTAssertTrue("'’”".contains(source[source.index(before: quote.upperBound)]), mode)
+            }
+            XCTAssertEqual(ClauseScope.read(leaf).act, .direct, "If I is still not a reporter: " + mode)
+            XCTAssertNil(ShoppingGroupParser.frontedAcquisitionContext(in: leaf), mode)
+            XCTAssertNil(QuotedSpeechScope.directActionAfterQuote(leaf), mode)
+            let reading = ThoughtExtractionEngine.extractWithRules(original, referenceDate: anchor, calendar: calendar)
+            XCTAssertEqual(reading.items.count, 1, mode)
+            let item = try XCTUnwrap(reading.items.first, mode)
+            XCTAssertEqual(item.organization.itemType, .note, mode)
+            XCTAssertFalse(item.needsReview, mode); XCTAssertFalse(item.organization.needsClarification, mode)
+            XCTAssertEqual(item.organization.state, .resolved, mode)
+            XCTAssertEqual(Data(item.sourceQuote.utf8), Data(original.utf8), mode)
+            XCTAssertEqual(Data(item.rawQuote.utf8), Data(original.utf8), mode)
+            XCTAssertEqual(item.analysisText, original, mode)
+            XCTAssertEqual(item.sourceUnitIDs, Set(SourceUnitLedger(original).words.indices), mode)
+            XCTAssertNil(item.organization.dueDate, mode); XCTAssertNil(item.organization.reminderDate, mode)
+            XCTAssertEqual(item.organization.reminderDelivery, .none, mode)
+            XCTAssertNil(item.organization.personName, mode); XCTAssertNil(item.organization.locationIntent, mode)
+            XCTAssertNil(item.organization.recurrenceRule, mode); XCTAssertTrue(reading.operations.isEmpty, mode)
+            for source in [
+                "If I say 'call Noor', remind me to call her.",
+                "If I say 'x', I will call Noor, it is not a task.",
+                "If I say 'x', it is not a task, call Noor.",
+                "If I say 'x', it is not a task and I need to call Noor.",
+                "If I say 'x' while describing that I need groceries, it is not a task.",
+                "If I say 'x' while describing the routine that I call Noor, it is not a task.",
+                "If I say 'x' while describing my call routine, it is not a task.",
+                "If I say 'x' while describing our routine, it is a task.",
+                "If Sam says 'x', it is not a task.",
+                "Tell Sam 'x', that is not a task.",
+                "If I say 'x' and 'y', it is not a task.",
+                "If I say 'x, it is not a task.",
+                "If I say 'x', it's not a task.",
+                "First: If I say 'x', it is not a task."] {
+                XCTAssertFalse(QuotedSpeechScope.citesQuoteAsNonAction(source), mode + source)
+            }
+            XCTAssertEqual(QuotedSpeechScope.matrixVoice(in: "Tell Sam 'x', that is not a task."), .direct, mode)
+            let withCall = original + " Call Vera."
+            let separate = ThoughtExtractionEngine.extractWithRules(withCall, referenceDate: anchor, calendar: calendar)
+            let calls = separate.items.filter { $0.organization.itemType.isActionable }
+            XCTAssertEqual(calls.count, 1, mode)
+            XCTAssertEqual(calls.first?.sourceQuote, "Call Vera.", mode)
+            XCTAssertEqual(calls.first?.organization.personName, "Vera", mode)
+            XCTAssertFalse(calls.first?.needsReview ?? true, mode)
+            XCTAssertEqual(separate.items.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) },
+                Set(SourceUnitLedger(withCall).words.indices), mode)
+            XCTAssertTrue(separate.operations.isEmpty, mode)
+        }
+    }
+
+    func testOriginalRoutineMemorySurvivesSaveDuplicateFreshOpenAndRecovery() async throws {
+        let previous = SentenceContext.taggerDisabledForEvaluation, previousZone = NSTimeZone.default
+        defer { NSTimeZone.default = previousZone; SentenceContext.taggerDisabledForEvaluation = previous; SentenceContextCache.invalidate() }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Toronto"))
+        let anchor = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 11, day: 16, hour: 9)))
+        func snapshot(_ context: ModelContext) throws -> Data {
+            try JSONSerialization.data(withJSONObject: LongCaptureQualificationTests.snapshot(context), options: [.sortedKeys])
+        }
+        func assertSaved(_ context: ModelContext, sessionID: UUID, itemID: UUID, mode: String) throws {
+            let sessions = try context.fetch(FetchDescriptor<CaptureSession>())
+            XCTAssertEqual(sessions.count, 1, mode)
+            XCTAssertEqual(sessions.first?.id, sessionID, mode)
+            XCTAssertEqual(sessions.first.map { Data($0.originalTranscription.utf8) }, Data(original.utf8), mode)
+            XCTAssertEqual(sessions.first?.processingStatus, .complete, mode)
+            let rows = try context.fetch(FetchDescriptor<CapturedItem>())
+            XCTAssertEqual(rows.count, 1, mode)
+            let row = try XCTUnwrap(rows.first, mode)
+            XCTAssertEqual(row.id, itemID, mode); XCTAssertEqual(row.captureSession?.id, sessionID, mode)
+            XCTAssertEqual(Data(row.originalTextSegment.utf8), Data(original.utf8), mode)
+            XCTAssertEqual(row.itemType, .note, mode); XCTAssertEqual(row.semanticState, .resolved, mode)
+            XCTAssertTrue(row.belongsInMemory, mode); XCTAssertFalse(row.belongsInToday, mode)
+            XCTAssertFalse(row.needsClarification, mode)
+            XCTAssertNil(row.personName, mode); XCTAssertNil(row.dueDate, mode); XCTAssertNil(row.reminderDate, mode)
+            XCTAssertEqual(ItemPresentation.configuredReminderDelivery(for: row), .none, mode); XCTAssertNil(row.locationIntent, mode)
+            XCTAssertNil(RecurrenceStore.rule(for: row.id), mode)
+        }
+        for disabled in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disabled; SentenceContextCache.invalidate()
+            let mode = "taggerDisabled=\(disabled)"
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent("SpeakItCitedRoutine-" + UUID().uuidString)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let configuration = ModelConfiguration(url: directory.appendingPathComponent("capture.store"), cloudKitDatabase: .none)
+            var disk: ModelContainer? = try ModelContainer(for: PersistenceController.schema,
+                migrationPlan: SpeakItMigrationPlan.self, configurations: [configuration])
+            var repository: SwiftDataThoughtRepository? = SwiftDataThoughtRepository(modelContext: try XCTUnwrap(disk).mainContext,
+                requestsReminderAuthorization: false, permitsOnDeviceIntelligence: false)
+            NSTimeZone.default = calendar.timeZone
+            var saved: CaptureCreationResult? = try await XCTUnwrap(repository).createCaptureResult(text: original,
+                source: .inAppText, createdAt: anchor, schedulesReminders: false)
+            NSTimeZone.default = previousZone
+            let sessionID = try XCTUnwrap(saved).session.id, itemID = try XCTUnwrap(saved?.items.first).id
+            XCTAssertNil(saved?.operationOutcome, mode)
+            try assertSaved(try XCTUnwrap(disk).mainContext, sessionID: sessionID, itemID: itemID, mode: mode)
+            let before = try snapshot(try XCTUnwrap(disk).mainContext)
+            var duplicate: CaptureCreationResult? = try await XCTUnwrap(repository).createCaptureResult(text: original,
+                source: .inAppText, createdAt: anchor.addingTimeInterval(1), schedulesReminders: false)
+            XCTAssertFalse(try XCTUnwrap(duplicate).createdNewCapture, mode)
+            XCTAssertEqual(duplicate?.session.id, sessionID, mode); XCTAssertEqual(duplicate?.items.map(\.id), [itemID], mode)
+            XCTAssertEqual(try snapshot(try XCTUnwrap(disk).mainContext), before, mode)
+            saved = nil; duplicate = nil; repository = nil; disk = nil
+            let reopened = try ModelContainer(for: PersistenceController.schema,
+                migrationPlan: SpeakItMigrationPlan.self, configurations: [configuration])
+            let fresh = ModelContext(reopened)
+            let recovery = SwiftDataThoughtRepository(modelContext: fresh,
+                requestsReminderAuthorization: false, permitsOnDeviceIntelligence: false)
+            try assertSaved(fresh, sessionID: sessionID, itemID: itemID, mode: mode)
+            XCTAssertEqual(try snapshot(fresh), before, mode)
+            for _ in 0..<2 {
+                recovery.recoverUnorganizedCaptures()
+                try assertSaved(fresh, sessionID: sessionID, itemID: itemID, mode: mode)
+                XCTAssertEqual(try snapshot(fresh), before, mode)
+            }
+        }
+    }
+}
+
+
+extension IntentConsolidationTests {
+    func testCompleteNominalRestatementKeepsTimingAsideWithMatchingOwnerOnly() throws {
+        let oldMode = SentenceContext.taggerDisabledForEvaluation
+        let oldZone = NSTimeZone.default
+        defer {
+            NSTimeZone.default = oldZone
+            SentenceContext.taggerDisabledForEvaluation = oldMode
+            SentenceContextCache.invalidate()
+        }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Toronto"))
+        NSTimeZone.default = calendar.timeZone
+        let anchor = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 10, day: 5, hour: 9)))
+        let detail = "I mean a basic kit to keep with the event supplies, and I have not given a purchase date."
+        for disabled in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disabled
+            SentenceContextCache.invalidate()
+            let mode = "taggerDisabled=\(disabled)"
+            for complete in [detail, detail.lowercased(),
+                "We mean a basic cable to keep in the repair box, and we haven't chosen a day or reminder time."] {
+                XCTAssertTrue(RuleBasedThoughtExtractor.hasCompleteNominalTimingRestatement(in: complete), mode + complete)
+            }
+            XCTAssertTrue(ActionabilityReader.isCompleteUnchosenActionTimeFrame("I have not given a purchase date."), mode)
+            // The existing late reader recognizes a prefix. That prefix alone
+            // must never authorize the new early whole-component preservation.
+            for residual in [
+                "I have not given a purchase date and the lantern glows.",
+                "I have not given a purchase date, call Vera.",
+                "I have not given a purchase date for the kit."] {
+                XCTAssertTrue(ActionabilityReader.isUnchosenActionTime(residual), mode + residual)
+                XCTAssertFalse(ActionabilityReader.isCompleteUnchosenActionTimeFrame(residual), mode + residual)
+                XCTAssertFalse(RuleBasedThoughtExtractor.hasCompleteNominalTimingRestatement(
+                    in: "I mean a basic kit to keep with the event supplies, and " + residual), mode + residual)
+            }
+            for source in [
+                "I mean a kit to keep the gauge safe; Call Dad and I have not given a purchase date.",
+                "I mean a kit to keep the gauge safe, Call Dad and I have not given a purchase date.",
+                "I mean a kit to keep the gauge safe call Dad and I have not given a purchase date.",
+                "I mean a basic kit to keep with the event supplies, and call Vera.",
+                "I mean a basic kit to keep with the event supplies, and the cupboard is locked."] {
+                XCTAssertFalse(RuleBasedThoughtExtractor.hasCompleteNominalTimingRestatement(in: source), mode + source)
+            }
+            let source = "Buy a first aid kit for the club cupboard. Call Vera. " + detail
+            let reading = ThoughtExtractionEngine.extractWithRules(source, referenceDate: anchor, calendar: calendar)
+            XCTAssertEqual(reading.items.count, 2, mode + reading.items.map(\.sourceQuote).joined(separator: " | "))
+            let kit = try XCTUnwrap(reading.items.first { $0.sourceQuote.contains("Buy a first aid kit") }, mode)
+            let call = try XCTUnwrap(reading.items.first { $0.sourceQuote.contains("Call Vera") }, mode)
+            XCTAssertTrue(kit.organization.itemType.isActionable, mode)
+            XCTAssertFalse(kit.needsReview, mode)
+            XCTAssertTrue(kit.sourceQuote.contains(detail), mode)
+            XCTAssertTrue(kit.rawQuote.contains(detail), mode)
+            XCTAssertFalse(call.sourceQuote.contains("I mean"), mode)
+            XCTAssertFalse(call.rawQuote.contains("purchase date"), mode)
+            XCTAssertEqual(call.organization.personName, "Vera", mode)
+            XCTAssertTrue(kit.sourceUnitIDs.isDisjoint(with: call.sourceUnitIDs), mode)
+            let ledger = SourceUnitLedger(source)
+            let detailRange = try XCTUnwrap(source.range(of: detail), mode)
+            XCTAssertTrue(ledger.ids(in: detailRange).isSubset(of: kit.sourceUnitIDs), mode)
+            XCTAssertEqual(kit.sourceUnitIDs.union(call.sourceUnitIDs), Set(ledger.words.indices), mode)
+            XCTAssertTrue(reading.operations.isEmpty, mode)
+            for row in reading.items {
+                XCTAssertNil(row.organization.dueDate, mode)
+                XCTAssertNil(row.organization.reminderDate, mode)
+                XCTAssertEqual(row.organization.reminderDelivery, .none, mode)
+            }
+            for (tail, actionable) in [("call Vera.", true), ("the cupboard is locked.", false)] {
+                let opposite = "Buy a first aid kit for the club cupboard. I mean a basic kit to keep with the event supplies, and " + tail
+                let result = ThoughtExtractionEngine.extractWithRules(opposite, referenceDate: anchor, calendar: calendar)
+                let independent = try XCTUnwrap(result.items.first {
+                    $0.sourceQuote.lowercased().contains(tail.lowercased().dropLast())
+                        && !$0.sourceQuote.lowercased().contains("i mean")
+                }, mode + opposite)
+                XCTAssertEqual(independent.organization.itemType.isActionable, actionable, mode + opposite)
+                XCTAssertTrue(result.operations.isEmpty, mode + opposite)
+                XCTAssertEqual(result.items.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) },
+                    Set(SourceUnitLedger(opposite).words.indices), mode + opposite)
+            }
+        }
+    }
+}
+
+
+extension IntentConsolidationTests {
+    func testWeakRetailHeaderCannotDeclareUnknownDefiniteReferents() throws {
+        let previous = SentenceContext.taggerDisabledForEvaluation
+        defer { SentenceContext.taggerDisabledForEvaluation = previous; SentenceContextCache.invalidate() }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Toronto"))
+        let anchor = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 8, day: 3, hour: 10)))
+        for disabled in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disabled; SentenceContextCache.invalidate()
+            for header in ["At Costco: these people and those friends.",
+                           "At Costco: the qavren and this zental."] {
+                let source = "Wash the car. " + header
+                let mode = "taggerDisabled=\(disabled): " + source
+                XCTAssertNil(ShoppingGroupParser.declaredShoppingRun(in: header), mode)
+                XCTAssertFalse(ShoppingGroupParser.certifiesImplicitProducts(
+                    String(header.dropFirst("At Costco: ".count))), mode)
+                let reading = ThoughtExtractionEngine.extractWithRules(source, referenceDate: anchor, calendar: calendar)
+                XCTAssertFalse(reading.items.contains { $0.organization.itemType == .shopping }, mode)
+                XCTAssertTrue(reading.items.contains { $0.organization.itemType.isActionable
+                    && $0.sourceQuote.contains("Wash the car") }, mode)
+                XCTAssertEqual(reading.items.reduce(into: Set<Int>()) { $0.formUnion($1.sourceUnitIDs) },
+                    Set(SourceUnitLedger(source).words.indices), mode)
+                XCTAssertTrue(reading.operations.isEmpty, mode)
+            }
+            let known = "At Costco: those granola bars and that oat milk."
+            let retained = ThoughtExtractionEngine.extractWithRules(known, referenceDate: anchor, calendar: calendar)
+            XCTAssertEqual(retained.items.count, 2, known)
+            XCTAssertTrue(retained.items.allSatisfy { $0.organization.itemType == .shopping
+                && $0.shoppingGroup == "Costco" && !$0.needsReview }, known)
+            for opposed in [
+                "Grocery run at Costco: these qavren and zental.",
+                "Grocery run at Costco: these qavren and call Mom.",
+                "Grocery run at Costco: a roll of qavren for the cedars and the hedge."
+            ] {
+                XCTAssertNil(ShoppingGroupParser.declaredShoppingRun(in: opposed), opposed)
+            }
+            for (source, entries) in [
+                ("At Costco: qavren and a zental.", ["qavren", "a zental"]),
+                ("Grocery run at Costco: these qavren and those zental.", ["these qavren", "those zental"]),
+                ("Grocery run at Costco: these qavren, and those zental.", ["these qavren", "those zental"])
+            ] {
+                let mode = "taggerDisabled=\(disabled): " + source
+                let proof = try XCTUnwrap(ShoppingGroupParser.declaredShoppingRun(in: source), mode)
+                XCTAssertEqual(proof.entries.map { String(source[$0.range]) }, entries, mode)
+                let reading = ThoughtExtractionEngine.extractWithRules(source, referenceDate: anchor, calendar: calendar)
+                XCTAssertEqual(reading.items.map(\.sourceQuote), entries, mode)
+                XCTAssertTrue(reading.items.allSatisfy { $0.rawQuote == source
+                    && $0.organization.itemType == .shopping && $0.shoppingGroup == "Costco"
+                    && $0.organization.state == .resolved && !$0.needsReview
+                    && !$0.organization.needsClarification && $0.organization.temporalIntent == .none
+                    && $0.organization.personName == nil && $0.organization.dueDate == nil
+                    && $0.organization.reminderDate == nil && $0.organization.reminderDelivery == .none
+                    && $0.organization.locationIntent == nil && $0.organization.recurrenceRule == nil }, mode)
+                var used = Set<Int>()
+                for row in reading.items {
+                    XCTAssertTrue(used.isDisjoint(with: row.sourceUnitIDs), mode)
+                    used.formUnion(row.sourceUnitIDs)
+                }
+                XCTAssertEqual(used, Set(SourceUnitLedger(source).words.indices), mode)
+                XCTAssertTrue(reading.operations.isEmpty, mode)
+            }
+        }
+    }
+}
+
+
+extension IntentConsolidationTests {
+    func testOwnedQuestionRetainsLiteralCoordinatorWithoutWideningOtherFrames() throws {
+        let previous = SentenceContext.taggerDisabledForEvaluation, oldZone = NSTimeZone.default
+        defer {
+            SentenceContext.taggerDisabledForEvaluation = previous; SentenceContextCache.invalidate()
+            NSTimeZone.default = oldZone
+        }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Toronto"))
+        NSTimeZone.default = calendar.timeZone
+        let anchor = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 10, day: 5, hour: 9)))
+        for disabled in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disabled; SentenceContextCache.invalidate()
+            let mode = "taggerDisabled=\(disabled): "
+            for source in [
+                "Text Sam to say the train leaves at ten on Friday and ask whether he can meet me at the other end. I have not picked a time to send that text. Ten is the departure time inside the message.",
+                "Text Noor about the ferry and ask whether she can meet me at the pier."] {
+                var trace: RuntimeRuleTrace?
+                let result = RuleBasedThoughtExtractor.process(source, referenceDate: anchor, calendar: calendar,
+                    traceObserver: { trace = $0 })
+                let proof = try XCTUnwrap(trace, mode + source)
+                let ledger = SourceUnitLedger(proof.creating)
+                let andRange = try XCTUnwrap(proof.creating.range(of: #"(?i)\band\s+(?=ask\b)"#,
+                    options: .regularExpression), mode + source)
+                let andIDs = ledger.ids(in: andRange)
+                XCTAssertEqual(andIDs.count, 1, mode + source)
+                let row = try XCTUnwrap(result.items.first { $0.analysisText.contains("ask whether") }, mode + source)
+                XCTAssertTrue(andIDs.isSubset(of: row.sourceUnitIDs), mode + source)
+                XCTAssertTrue(row.sourceQuote.contains("and ask whether"), mode + source)
+                XCTAssertTrue(row.rawQuote.contains("and ask whether"), mode + source)
+                XCTAssertFalse(row.needsReview, mode + source)
+                XCTAssertTrue(row.organization.itemType.isActionable, mode + source)
+                XCTAssertNil(row.organization.dueDate, mode + source)
+                XCTAssertNil(row.organization.reminderDate, mode + source)
+                XCTAssertEqual(row.organization.reminderDelivery, .none, mode + source)
+                XCTAssertTrue(result.operations.isEmpty, mode + source)
+                XCTAssertEqual(proof.output, result.items, mode + source)
+                XCTAssertTrue(proof.unassignedWordIDs.isDisjoint(with: andIDs), mode + source)
+                for edge in proof.group?.edges.filter({ $0.kind == "communicationQuestion" }) ?? [] {
+                    let questionIDs = try XCTUnwrap(edge.sourceWordIDs, mode + source)
+                    let ownerIDs = try XCTUnwrap(edge.targetWordIDs, mode + source)
+                    XCTAssertTrue(andIDs.isSubset(of: questionIDs), mode + source)
+                    XCTAssertTrue(questionIDs.isDisjoint(with: ownerIDs), mode + source)
+                    let question = try XCTUnwrap(proof.propositions.first {
+                        edge.sourceSegments.contains($0.segment)
+                    }, mode + source)
+                    let span = try XCTUnwrap(Range(question.range, in: proof.creating), mode + source)
+                    XCTAssertTrue(String(proof.creating[span]).hasPrefix("and ask"), mode + source)
+                    XCTAssertEqual(question.wordIDs, ledger.ids(in: span), mode + source)
+                    XCTAssertEqual(edge.targetSegments, [question.segment - 1], mode + source)
+                }
+            }
+            // Full-capture uniqueness matters: a separate earlier contact is
+            // not discarded merely because the final sentence has one owner.
+            let ambiguous = "Call Vera. Text Noor about the ferry and ask whether she can meet me at the pier."
+            var ambiguousTrace: RuntimeRuleTrace?
+            _ = RuleBasedThoughtExtractor.process(ambiguous, referenceDate: anchor, calendar: calendar,
+                traceObserver: { ambiguousTrace = $0 })
+            let ambiguousProof = try XCTUnwrap(ambiguousTrace, mode + ambiguous)
+            XCTAssertFalse(ambiguousProof.group?.edges.contains { $0.kind == "communicationQuestion" } == true,
+                mode + ambiguous)
+            XCTAssertFalse(ambiguousProof.segmentQuotes.contains { $0.lowercased().hasPrefix("and ask") },
+                mode + ambiguous)
+            // Adding a raw lead must not disable an existing anchored purpose
+            // certificate. The semantic matrix remains the exact Call source.
+            let protected = "Buy a first aid kit. I mean a basic kit to keep with the event supplies, and Call Marco to confirm he's coming at eight."
+            let protectedResult = RuleBasedThoughtExtractor.process(protected, referenceDate: anchor, calendar: calendar)
+            let call = try XCTUnwrap(protectedResult.items.first { $0.analysisText.hasPrefix("Call Marco") },
+                mode + protected)
+            XCTAssertTrue(call.sourceQuote.hasPrefix("Call Marco"), mode + protected)
+            XCTAssertNotNil(ClauseScope.finiteContactPurpose(in: call.sourceQuote), mode + protected)
+            XCTAssertNil(call.organization.dueDate, mode + protected)
+            XCTAssertNil(call.organization.reminderDate, mode + protected)
+            for source in [
+                "Mina said, \"Text Noor about the ferry and ask whether she can meet me at the pier.\"",
+                "Text Noor about the ferry but ask whether she can meet me at the pier."] {
+                var trace: RuntimeRuleTrace?
+                _ = RuleBasedThoughtExtractor.process(source, referenceDate: anchor, calendar: calendar,
+                    traceObserver: { trace = $0 })
+                XCTAssertFalse(trace?.segmentQuotes.contains { $0.lowercased().hasPrefix("and ask") } == true,
+                    mode + source)
+            }
+        }
+    }
 }

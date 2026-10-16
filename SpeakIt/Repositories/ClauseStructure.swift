@@ -70,7 +70,40 @@ enum QuotedSpeechScope {
         if matrix.range(of: historicalFrame, options: .regularExpression) != nil {
             return .reported
         }
+        if citesQuoteAsNonAction(sentence) { return .reported }
         return .unresolved
+    }
+
+    /// One complete hypothetical utterance cites words and explicitly denies
+    /// their status as an action. Pure source reading: no clause/actionability
+    /// reader, generated interpretation or speaker inference is consulted.
+    static func citesQuoteAsNonAction(_ sentence: String) -> Bool {
+        guard !hasUnclosedQuote(sentence) else { return false }
+        let quotes = ranges(in: sentence)
+        guard quotes.count == 1, let quote = quotes.first else { return false }
+        let marks = CharacterSet(charactersIn: "'\"‘’“”")
+        let prefix = String(sentence[..<quote.lowerBound])
+        var suffix = String(sentence[quote.upperBound...])
+        guard !prefix.unicodeScalars.contains(where: marks.contains),
+              !suffix.unicodeScalars.contains(where: marks.contains),
+              prefix.range(of: #"(?i)^\s*(?:if|when)\s+i\s+say\s*$"#,
+                           options: .regularExpression) != nil else { return false }
+        if let lead = suffix.range(of: #"(?i)^\s*while\s+describing\s+"#,
+                                   options: .regularExpression) {
+            guard let comma = suffix[lead.upperBound...].firstIndex(of: ",") else { return false }
+            let object = String(suffix[lead.upperBound..<comma]).trimmingCharacters(in: .whitespaces)
+            guard let span = ClauseScope.openDeterminerNominalSpan(in: object),
+                  span.lowerBound == object.startIndex, span.upperBound == object.endIndex,
+                  let separator = object.firstIndex(where: \.isWhitespace) else { return false }
+            let content = String(object[separator...])
+            let excluded = #"(?i)\b(?:i|we|you|he|she|they|me|it|would|should|must|need|do|does|did|not|don['’]t|\#(ActionabilityReader.actionVerb))\b"#
+            guard content.range(of: excluded, options: .regularExpression) == nil else { return false }
+            suffix = String(suffix[suffix.index(after: comma)...])
+        }
+        return suffix.range(
+            of: #"(?i)^\s*,?\s*(?:it|this|that)\s+is\s+not\s+(?:a|an)\s+(?:shopping\s+)?(?:task|action|errand|request|instruction|list)\s*[.!?]?\s*$"#,
+            options: .regularExpression
+        ) != nil
     }
 
     /// A projection for semantic readers. The original text and its indices
@@ -142,6 +175,34 @@ enum QuotedSpeechScope {
             }
         }
         return (result, opening != nil)
+    }
+
+    /// A caller-owned snapshot for several boundaries of one immutable source.
+    /// The comparisons and opening-quote lookahead match `protects(_:in:)`;
+    /// no boundary or child clause can change the source used for this reading.
+    struct BoundaryProtection {
+        private let source: String
+        let quotedRanges: [Range<String.Index>]
+        private let deniedCitedSubject: Range<String.Index>?
+
+        init(in source: String) {
+            self.source = source
+            quotedRanges = QuotedSpeechScope.ranges(in: source)
+            deniedCitedSubject = ClauseScope.deniedCitedActionSubject(in: source)
+        }
+
+        func protects(_ boundary: Range<String.Index>) -> Bool {
+            if quotedRanges.contains(where: {
+                boundary.lowerBound >= $0.lowerBound && boundary.lowerBound < $0.upperBound
+                    && boundary.upperBound < $0.upperBound
+            }) { return true }
+            if let subject = deniedCitedSubject,
+               boundary.lowerBound >= subject.lowerBound,
+               boundary.upperBound <= subject.upperBound { return true }
+            let following = source[boundary.upperBound...].drop(while: { $0.isWhitespace })
+            return following.first == "\"" || following.first == "“"
+                || following.first == "‘" || following.first == "'"
+        }
     }
 
     static func protects(_ boundary: Range<String.Index>, in text: String) -> Bool {
@@ -412,11 +473,37 @@ struct SentenceContext {
                 range: range,
                 lexicalClass: Self.taggerDisabledForEvaluation ? .otherWord : tag,
                 isPersonalName: named,
-                isOrganizationName: organizations.contains { $0.lowerBound <= range.lowerBound && $0.upperBound >= range.upperBound }
+                isOrganizationName: !Self.taggerDisabledForEvaluation && organizations.contains { $0.lowerBound <= range.lowerBound && $0.upperBound >= range.upperBound }
             ))
             return true
         }
         self.tokens = collected
+    }
+
+    private init(_ text: String, tokens: [Token]) {
+        self.text = text; self.tokens = tokens
+    }
+
+    /// Project existing lexical evidence only; never re-tag or infer a role.
+    func projectingLiteralPart(_ part: String, range: NSRange) -> Self? {
+        guard !part.isEmpty, let span = Range(range, in: text),
+              String(text[span]).utf8.elementsEqual(part.utf8) else { return nil }
+        let ledger = SourceUnitLedger(part)
+        var projected: [Token] = [], covered = Set<Int>()
+        for token in tokens {
+            let original = NSRange(token.range, in: text)
+            guard NSIntersectionRange(original, range).length > 0 else { continue }
+            guard original.location >= range.location, NSMaxRange(original) <= NSMaxRange(range),
+                  let mapped = Range(NSRange(location: original.location - range.location,
+                    length: original.length), in: part),
+                  String(text[token.range]).utf8.elementsEqual(token.text.utf8),
+                  String(part[mapped]).utf8.elementsEqual(token.text.utf8) else { return nil }
+            projected.append(Token(text: token.text, range: mapped, lexicalClass: token.lexicalClass,
+                isPersonalName: token.isPersonalName, isOrganizationName: token.isOrganizationName))
+            covered.formUnion(ledger.ids(in: mapped))
+        }
+        guard !projected.isEmpty, covered == Set(ledger.words.indices) else { return nil }
+        return Self(part, tokens: projected)
     }
 
     /// The tokens whose spans fall inside `range`, in order.
@@ -502,7 +589,7 @@ enum ConditionalIntentScope {
         let consequence: String
     }
 
-    private static let opener = #"(?:if|unless|when|whenever|once|after|before|until|till|while|as\s+soon\s+as|next\s+time|every\s+time)"#
+    fileprivate static let opener = #"(?:if|unless|when|whenever|once|after|before|until|till|while|as\s+soon\s+as|next\s+time|every\s+time)"#
     private static let clausalOpener = #"(?:if|unless|when|whenever|once|until|till|while|as\s+soon\s+as|next\s+time|every\s+time)"#
     private static let actionHead = #"(?:"# + ReminderPhrasing.sentenceLead + #"|"# + ActionabilityReader.actionVerb + #")"#
 
@@ -671,7 +758,7 @@ enum ConditionalIntentScope {
         return suffix.caseInsensitiveCompare(calendarLead) == .orderedSame
     }
 
-    private static func isStandaloneCondition(_ text: String) -> Bool {
+    static func isStandaloneCondition(_ text: String) -> Bool {
         let value = cleaned(text)
         guard startsWithOpener(value) else { return false }
         let words = value.split(whereSeparator: \.isWhitespace)
@@ -790,7 +877,7 @@ enum ClauseScope {
         let reading = read(action)
         guard reading.act == .communicating || reading.act == .reporting,
               let complement = reading.complement else { return false }
-        if complement.range(of: delegatedProposition, options: .regularExpression) != nil { return true }
+        if licensesDelegated(complement, matrix: reading.matrix, recipient: reading.recipient) { return true }
         if reading.act == .reporting,
            complement.range(of: #"(?i)^\#(ActionabilityReader.actionVerb)\b"#,
                             options: .regularExpression) != nil { return true }
@@ -813,7 +900,7 @@ enum ClauseScope {
     static func hasImplicitDelegatedMessage(_ text: String) -> Bool {
         let reading = read(ActionabilityReader.actionBody(text))
         guard reading.act == .communicating, let body = reading.complement else { return false }
-        return body.range(of: delegatedProposition, options: .regularExpression) != nil
+        return licensesDelegated(body, matrix: reading.matrix, recipient: reading.recipient)
     }
 
     /// The part addressed to the app, excluding an explicitly introduced
@@ -828,6 +915,9 @@ enum ClauseScope {
     }
 
     static func instructionText(_ text: String) -> String {
+        if let question = completeAddressedChoiceQuestion(in: text) {
+            return String(text[question.executionRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         guard text.range(
             of: #"(?i)\b\#(communicationVerb)\b"#,
             options: .regularExpression
@@ -860,6 +950,8 @@ enum ClauseScope {
         // "text Mira when I get home", whose trailing clause schedules sending.
         let asksQuestion = matrix.range(of: #"(?i)^(?:please\s+)?ask\b"#,
                                         options: .regularExpression) != nil
+            || matrix.range(of: #"(?i)\band\s+ask(?:\s+(?:him|her|them))?\s+(?:if|whether|how)\s*$"#,
+                            options: .regularExpression) != nil
         let markerPattern = asksQuestion
             ? #"(?i)\s+(?:that|whether|how|if|which|what|when|where|why)(?:\s+if)?\s*$"#
             : #"(?i)\s+(?:that|whether|how)(?:\s+if)?\s*$"#
@@ -890,9 +982,7 @@ enum ClauseScope {
                                    options: .regularExpression),
            !quoted || marker.lowerBound <= content.lowerBound,
            marker.lowerBound <= content.lowerBound
-                || !SentenceContextCache.context(for: body).hasSubjectPredicate(
-                    in: content.lowerBound..<marker.lowerBound
-                ) {
+                || isPureTemporalMatrixPrefix(String(body[content.lowerBound..<marker.lowerBound])) {
             return String(text[..<bodySpan.lowerBound]) + String(body[..<marker.lowerBound])
         }
         guard matrix.range(of: #"(?i)\b(?:if|unless|when|once|after|before|until|while)\s*$"#,
@@ -901,7 +991,7 @@ enum ClauseScope {
             of: #"(?i)^(?:i|we|you|he|she|it|they|the|my|our|his|her|their)\b"#,
             options: .regularExpression
         ) != nil
-        let delegated = message.range(of: delegatedProposition, options: .regularExpression) != nil
+        let delegated = licensesDelegated(message, matrix: reading.matrix, recipient: reading.recipient)
         guard quoted || declarative || delegated else { return text }
         // With no stated outer timing and no explicit message delimiter, a
         // trailing adjunct retains the established reminder attachment:
@@ -913,17 +1003,950 @@ enum ClauseScope {
             return text
         }
         var ownMatrix = matrix.trimmingCharacters(in: .whitespacesAndNewlines)
-        // A bare day on a simple delegated errand retains the app's established
-        // day-of-contact contract. Alarms, series and stated message clocks
-        // remain inner content and cannot schedule sending.
+        // A simple delegated errand retains its stated day of contact. Read
+        // the same complete calendar phrase as a fronted day; message clocks,
+        // conditions and series still belong to the delegated action.
         if delegated, !quoted,
-           message.range(of: #"(?i)\b(?:alarm|timer|remind|every|each|if|unless|when|once)\b|\d{1,2}:\d{2}|\b(?:am|pm|a\.m\.|p\.m\.)\b"#,
-                         options: .regularExpression) == nil,
-           let day = message.range(of: #"(?i)\b(?:today|tomorrow|tonight|(?:(?:on|next|this)\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))[.!?]*$"#,
-                                   options: .regularExpression) {
-            ownMatrix += " " + String(message[day])
+           let day = delegatedContactDay(in: message, recipient: reading.recipient) {
+            ownMatrix += " " + day
         }
         return String(text[..<bodySpan.lowerBound]) + ownMatrix
+    }
+
+    /// A dated event appositive identifies what is being enrolled in. It
+    /// supplies no time to perform enrolment and grants no action authority.
+    struct DatedEnrollmentAppositive {
+        let range: Range<String.Index>
+
+        func executionText(in source: String) -> String {
+            (String(source[..<range.lowerBound]) + " " + String(source[range.upperBound...]))
+                .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        func matchesOriginal(_ original: Self, normalizedSource: String,
+                             originalSource: String) -> Bool {
+            func words(_ text: String) -> [String] {
+                let value = text.replacingOccurrences(
+                    of: #"(?i)^(?:and|also|so|then)\s+"#, with: "", options: .regularExpression)
+                return SourceUnitLedger(value).words.map(\.text)
+            }
+            return words(String(normalizedSource[range]))
+                    == words(String(originalSource[original.range]))
+                && words(executionText(in: normalizedSource))
+                    == words(original.executionText(in: originalSource))
+        }
+    }
+
+    static func datedEnrollmentAppositive(in source: String,
+        referenceDate: Date = .now, calendar: Calendar = .autoupdatingCurrent
+    ) -> DatedEnrollmentAppositive? {
+        guard source.count <= 2_000 else { return nil }
+        let commas = source.indices.filter { source[$0] == "," }
+        guard commas.count >= 2 else { return nil }
+        guard QuotedSpeechScope.ranges(in: source).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(source),
+              !SelfCorrectionResolver.hasCorrectionJunction(in: source),
+              read(source).act == .direct,
+              source.range(of: #"[;!?\n]|\.\s+[\p{L}]"#, options: .regularExpression) == nil,
+              let nominal = NSRegularExpression.speakItCached(
+                #"(?i)^\s*(?:the|a|an)\s+(.+?)\s+([\p{L}-]+)\s*$"#)
+        else { return nil }
+        var candidates: [DatedEnrollmentAppositive] = []
+        for (opening, closing) in zip(commas, commas.dropFirst()) {
+            let inside = source.index(after: opening)..<closing
+            let appositive = String(source[inside])
+            guard let match = nominal.firstMatch(in: appositive,
+                    range: NSRange(appositive.startIndex..., in: appositive)),
+                  let dateRange = Range(match.range(at: 1), in: appositive),
+                  let headRange = Range(match.range(at: 2), in: appositive)
+            else { continue }
+            let date = String(appositive[dateRange])
+            let head = String(appositive[headRange]).lowercased()
+            guard ActionabilityReader.hasScheduledNominalHead(head),
+                  head != "deadline", head != "closing",
+                  isPureTemporalMatrixPrefix(date),
+                  ThoughtOrganizer.namesAMonthAndDay(date)
+            else { continue }
+            candidates.append(.init(range: opening..<source.index(after: closing)))
+        }
+        guard candidates.count == 1, let candidate = candidates.first else { return nil }
+        let prefix = String(source[..<candidate.range.lowerBound])
+            .replacingOccurrences(of: #"(?i)^\s*(?:and|also|so|then)\s+"#,
+                with: "", options: .regularExpression)
+        // Existing actionBody keeps prohibitions/reports; only the existing
+        // positive don't-forget wrapper may pass this request-side denial.
+        let deniesEnrollment = prefix.range(
+            of: #"(?i)^(?:please\s+)?(?:don['’]?t|do\s+not|never|no\s+need\s+to)\b"#,
+            options: .regularExpression) != nil
+        let forgetWrapper = prefix.range(
+            of: #"(?i)^(?:please\s+)?(?:don['’]?t|do\s+not)\s+forget\s+to\b"#,
+            options: .regularExpression) != nil
+        guard (!deniesEnrollment || forgetWrapper), read(prefix).act == .direct else { return nil }
+        let action = ActionabilityReader.actionBody(prefix)
+        guard let head = action.range(
+                of: #"(?i)^(?:sign\s+up|register|enrol|enroll)\s+"#,
+                options: .regularExpression),
+              let connector = action.range(of: #"(?i)\b(?:for|in)\s+"#,
+                options: .regularExpression, range: head.upperBound..<action.endIndex)
+        else { return nil }
+        let enrollmentHead = String(action[head]).trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let connectorWord = String(action[connector]).trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard connectorWord == "for" || enrollmentHead == "enrol" || enrollmentHead == "enroll" else { return nil }
+        let ownTiming = String(action[head.upperBound..<connector.lowerBound])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if !ownTiming.isEmpty {
+            let ownCalendarText = ownTiming.replacingOccurrences(of: #"(?i)^(?:by|on)\s+"#,
+                with: "", options: .regularExpression)
+            guard isPureTemporalMatrixPrefix(ownCalendarText) else { return nil }
+        }
+        let object = String(action[connector.upperBound...])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let continuation = String(source[candidate.range.upperBound...])
+            .trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: ".!?")))
+        func conditionWithoutTiming(_ value: String) -> Bool {
+            ConditionalIntentScope.isStandaloneCondition(value)
+                && ThoughtOrganizer.hasNoLiteralTiming(in: value,
+                    referenceDate: referenceDate, calendar: calendar)
+        }
+        if !continuation.isEmpty, !conditionWithoutTiming(continuation) {
+            // Do not choose between competing action timings. This includes
+            // a fronted calendar adjunct peeled by actionBody, not just the
+            // post-head timing slot above.
+            guard ownTiming.isEmpty,
+                  ThoughtOrganizer.hasNoLiteralTiming(in: prefix,
+                    referenceDate: referenceDate, calendar: calendar)
+            else { return nil }
+            // An explicit action day may precede its retained condition. An
+            // unowned clock/duration or a relative event continuation may not.
+            guard let marker = continuation.range(
+                of: #"(?i)^(?:(?:on|by)\s+|(?:today|tomorrow|tonight)\b)"#,
+                options: .regularExpression) else { return nil }
+            let startsWithPreposition = String(continuation[marker]).last?.isWhitespace == true
+            let calendarTail = startsWithPreposition
+                ? String(continuation[marker.upperBound...]) : continuation
+            guard let lead = RuleBasedThoughtExtractor.leadingTemporalContext(in: calendarTail),
+                  let leadRange = calendarTail.range(of: lead,
+                    options: [.anchored, .caseInsensitive]) else { return nil }
+            let rest = String(calendarTail[leadRange.upperBound...])
+                .trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: ",")))
+            guard rest.isEmpty || conditionWithoutTiming(rest) else { return nil }
+        }
+        // The request frame and bounded appositive establish the role. Tags
+        // cannot certify an arbitrary object or hide a second finite act.
+        guard !object.isEmpty,
+              object.range(of: #"^[\p{L}\p{M}\p{N}'’\s-]+$"#,
+                options: .regularExpression) != nil,
+              object.range(of: #"(?i)\b(?:i|we|you|he|she|it|they|that|which|who|is|are|was|were|has|have|had|will|would|must|should|not|never|if|unless|when|once|after|before|until|because|and|or|but|then|for|in|\#(reportingVerb)|\#(ActionabilityReader.actionVerb))\b"#,
+                options: .regularExpression) == nil,
+              // Timing/recurrence readers only refuse a timed target. Their
+              // result never supplies positive noun or enrolment authority.
+              ThoughtOrganizer.hasNoLiteralTiming(in: object,
+                referenceDate: referenceDate, calendar: calendar)
+        else { return nil }
+        return candidate
+    }
+
+
+    /// BOOK/RESERVE directly governs this FOR timing as the reservation's
+    /// target. It does not create action authority or an execution date.
+    struct BookingTarget {
+        let matrixRange: Range<String.Index>
+        let objectRange: Range<String.Index>
+        let targetRanges: [Range<String.Index>]
+        let partyRange: Range<String.Index>?
+        let locationRange: Range<String.Index>?
+        let targetClockRange: Range<String.Index>?
+        let executionRanges: [Range<String.Index>]
+
+        func executionText(in source: String) -> String {
+            ([String(source[matrixRange])] + executionRanges.map { String(source[$0]) })
+                .joined(separator: " ")
+                .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        func matchesOriginal(_ original: Self, normalizedSource: String,
+                             originalSource: String) -> Bool {
+            func words(_ text: String) -> [String] {
+                SourceUnitLedger(text.replacingOccurrences(
+                    of: #"(?i)^\s*(?:and|also|so|then)\s+"#, with: "", options: .regularExpression)).words.map(\.text)
+            }
+            return words(normalizedSource) == words(originalSource)
+                && words(String(normalizedSource[objectRange])) == words(String(originalSource[original.objectRange]))
+                && targetRanges.map { words(String(normalizedSource[$0])) }
+                    == original.targetRanges.map { words(String(originalSource[$0])) }
+                && partyRange.map { words(String(normalizedSource[$0])) }
+                    == original.partyRange.map { words(String(originalSource[$0])) }
+                && locationRange.map { words(String(normalizedSource[$0])) }
+                    == original.locationRange.map { words(String(originalSource[$0])) }
+                && targetClockRange.map { words(String(normalizedSource[$0])) }
+                    == original.targetClockRange.map { words(String(originalSource[$0])) }
+                && executionRanges.map { words(String(normalizedSource[$0])) }
+                    == original.executionRanges.map { words(String(originalSource[$0])) }
+        }
+    }
+
+    static func bookingTarget(in source: String) -> BookingTarget? {
+        guard source.count <= 2_000,
+              let matrix = source.range(of:
+                #"(?i)^\s*(?:(?:and|also|so|then)\s+)?(?:please\s+)?(?:(?:i|we)\s+(?:(?:need|have|want)\s+to|must|should|will)\s+)?(?:book|reserve)\s+"#,
+                options: .regularExpression),
+              source.range(of: #"[;!?\n]|\.\s+[\p{L}]"#, options: .regularExpression) == nil,
+              QuotedSpeechScope.ranges(in: source).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(source),
+              !SelfCorrectionResolver.hasCorrectionJunction(in: source),
+              read(source).act == .direct,
+              source[matrix.upperBound...].range(of:
+                #"(?i)\b(?:if|unless|when|whenever|once|after|before|until|till|while|because|and|or|but|then|also|plus|not|never|no|that|which|who|whom|whose|is|are|was|were|has|have|had|will|would|must|should|could|\#(reportingVerb))\b"#,
+                options: .regularExpression) == nil,
+              let regex = NSRegularExpression.speakItCached(
+                #"(?i)\bfor\s+(?:\#(ThoughtOrganizer.bookingTargetTemporalPattern))(?=$|\s|[.])"#)
+        else { return nil }
+        // Unit-bearing headcounts are not clocks, even when the first word
+        // is a number the ordinary clock grammar can read. Bare FOR 7 remains
+        // a target clock; no headcount is guessed without its literal unit.
+        guard let partyReader = NSRegularExpression.speakItCached(
+            #"(?i)\bfor\s+(?:(?:the\s+)?\#(ThoughtOrganizer.numberedWorkLabelPattern)\s+of\s+us|\#(ThoughtOrganizer.numberedWorkLabelPattern)\s+people)(?=$|\s|[.])"#)
+        else { return nil }
+        let scan = NSRange(matrix.upperBound..<source.endIndex, in: source)
+        let parties = partyReader.matches(in: source, range: scan).compactMap { Range($0.range, in: source) }
+        guard parties.count <= 1 else { return nil }
+        let ranges = regex.matches(in: source, range: scan).compactMap { Range($0.range, in: source) }
+            .filter { candidate in !parties.contains(where: { $0.overlaps(candidate) }) }
+        guard let first = ranges.first, let last = ranges.last else { return nil }
+        // The ordinary clock parser already distinguishes "for four at 7":
+        // the bare FOR cardinal belongs to the object, and explicit AT owns
+        // the clock. Decline this optional target role rather than hiding it.
+        // Bare FOR 7 without a following AT clock remains target context;
+        // this refusal never guesses a party count or changes multiple FORs.
+        if ranges.count == 1, let cardinal = source[first].range(of:
+            #"(?i)^for\s+(?:\#(ThoughtOrganizer.numberedWorkLabelPattern))(?=\s*$)"#,
+            options: .regularExpression),
+           source[cardinal.upperBound...].range(of:
+            #"(?i)^\s+at\s+(?:\#(RuleBasedThoughtExtractor.clockExpression))(?=$|\s|[.])"#,
+            options: .regularExpression) != nil { return nil }
+        // Two direct FOR dates are a source-owned conflict. Only whitespace
+        // may connect these slots; a target cannot eat an independent act.
+        for (left, right) in zip(ranges, ranges.dropFirst()) {
+            guard source[left.upperBound..<right.lowerBound]
+                .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        }
+        func absolute(_ local: Range<String.Index>, in literal: String,
+                      startingAt start: String.Index) -> Range<String.Index> {
+            let lower = source.index(start, offsetBy: literal.distance(from: literal.startIndex, to: local.lowerBound))
+            let upper = source.index(start, offsetBy: literal.distance(from: literal.startIndex, to: local.upperBound))
+            return lower..<upper
+        }
+        var executions: [Range<String.Index>] = []
+        var object = matrix.upperBound..<first.lowerBound
+        let prefix = String(source[object]).trimmingCharacters(in: .whitespacesAndNewlines)
+        if let own = prefix.range(of:
+            #"(?i)(?<!\S)(?:(?:on|by)\s+(?:\#(ThoughtOrganizer.bookingTargetTemporalPattern))|at\s+\#(RuleBasedThoughtExtractor.clockExpression)|\#(ThoughtOrganizer.bookingTargetCalendarPattern))$"#,
+            options: .regularExpression) {
+            let localStart = source[object].firstIndex(where: { !$0.isWhitespace }) ?? object.lowerBound
+            let span = absolute(own, in: prefix, startingAt: localStart)
+            object = object.lowerBound..<span.lowerBound
+            executions.append(span)
+        }
+        let objectText = source[object].trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !objectText.isEmpty,
+              objectText.range(of: #"^[\p{L}\p{M}\p{N}'’\s:-]+$"#,
+                options: .regularExpression) != nil,
+              objectText.range(of: #"(?<!\d):|:(?!\d)"#, options: .regularExpression) == nil,
+              !["the", "a", "an", "my", "our"].contains(objectText.lowercased())
+        else { return nil }
+        // A bounded literal object or an explicit own request makes this
+        // a reservation verb. BOOK report / RESERVE fund fragments gain no
+        // new role from capitalization, noun tags or the following date.
+        let explicitRequest = source[matrix].range(of:
+            #"(?i)\b(?:please|i|we)\b"#, options: .regularExpression) != nil
+        guard explicitRequest || objectText.range(of:
+            #"(?i)^(?:a|an|the|my|our|your|his|her|their|this|these|those)\s+"#,
+            options: .regularExpression) != nil else { return nil }
+        var tailStart = last.upperBound
+        let party = parties.first
+        if let party {
+            guard party.lowerBound >= last.upperBound,
+                  source[last.upperBound..<party.lowerBound]
+                    .trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+            tailStart = party.upperBound
+        }
+        let tail = source[tailStart...].trimmingCharacters(in:
+            .whitespacesAndNewlines.union(CharacterSet(charactersIn: ".")))
+        var location: Range<String.Index>?
+        var targetClock: Range<String.Index>?
+        if !tail.isEmpty {
+            guard let local = String(source[tailStart...]).range(of: tail, options: .literal) else { return nil }
+            let span = absolute(local, in: String(source[tailStart...]), startingAt: tailStart)
+            if tail.range(of: #"(?i)^at\s+\#(RuleBasedThoughtExtractor.clockExpression)$"#,
+                options: .regularExpression) != nil {
+                // AT after the FOR target (including after its party) extends
+                // the reservation target. Only a pre-FOR AT clock can be an
+                // own execution slot; a conflicting target clock is held.
+                targetClock = span
+            } else if tail.range(of: #"(?i)^(?:on\s+|by\s+|today\b|tomorrow\b|tonight\b)"#,
+                    options: .regularExpression) != nil,
+               isPureTemporalMatrixPrefix(tail.replacingOccurrences(
+                    of: #"(?i)^(?:on|by)\s+"#, with: "", options: .regularExpression)) {
+                executions.append(span)
+            } else {
+                // This literal AT place is only visible booking context. It
+                // supplies neither a location trigger nor an execution clock.
+                guard tail.range(of: #"(?i)^at\s+[\p{L}\p{M}\p{N}'’-]+(?:\s+[\p{L}\p{M}\p{N}'’-]+){0,7}$"#,
+                        options: .regularExpression) != nil,
+                      tail.dropFirst(3).range(of:
+                        #"(?i)\b(?:\#(ActionabilityReader.actionVerb)|\#(ActionabilityReader.headOnlyImperativeVerb))\b"#,
+                        options: .regularExpression) == nil else { return nil }
+                location = span
+            }
+        }
+        return .init(matrixRange: matrix, objectRange: object, targetRanges: ranges,
+            partyRange: party, locationRange: location, targetClockRange: targetClock,
+            executionRanges: executions)
+    }
+
+    /// One named appositional booking supplies context for an independently
+    /// commanded call. The explicit call day belongs only to that command;
+    /// the appointment clock and someone else's reminder request do not.
+    struct AppositionalCallContext {
+        let sourceRange: Range<String.Index>
+        let contextRange: Range<String.Index>
+        let appointmentDayRange: Range<String.Index>
+        let descriptionRange: Range<String.Index>
+        let personRange: Range<String.Index>
+        let appointmentClockRange: Range<String.Index>
+        let requestSubjectRange: Range<String.Index>
+        let reportedRequestRange: Range<String.Index>
+        let resultiveRange: Range<String.Index>
+        let actionRange: Range<String.Index>
+        let recipientPronounRange: Range<String.Index>
+        let executionDayRange: Range<String.Index>
+        let personLabel: String
+        func executionText(in source: String) -> String {
+            String(source[actionRange.lowerBound..<recipientPronounRange.lowerBound])
+                + String(source[personRange])
+                + String(source[recipientPronounRange.upperBound..<actionRange.upperBound])
+        }
+        func visibleTitle(in source: String) -> String {
+            let action = executionText(in: source)
+            return String(action.prefix(1)).uppercased() + String(action.dropFirst())
+                + " — " + String(source[contextRange])
+        }
+        func matchesOriginal(_ original: Self, normalizedSource: String,
+                             originalSource: String) -> Bool {
+            func words(_ text: String) -> [String] { SourceUnitLedger(text).words.map(\.text) }
+            return words(String(normalizedSource[sourceRange])) == words(String(originalSource[original.sourceRange]))
+                && words(executionText(in: normalizedSource)) == words(original.executionText(in: originalSource))
+                && words(personLabel) == words(original.personLabel)
+        }
+    }
+    static func appositionalCallContext(in source: String, referenceDate: Date,
+                                        calendar: Calendar) -> AppositionalCallContext? {
+        guard source.filter({ $0 == "," }).count >= 3,
+              QuotedSpeechScope.ranges(in: source).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(source), read(source).act == .direct,
+              !SelfCorrectionResolver.hasCorrectionJunction(in: source),
+              CaptureOperationDetector.partitionWithOwnership(source).operations.isEmpty else { return nil }
+        let word = #"[\p{L}\p{M}][\p{L}\p{M}'’-]*"#
+        let nameWord = #"[\p{L}\p{M}][\p{L}\p{M}'’.-]*"#
+        let pattern = #"(?i)^\s*(?<callAppointmentDay>"# + ThoughtOrganizer.namedDeadlineCalendarDayPattern
+            + #")[‘’']s\s+(?<callDescription>"# + word + #"(?:\s+"# + word
+            + #"){0,4}),\s*(?<callPerson>"# + nameWord + #"(?:\s+"# + nameWord
+            + #"){0,2}),\s*is\s+booked\s+for\s+(?<callAppointmentClock>"# + RuleBasedThoughtExtractor.clockExpression
+            + #")\s+and\s+(?<callReportedRequest>(?<callRequestSubject>she|he)\s+asked\s+for\s+a\s+reminder\s+call\s+the\s+day\s+before)(?<callResultive>,\s+so\s+)(?<callAction>(?:please\s+)?call\s+(?<callPronoun>her|him)\s+(?<callExecutionDay>"#
+            + ThoughtOrganizer.bookingTargetCalendarPattern + #"))[.!]?\s*$"#
+        guard let regex = NSRegularExpression.speakItCached(pattern),
+              let match = regex.firstMatch(in: source, range: NSRange(source.startIndex..., in: source)),
+              let span = Range(match.range, in: source) else { return nil }
+        func range(_ name: String) -> Range<String.Index>? { Range(match.range(withName: name), in: source) }
+        guard let day = range("callAppointmentDay"), let description = range("callDescription"),
+              let person = range("callPerson"), let clock = range("callAppointmentClock"),
+              let subject = range("callRequestSubject"), let request = range("callReportedRequest"),
+              let resultive = range("callResultive"), let action = range("callAction"),
+              let pronoun = range("callPronoun"), let executionDay = range("callExecutionDay") else { return nil }
+        let pair = [String(source[subject]).lowercased(), String(source[pronoun]).lowercased()]
+        guard pair == ["she", "her"] || pair == ["he", "him"] else { return nil }
+        let descriptionText = String(source[description])
+        let excluded = #"(?i)\b(?:i|we|you|he|she|it|they|who|which|that|whether|is|are|am|was|were|has|have|had|will|would|must|should|can|could|may|might|need|want|not|never|no|and|or|but|then|also|plus|so|if|unless|when|once|after|before|until|while|because|to|for|from|with|on|at|by|in|"# + reportingVerb + "|" + ActionabilityReader.actionVerb + "|" + ActionabilityReader.headOnlyImperativeVerb + #")\b|n['’]t\b|['’](?:s|ll|d|re|ve|m)\b"#
+        guard descriptionText.range(of: excluded, options: .regularExpression) == nil,
+              ThoughtOrganizer.hasNoLiteralTiming(in: descriptionText, referenceDate: referenceDate, calendar: calendar),
+              PersonMentionResolver.mentions(in: descriptionText).isEmpty else { return nil }
+        // The full local apposition must be the existing reader's complete
+        // addressee. A partial name, capitalized fragment or prior contact is
+        // never sufficient; no title/name/gender vocabulary is introduced.
+        let addressed = "Call " + String(source[person])
+        guard case let .person(named) = PersonMentionResolver.followUpTarget(in: addressed),
+              named.confidence > .low,
+              named.sourceRange.lowerBound == addressed.index(addressed.startIndex, offsetBy: 5),
+              named.sourceRange.upperBound == addressed.endIndex,
+              SourceUnitLedger(named.label).words.map(\.text) == SourceUnitLedger(String(source[person])).words.map(\.text),
+              let ownDay = ThoughtOrganizer.bookingTargetTiming(String(source[executionDay]), referenceDate: referenceDate, calendar: calendar),
+              ownDay.kind == .dateOnly, ownDay.day != nil, ownDay.time == nil,
+              ownDay.deadlineBoundary == nil, ownDay.clockBoundary == nil, ownDay.windowEndDay == nil,
+              ownDay.relativeSeconds == nil, ownDay.recurrence == nil, ownDay.unsupportedTrigger == nil else { return nil }
+        return .init(sourceRange: span, contextRange: day.lowerBound..<resultive.lowerBound,
+            appointmentDayRange: day, descriptionRange: description, personRange: person,
+            appointmentClockRange: clock, requestSubjectRange: subject, reportedRequestRange: request,
+            resultiveRange: resultive, actionRange: action, recipientPronounRange: pronoun,
+            executionDayRange: executionDay, personLabel: named.label)
+    }
+
+
+    /// A complete written closure statement is the literal content of this
+    /// artifact command, not a date to perform the command. Both roles keep
+    /// exact source ranges; only the matrix is eligible for action metadata.
+    struct WrittenArtifactContent {
+        let matrixRange: Range<String.Index>
+        let artifactRange: Range<String.Index>
+        let contentRange: Range<String.Index>
+        func executionText(in source: String) -> String {
+            String(source[matrixRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        func matchesOriginal(_ original: Self, normalizedSource: String,
+                             originalSource: String) -> Bool {
+            func words(_ value: String) -> [String] { SourceUnitLedger(value).words.map(\.text) }
+            return words(executionText(in: normalizedSource)) == words(original.executionText(in: originalSource))
+                && words(String(normalizedSource[contentRange])) == words(String(originalSource[original.contentRange]))
+        }
+    }
+    static func writtenArtifactContent(in source: String, referenceDate: Date,
+                                       calendar: Calendar) -> WrittenArtifactContent? {
+        guard source.contains(":"), QuotedSpeechScope.ranges(in: source).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(source), read(source).act == .direct,
+              !SelfCorrectionResolver.hasCorrectionJunction(in: source),
+              CaptureOperationDetector.partitionWithOwnership(source).operations.isEmpty else { return nil }
+        let word = #"[\p{L}\p{M}][\p{L}\p{M}'’-]*"#
+        let modifiers = #"(?:"# + word + #"\s+){0,4}"#
+        let placementModifiers = #"(?:"# + word + #"\s+){0,4}?"#
+        let calendarDay = ThoughtOrganizer.bookingTargetCalendarPattern
+        let matrixTiming = #"(?:(?:on|by)\s+"# + calendarDay + #"|"# + calendarDay + #"|at\s+"# + RuleBasedThoughtExtractor.clockExpression + #")"#
+        let pattern = #"(?i)^\s*(?<writtenMatrix>(?:"# + matrixTiming + #",?\s+)?(?:please\s+)?(?:update|print|reprint)\s+(?<writtenArtifact>(?:the|my|our|this|that)\s+(?<writtenModifiers>"# + modifiers
+            + #")(?:sign|poster|notice|label|caption))(?<writtenPlacement>\s+(?:on|above|beside)\s+(?:the|my|our|this|that)\s+"# + placementModifiers + word
+            + #")?(?:\s+"# + matrixTiming + #")?)\s*:\s*(?<writtenContent>we(?:['’]re|\s+are)\s+closed\s+"# + calendarDay
+            + #"\s+through\s+"# + calendarDay + #")[.!]?\s*$"#
+        guard let regex = NSRegularExpression.speakItCached(pattern),
+              let match = regex.firstMatch(in: source, range: NSRange(source.startIndex..., in: source)),
+              let matrix = Range(match.range(withName: "writtenMatrix"), in: source),
+              let artifact = Range(match.range(withName: "writtenArtifact"), in: source),
+              let modifierRange = Range(match.range(withName: "writtenModifiers"), in: source),
+              let content = Range(match.range(withName: "writtenContent"), in: source) else { return nil }
+        // Opaque modifiers and placement cannot conceal another predicate,
+        // condition or clock. A positive artifact head supplies the role;
+        // capitalization and POS tags never do.
+        let excluded = #"(?i)\b(?:i|we|you|he|she|it|they|who|which|that|whether|is|are|am|was|were|has|have|had|will|would|must|should|can|could|may|might|need|want|not|never|no|and|or|but|then|also|plus|so|if|unless|when|once|after|before|until|while|because|to|for|from|with|on|at|by|in|"# + reportingVerb + "|" + ActionabilityReader.actionVerb + "|" + ActionabilityReader.headOnlyImperativeVerb + #")\b|n['’]t\b|['’](?:ll|d|re|ve|m)\b"#
+        let modifiersText = String(source[modifierRange])
+        guard modifiersText.range(of: excluded, options: .regularExpression) == nil,
+              ThoughtOrganizer.hasNoLiteralTiming(in: modifiersText, referenceDate: referenceDate, calendar: calendar) else { return nil }
+        if let placement = Range(match.range(withName: "writtenPlacement"), in: source) {
+            let body = String(source[placement]).replacingOccurrences(
+                of: #"(?i)^\s*(?:on|above|beside)\s+(?:the|my|our|this|that)\s+"#,
+                with: "", options: .regularExpression)
+            guard body.range(of: excluded, options: .regularExpression) == nil,
+                  ThoughtOrganizer.hasNoLiteralTiming(in: body, referenceDate: referenceDate, calendar: calendar) else { return nil }
+        }
+        let execution = String(source[matrix])
+        guard ActionabilityReader.read(execution).belongsOnToday,
+              ThoughtCompletion.unfinished(in: execution) == nil,
+              ConditionalIntentScope.dependency(in: execution) == nil else { return nil }
+        return .init(matrixRange: matrix, artifactRange: artifact, contentRange: content)
+    }
+
+    /// One current pickup supplies context for a separately commanded preparation.
+    /// The pickup is not the user's task. Only BEFORE THEN binds its sole clock
+    /// to that command, and every range indexes the unchanged complete source.
+    struct PickupPreparationDeadline {
+        let sourceRange:Range<String.Index>
+        let contextRange:Range<String.Index>
+        let objectRange:Range<String.Index>
+        let purposeRange:Range<String.Index>
+        let pickupRange:Range<String.Index>
+        let pickupActorRange:Range<String.Index>
+        let timingRange:Range<String.Index>
+        let resultiveRange:Range<String.Index>
+        let actionRange:Range<String.Index>
+        let actionObjectRange:Range<String.Index>
+        let deadlineRange:Range<String.Index>
+        let requestRange:Range<String.Index>
+
+        func organizationText(in source:String)->String {
+            String(source[actionRange.lowerBound..<actionObjectRange.lowerBound])
+                + String(source[objectRange])
+                + String(source[actionObjectRange.upperBound..<actionRange.upperBound])
+        }
+    }
+    static func pickupPreparationDeadline(in source:String,referenceDate:Date,
+                                          calendar:Calendar)->PickupPreparationDeadline? {
+        guard source.contains(","),QuotedSpeechScope.ranges(in:source).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(source),read(source).act == .direct,
+              !SelfCorrectionResolver.hasCorrectionJunction(in:source),
+              CaptureOperationDetector.partitionWithOwnership(source).operations.isEmpty else { return nil }
+        let word = #"\p{L}[\p{L}\p{M}'’-]*"#
+        let nominal = word + #"(?:\s+"# + word + #"){0,4}"#
+        let pattern = #"(?i)^\s*(?<pickupObject>(?:the|my|our|this|that)\s+"# + nominal
+            + #")\s+has\s+to\s+go\s+out\s+for\s+(?<pickupPurpose>"# + nominal
+            + #")\s+and\s+(?<pickupActor>"# + nominal
+            + #")\s+is\s+picking\s+it\s+up\s+(?<pickupTiming>"# + ThoughtOrganizer.bookingTargetTemporalPattern
+            + #")(?<pickupResultive>,\s+so\s+)(?<pickupRequest>(?<pickupAction>(?:please\s+)?(?:"#
+            + ActionabilityReader.actionVerb + "|" + ActionabilityReader.headOnlyImperativeVerb
+            + #")\s+(?<pickupPronoun>it)(?:\s+(?:up|down|off|out|away|back))?)\s+(?<pickupBefore>before\s+then))[.!]?\s*$"#
+        guard let regex=NSRegularExpression.speakItCached(pattern),
+              let match=regex.firstMatch(in:source,range:NSRange(source.startIndex...,in:source)),
+              let span=Range(match.range,in:source),
+              let object=Range(match.range(withName:"pickupObject"),in:source),
+              let purpose=Range(match.range(withName:"pickupPurpose"),in:source),
+              let actor=Range(match.range(withName:"pickupActor"),in:source),
+              let timing=Range(match.range(withName:"pickupTiming"),in:source),
+              let resultive=Range(match.range(withName:"pickupResultive"),in:source),
+              let action=Range(match.range(withName:"pickupAction"),in:source),
+              let pronoun=Range(match.range(withName:"pickupPronoun"),in:source),
+              let before=Range(match.range(withName:"pickupBefore"),in:source),
+              let request=Range(match.range(withName:"pickupRequest"),in:source) else { return nil }
+        // Grammatical roles come from the complete frame, never capitalization
+        // or a noun tag. Residual clauses, additional objects and clocks refuse.
+        func opaqueNominal(_ range:Range<String.Index>,object:Bool=false)->Bool {
+            let raw=String(source[range])
+            let text=object ? raw.replacingOccurrences(of:#"(?i)^(?:the|my|our|this|that)\s+"#,with:"",options:.regularExpression) : raw
+            let forbidden = #"(?i)\b(?:i|we|you|he|she|it|they|who|whom|whose|which|that|whether|is|are|am|was|were|be|been|has|have|had|will|would|must|should|could|may|might|not|never|no|if|unless|when|once|after|before|until|while|because|and|or|but|then|also|plus|for|in|on|at|by|"# + reportingVerb + #")\b"#
+            guard text.range(of:forbidden,options:.regularExpression) == nil,
+                  ThoughtOrganizer.hasNoLiteralTiming(in:text,referenceDate:referenceDate,calendar:calendar) else { return false }
+            return !object || text.range(of:#"(?i)\b(?:"# + ActionabilityReader.actionVerb + "|"
+                + ActionabilityReader.headOnlyImperativeVerb + #")\b"#,options:.regularExpression) == nil
+        }
+        guard opaqueNominal(object,object:true),opaqueNominal(purpose),opaqueNominal(actor),
+              String(source[purpose]).range(of:#"(?i)^(?:the|a|an|my|our|this|that)\b"#,options:.regularExpression) == nil else { return nil }
+        let context=object.lowerBound..<resultive.lowerBound
+        let ledger=SourceUnitLedger(source)
+        guard ledger.ids(in:context).union(ledger.ids(in:resultive)).union(ledger.ids(in:request)) == ledger.ids(in:span) else { return nil }
+        return .init(sourceRange:span,contextRange:context,objectRange:object,purposeRange:purpose,
+            pickupRange:actor.lowerBound..<timing.upperBound,pickupActorRange:actor,timingRange:timing,
+            resultiveRange:resultive,actionRange:action,actionObjectRange:pronoun,
+            deadlineRange:before,requestRange:request)
+    }
+
+    /// A literal midnight owns the end of a named day only after a complete
+    /// deadline role has been established. This certificate grants neither
+    /// actionability nor a date; the final resolved task and calendar reader
+    /// remain authoritative. All ranges index the unchanged source.
+    struct MidnightDeadline {
+        let deadlineRange: Range<String.Index>
+        let calendarRange: Range<String.Index>
+        let requestRange: Range<String.Index>?
+
+        func matchesOriginal(_ original: Self, normalizedSource: String,
+                             originalSource: String) -> Bool {
+            func words(_ value: String) -> [String] { SourceUnitLedger(value).words.map(\.text) }
+            guard words(normalizedSource) == words(originalSource),
+                  words(String(normalizedSource[deadlineRange]))
+                    == words(String(originalSource[original.deadlineRange])),
+                  words(String(normalizedSource[calendarRange]))
+                    == words(String(originalSource[original.calendarRange])) else { return false }
+            switch (requestRange, original.requestRange) {
+            case let (.some(current), .some(raw)):
+                return words(String(normalizedSource[current])) == words(String(originalSource[raw]))
+            case (.none, .none): return true
+            default: return false
+            }
+        }
+    }
+
+    /// The caller supplies an already proved governing deadline span, such as
+    /// PartialNumberedWork.deadlineRange. A naked temporal phrase is not one.
+    static func midnightDeadline(in source: String,
+                                 ownedDeadlineRange: Range<String.Index>) -> MidnightDeadline? {
+        midnightDeadline(in: source, ownedDeadlineRange: ownedDeadlineRange,
+                         correctionLookupSource: source)
+    }
+
+    private static func midnightDeadline(in source: String,
+                                        ownedDeadlineRange: Range<String.Index>,
+                                        correctionLookupSource: String) -> MidnightDeadline? {
+        guard source.count <= 2_000,
+              source.range(of: #"(?i)\bmidnight\b"#, options: .regularExpression) != nil,
+              QuotedSpeechScope.ranges(in: source).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(source),
+              !SelfCorrectionResolver.hasCorrectionJunction(in: correctionLookupSource),
+              source.range(of: #"[\n\r]"#, options: .regularExpression) == nil else { return nil }
+        let deadline = String(source[ownedDeadlineRange])
+        let calendar = ThoughtOrganizer.namedDeadlineCalendarDayPattern
+        let patterns = [
+            #"(?i)^\s*(?<calendar>"# + calendar + #")(?:\s+at)?\s+midnight\.?\s*$"#,
+            #"(?i)^\s*(?:at\s+)?midnight(?:\s+on)?\s+(?<calendar>"# + calendar + #")\.?\s*$"#
+        ]
+        for pattern in patterns {
+            guard let regex = NSRegularExpression.speakItCached(pattern),
+                  let match = regex.firstMatch(in: deadline,
+                    range: NSRange(deadline.startIndex..., in: deadline)) else { continue }
+            let local = match.range(withName: "calendar")
+            let base = NSRange(ownedDeadlineRange, in: source).location
+            guard let day = Range(NSRange(location: base + local.location, length: local.length), in: source)
+            else { return nil }
+            return MidnightDeadline(deadlineRange: ownedDeadlineRange,
+                                    calendarRange: day, requestRange: nil)
+        }
+        return nil
+    }
+
+    static func midnightDeadline(in source: String) -> MidnightDeadline? {
+        guard source.range(of: #"(?i)\bmidnight\b"#, options: .regularExpression) != nil else { return nil }
+        if let work = partialNumberedWork(in: source) {
+            return midnightDeadline(in: source, ownedDeadlineRange: work.deadlineRange)
+        }
+        // A whole primary IS DUE matrix differs from a due date inside an
+        // action's relative object. BY/NO LATER THAN must follow the complete
+        // direct or first-person action and its determined literal object.
+        let object = #"(?:the|a|an|my|our|this|that)\s+(?:[\p{L}\p{M}'’-]+\s+){0,5}[\p{L}\p{M}'’-]+"#
+        let action = #"(?:\#(ActionabilityReader.actionVerb)|\#(ActionabilityReader.headOnlyImperativeVerb))"#
+        let frames = [
+            #"(?i)^\s*(?<request>(?:(?:please\s+)?|(?:i|we)\s+(?:need\s+to|have\s+to|will|must|should)\s+)"#
+                + action + #"\s+(?<object>"# + object + #"))\s+(?<governor>by|no\s+later\s+than)\s+(?<deadline>.+?)\.?\s*$"#,
+            #"(?i)^\s*(?<request>(?<object>"# + object + #"))\s+(?<governor>is\s+due)\s+(?<deadline>.+?)\.?\s*$"#
+        ]
+        let excluded = #"(?i)\b(?:i|we|you|he|she|it|they|that|what|who|whom|which|whose|where|is|are|was|were|am|be|been|being|has|have|had|do|does|did|will|would|can|could|should|shall|may|might|must|not|never|no|and|or|but|then|also|so|to|for|from|with|at|on|by|in|if|unless|when|once|after|before|until|while|because|due|deadline|starts?|beginning|begins?|every|each|\#(reportingVerb)|\#(ActionabilityReader.pastReportVerb)|\#(ActionabilityReader.actionVerb)(?:s|es)?|\#(ActionabilityReader.headOnlyImperativeVerb)(?:s|es)?)\b|n['’]t\b|['’](?:ll|d|re|ve|m)\b|\b\#(ActionabilityReader.nonPossessiveSHead)['’]s\b"#
+        for pattern in frames {
+            guard let regex = NSRegularExpression.speakItCached(pattern),
+                  let match = regex.firstMatch(in: source, range: NSRange(source.startIndex..., in: source)),
+                  let objectRange = Range(match.range(withName: "object"), in: source),
+                  let request = Range(match.range(withName: "request"), in: source),
+                  let governor = Range(match.range(withName: "governor"), in: source),
+                  let deadline = Range(match.range(withName: "deadline"), in: source) else { continue }
+            let content = source[objectRange].split(whereSeparator: \.isWhitespace).dropFirst().joined(separator: " ")
+            guard content.range(of: excluded, options: .regularExpression) == nil else { continue }
+            // Only this complete governing marker is grammatical deadline
+            // content. Keep correction authority everywhere outside its exact
+            // occurrence; all source/calendar ranges remain untouched.
+            let correctionLookup: String
+            if source[governor].range(of: #"(?i)^no\s+later\s+than$"#,
+                                     options: .regularExpression) != nil {
+                correctionLookup = String(source[..<governor.lowerBound]) + " "
+                    + String(source[governor.upperBound...])
+            } else { correctionLookup = source }
+            guard let timing = midnightDeadline(in: source, ownedDeadlineRange: deadline,
+                correctionLookupSource: correctionLookup) else { continue }
+            return MidnightDeadline(deadlineRange: timing.deadlineRange,
+                                    calendarRange: timing.calendarRange, requestRange: request)
+        }
+        return nil
+    }
+
+    /// A current own dated trip explicitly makes its following acquisition
+    /// consequential. This frame supplies source ranges, not product authority.
+    struct PlannedRetailAcquisition {
+        let dateRange: Range<String.Index>
+        let tripRange: Range<String.Index>
+        let retailerRange: Range<String.Index>
+        let acquisitionRange: Range<String.Index>
+        let scopeRange: Range<String.Index>?
+        /// The frame admits only this literal opening AND scaffold.
+        let discourseRange: Range<String.Index>?
+        let store: String
+        let temporalIntent: TemporalIntent
+        let dueDate: Date
+
+        func matchesOriginal(_ raw: Self, source: String, originalSource: String,
+                             allowingLicensedOpeningAnd: Bool = false) -> Bool {
+            func words(_ text: String) -> [String] { SourceUnitLedger(text).words.map(\.text) }
+            let currentWords=words(source),rawWords=words(originalSource)
+            let onlyOpeningAnd=allowingLicensedOpeningAnd && discourseRange == nil
+                && raw.discourseRange.map { words(String(originalSource[$0])) == ["and"] } == true
+                && currentWords == Array(rawWords.dropFirst())
+            guard (currentWords == rawWords || onlyOpeningAnd), store == raw.store,
+                  temporalIntent == raw.temporalIntent, dueDate == raw.dueDate else { return false }
+            let current = [dateRange, tripRange, retailerRange, acquisitionRange]
+            let original = [raw.dateRange, raw.tripRange, raw.retailerRange, raw.acquisitionRange]
+            return zip(current, original).allSatisfy {
+                words(String(source[$0.0])) == words(String(originalSource[$0.1]))
+            } && scopeRange.map { words(String(source[$0])) }
+                == raw.scopeRange.map { words(String(originalSource[$0])) }
+        }
+    }
+
+    static func plannedRetailAcquisition(in source: String, referenceDate: Date,
+                                         calendar: Calendar) -> PlannedRetailAcquisition? {
+        guard source.count <= 2_000,
+              let regex = NSRegularExpression.speakItCached(
+                #"(?i)^\s*(?:and\s+)?(?:(for\s+(?:home|work))\s*,\s*)?(.+?)\s+((?:i\s+am|we\s+are|i['’]m|we['’]re)\s+going\s+to\s+(?:the\s+)?([\p{L}\p{M}][\p{L}\p{M}'’&. -]{0,79}?))\s*,\s*so\s+((?:\#(ShoppingGroupParser.acquisitionHead))\s+.+?)[.]?\s*$"#),
+              let match = regex.firstMatch(in: source, range: NSRange(source.startIndex..., in: source)),
+              let date = Range(match.range(at: 2), in: source),
+              let trip = Range(match.range(at: 3), in: source),
+              let retailer = Range(match.range(at: 4), in: source),
+              let acquisition = Range(match.range(at: 5), in: source) else { return nil }
+        let literalDate = String(source[date])
+        guard QuotedSpeechScope.ranges(in: source).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(source),
+              !SelfCorrectionResolver.hasCorrectionJunction(in: source),
+              source.range(of: #"[;!?\n]|[.]\s+[\p{L}]"#, options: .regularExpression) == nil,
+              let lead = RuleBasedThoughtExtractor.leadingTemporalContext(in: literalDate),
+              SourceUnitLedger(lead).words.map(\.text) == SourceUnitLedger(literalDate).words.map(\.text),
+              let timing = ThoughtOrganizer.dateOnlyContextTiming(literalDate,
+                  referenceDate: referenceDate, calendar: calendar),
+              timing.intent.time == nil, let due = timing.dueDate,
+              let store = ShoppingGroupParser.storeName(in: String(source[trip])),
+              ShoppingGroupParser.isRecognizedStoreName(store),
+              store.caseInsensitiveCompare(String(source[retailer]).trimmingCharacters(in: .whitespaces)) == .orderedSame
+        else { return nil }
+        return .init(dateRange: date, tripRange: trip, retailerRange: retailer,
+            acquisitionRange: acquisition, scopeRange: Range(match.range(at: 1), in: source),
+            discourseRange: source.range(of: #"(?i)^\s*and\s+"#, options: .regularExpression),
+            store: store, temporalIntent: timing.intent, dueDate: due)
+    }
+
+    /// A closed own-work relation, not a universal noun or numeric-range
+    /// certificate. The due artifact, completed unit range and remaining work
+    /// are literal parts of one sentence; no nearest date/object is borrowed.
+    struct PartialNumberedWork {
+        let artifactRange: Range<String.Index>
+        let deadlineRange: Range<String.Index>
+        let unitRange: Range<String.Index>
+        let completedRange: Range<String.Index>
+        let remainingRange: Range<String.Index>
+        let completionPrefixRange: Range<String.Index>
+        let finishVerbRange: Range<String.Index>
+
+        func title(in source: String) -> String {
+            let artifact = String(source[artifactRange])
+            // The source role proves this initial determiner; preserve the
+            // following name/modifiers while moving it inside the title.
+            let scopedArtifact = artifact.prefix(1).lowercased() + String(artifact.dropFirst())
+            return [String(source[finishVerbRange]), String(source[unitRange]),
+                    String(source[remainingRange]), "of", scopedArtifact].joined(separator: " ")
+        }
+
+        /// Only the already explicit own action is routed. Numeric labels
+        /// stay in the visible/source wording and cannot become clock values.
+        func routingText(in source: String) -> String {
+            [String(source[completionPrefixRange]), String(source[artifactRange]),
+             String(source[unitRange])].joined(separator: " ")
+        }
+
+        func matchesOriginal(_ original: Self, normalizedSource: String,
+                             originalSource: String) -> Bool {
+            func words(_ text: String) -> [String] { SourceUnitLedger(text).words.map(\.text) }
+            guard words(normalizedSource) == words(originalSource) else { return false }
+            let current = [artifactRange, deadlineRange, unitRange, completedRange,
+                           remainingRange, completionPrefixRange, finishVerbRange]
+            let raw = [original.artifactRange, original.deadlineRange, original.unitRange,
+                       original.completedRange, original.remainingRange,
+                       original.completionPrefixRange, original.finishVerbRange]
+            return zip(current, raw).allSatisfy {
+                words(String(normalizedSource[$0.0])) == words(String(originalSource[$0.1]))
+            }
+        }
+    }
+
+    static func partialNumberedWork(in source: String) -> PartialNumberedWork? {
+        guard source.count <= 2_000,
+              source.range(of: #"(?i)^(?:the|my|our)\s+"#, options: .regularExpression) != nil,
+              source.range(of: #"(?i)\s+is\s+due\s+"#, options: .regularExpression) != nil,
+              QuotedSpeechScope.ranges(in: source).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(source),
+              !SelfCorrectionResolver.hasCorrectionJunction(in: source) else { return nil }
+        let number = ThoughtOrganizer.numberedWorkLabelPattern
+        let pattern = #"(?i)^(?<artifact>(?:the|my|our)\s+(?:[\p{L}\p{M}'’-]+\s+){0,5}[\p{L}\p{M}'’-]+)\s+is\s+due\s+(?<deadline>.+?)\s+and\s+(?<actor>I|we)(?:\s+have|['’]ve)\s+only\s+(?:done|completed|finished)\s+(?<unit>[\p{L}\p{M}]{2,24}s)\s+(?<completed>(?<doneStart>"# + number + #")\s+through\s+(?<doneEnd>"# + number + #")),?\s+so\s+(?<prefix>(?<owner>I|we)\s+(?:need|have)\s+to\s+(?<verb>finish|complete))\s+(?<remaining>(?<leftStart>"# + number + #")\s+through\s+(?<leftEnd>"# + number + #"))\.?\s*$"#
+        guard let regex = NSRegularExpression.speakItCached(pattern),
+              let match = regex.firstMatch(in: source, range: NSRange(source.startIndex..., in: source))
+        else { return nil }
+        func range(_ name: String) -> Range<String.Index>? { Range(match.range(withName: name), in: source) }
+        guard let artifact = range("artifact"), let deadline = range("deadline"),
+              let unit = range("unit"), let completed = range("completed"),
+              let remaining = range("remaining"), let prefix = range("prefix"),
+              let verb = range("verb"), let actor = range("actor"), let owner = range("owner"),
+              source[actor].lowercased() == source[owner].lowercased(),
+              String(source[deadline]).range(of: #"(?i)\b(?:and|or|but|then|also|so)\b"#,
+                options: .regularExpression) == nil,
+              isPureTemporalMatrixPrefix(String(source[deadline])),
+              String(source[artifact]).range(of: #"(?i)\b(?:i|we|you|he|she|it|they|that|who|which|whose|is|are|was|were|has|have|had|will|would|can|could|should|must|not|never|no|and|or|but|then|also|so|to|if|unless|when|once|after|before|until|because|\#(reportingVerb))\b"#,
+                options: .regularExpression) == nil,
+              String(source[unit]).range(of: #"(?i)^(?:seconds?|minutes?|hours?|days?|weeks?|months?|years?|is|was|has|does|\#(reportingVerb))$"#,
+                options: .regularExpression) == nil else { return nil }
+        // These two compatible work roles are explicit authority. A book's
+        // return deadline plus reading chapters does not prove work is due.
+        let artifactWords = SourceUnitLedger(String(source[artifact])).words.map(\.text)
+        let unitWord = String(source[unit]).lowercased()
+        let isProblemSet = artifactWords.suffix(2).elementsEqual(["problem", "set"])
+            && unitWord == "questions"
+        let isAssignment = artifactWords.last == "assignment" && unitWord == "exercises"
+        guard isProblemSet || isAssignment else { return nil }
+        let values = ["doneStart", "doneEnd", "leftStart", "leftEnd"].compactMap { name -> Int? in
+            guard let span = range(name) else { return nil }
+            let literal = String(source[span]).lowercased()
+            guard !["a", "an", "couple"].contains(literal),
+                  let value = ThoughtOrganizer.numberedWorkLabelValue(literal), value > 0 else { return nil }
+            return value
+        }
+        guard values.count == 4, values[0] <= values[1], values[1] < Int.max,
+              values[2] == values[1] + 1, values[2] <= values[3] else { return nil }
+        return .init(artifactRange: artifact, deadlineRange: deadline, unitRange: unit,
+            completedRange: completed, remainingRange: remaining,
+            completionPrefixRange: prefix, finishVerbRange: verb)
+    }
+
+    /// One literal Email artifact and its positive dispatch restatement.
+    /// A positive duration-of-notice/warning requirement excludes another
+    /// artifact from the anaphor's reason. Only the final by-deadline supplies
+    /// timing; the notice duration never becomes elapsed execution timing.
+    struct OutgoingArtifactDeadline {
+        let requestRange: Range<String.Index>
+        let artifactRange: Range<String.Index>
+        let reasonRange: Range<String.Index>
+        let deadlineRange: Range<String.Index>
+
+        func executionText(in source: String) -> String {
+            String(source[requestRange]) + " " + String(source[deadlineRange])
+        }
+
+        func matchesOriginal(_ original: Self, normalizedSource: String,
+                             originalSource: String) -> Bool {
+            // Whole ordered words bind all roles and retain an own clock;
+            // matching only the artifact/date could hide a changed request.
+            func words(_ text: String) -> [String] { SourceUnitLedger(text).words.map(\.text) }
+            return words(normalizedSource) == words(originalSource)
+                && words(String(normalizedSource[requestRange]))
+                    == words(String(originalSource[original.requestRange]))
+                && words(String(normalizedSource[artifactRange]))
+                    == words(String(originalSource[original.artifactRange]))
+                && words(String(normalizedSource[deadlineRange]))
+                    == words(String(originalSource[original.deadlineRange]))
+        }
+    }
+
+    static func outgoingArtifactDeadline(in source: String) -> OutgoingArtifactDeadline? {
+        guard source.range(of: #"(?i)^\s*(?:please\s+)?email\s+"#,
+                           options: .regularExpression) != nil,
+              source.range(of: #"[\n\r]"#, options: .regularExpression) == nil,
+              QuotedSpeechScope.ranges(in: source).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(source),
+              !SelfCorrectionResolver.hasCorrectionJunction(in: source),
+              let separator = source.firstIndex(of: ";"),
+              let arguments = communicationArgumentCandidate(in: source),
+              arguments.bodyRange.lowerBound < separator,
+              String(source[..<arguments.recipientRange.lowerBound]).range(
+                of: #"(?i)^\s*(?:please\s+)?email\s+$"#,
+                options: .regularExpression) != nil,
+              String(source[arguments.matrixRange]).range(
+                of: #"(?i)\b(?:that|if|whether|how|to\s+say)\s*$"#,
+                options: .regularExpression) == nil
+        else { return nil }
+        // The literal recipient stays in timing input too. A calendar-like
+        // name or intervening non-whitespace material cannot introduce another
+        // clock into this bounded source projection.
+        let recipientWords = source[arguments.recipientRange].split(whereSeparator: \.isWhitespace)
+            .drop(while: { String($0).caseInsensitiveCompare("the") == .orderedSame })
+        guard String(source[arguments.recipientRange.upperBound..<arguments.bodyRange.lowerBound])
+                .range(of: #"^\s+$"#, options: .regularExpression) != nil,
+              !recipientWords.contains(where: {
+                  isPureTemporalMatrixPrefix(String($0))
+                      || ThoughtOrganizer.isPositiveLiteralNumber(String($0))
+              }) else { return nil }
+        let artifact = arguments.bodyRange.lowerBound..<separator
+        let artifactText = String(source[artifact]).trimmingCharacters(in: .whitespaces)
+        guard artifactText.range(
+            of: #"(?i)^(?:the|a|an|my|our)\s+\p{L}[\p{L}\p{M}'’-]*(?:\s+\p{L}[\p{L}\p{M}'’-]*){0,4}$"#,
+            options: .regularExpression) != nil else { return nil }
+        // The actual double-object request supplies the artifact role. These
+        // known refusals exclude action/function/time forms from this opaque
+        // slot; they are not a universal finite-predicate or nominal proof.
+        // Unknown reduced-relative ambiguity remains; tags grant no authority.
+        let boundary = #"(?i)\b(?:i|we|you|he|she|it|they|is|are|was|were|am|be|been|has|have|had|will|would|can|could|should|must|not|never|no|and|or|but|then|also|plus|so|if|unless|when|whenever|once|after|before|until|while|because|to|for|from|with|at|on|by|in|within|around|next|this|last|later|soon|now|early|late|ago|over|during|through|seconds?|minutes?|mins?|hours?|hrs?|days?|weeks?|months?|years?|morning|afternoon|evening|night|noon|midnight|that|which|who|\#(reportingVerb)|\#(ActionabilityReader.actionVerb)|\#(ActionabilityReader.headOnlyImperativeVerb))\b|n['’]t\b|['’](?:ll|d|re|ve|m)\b"#
+        let artifactWords = artifactText.split(whereSeparator: \.isWhitespace).dropFirst()
+        guard artifactText.range(of: boundary, options: .regularExpression) == nil,
+              !artifactWords.contains(where: {
+                  isPureTemporalMatrixPrefix(String($0))
+                      || ThoughtOrganizer.isPositiveLiteralNumber(String($0))
+              }),
+              let suffix = NSRegularExpression.speakItCached(
+                #"(?i)^;\s*they\s+(?:want|need)\s+([^,;.!?]+),\s*so\s+it\s+(?:has\s+to|must|needs\s+to)\s+go\s+out\s+(by\s+([^;.!?]+?))\s*[.!]?\s*$"#),
+              let match = suffix.firstMatch(in: source, options: .anchored,
+                range: NSRange(separator..<source.endIndex, in: source)),
+              let reason = Range(match.range(at: 1), in: source),
+              let deadline = Range(match.range(at: 2), in: source),
+              let calendar = Range(match.range(at: 3), in: source)
+        else { return nil }
+        let reasonText = String(source[reason]).trimmingCharacters(in: .whitespaces)
+        // This is a new bounded notice-requirement role, not an opaque
+        // nominal certificate. Reuse the temporal reader's positive number
+        // interpretation and existing duration units without resolving a date.
+        guard let notice = NSRegularExpression.speakItCached(
+            #"(?i)^(.+?)\s+(?:seconds?|minutes?|mins?|hours?|hrs?|days?|weeks?|months?|years?)['’]?(?:\s+of)?\s+(?:advance\s+)?(?:notice|warning)$"#),
+              let noticeMatch = notice.firstMatch(in: reasonText,
+                range: NSRange(reasonText.startIndex..., in: reasonText)),
+              let amount = Range(noticeMatch.range(at: 1), in: reasonText),
+              ThoughtOrganizer.isPositiveLiteralNumber(String(reasonText[amount])),
+              String(source[calendar]).range(
+                of: #"(?i)^\s*(?:before|after|during|every|each)\b"#,
+                options: .regularExpression) == nil,
+              isPureTemporalMatrixPrefix(String(source[calendar]))
+        else { return nil }
+        return .init(requestRange: source.startIndex..<separator,
+                     artifactRange: artifact, reasonRange: reason,
+                     deadlineRange: deadline)
+    }
+
+    static func isPureTemporalMatrixPrefix(_ source: String) -> Bool {
+        let prefix = source.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let day = RuleBasedThoughtExtractor.leadingTemporalContext(in: prefix),
+           day.caseInsensitiveCompare(prefix) == .orderedSame { return true }
+        return prefix.range(
+            of: #"(?i)^(?:at|around)\s+\#(RuleBasedThoughtExtractor.clockExpression)$"#,
+            options: .regularExpression) != nil
+    }
+
+    private static func delegatedContactDay(in message: String, recipient: String?) -> String? {
+        var payload = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        // These source-owned annotations state the current contact role and
+        // alert policy, not a different date. Only the matching recipient and
+        // the literal delegated relative can license removing the role tail.
+        if let noAlerts = payload.range(
+            of: #"(?i)[,;.!?\s]+no\s+(?:timed\s+)?(?:alerts?|reminders?|notifications?)[.!?]*$"#,
+            options: .regularExpression) {
+            payload = String(payload[..<noAlerts.lowerBound])
+        }
+        if let recipient,
+           let nested = payload.range(
+                of: #"(?i)^to\s+ask\s+their\s+(?:"#
+                    + PersonMentionResolver.communicationRelationPhrasePattern + #")\s+about\s+"#,
+                options: .regularExpression) {
+            let relationPrefix = String(payload[nested])
+            let relation = relationPrefix.replacingOccurrences(
+                of: #"(?i)^to\s+ask\s+their\s+|\s+about\s+$"#,
+                with: "", options: .regularExpression)
+            let role = #"(?i)[;.!?\s]+i\s+am\s+contacting\s+"#
+                + NSRegularExpression.escapedPattern(for: recipient)
+                + #"\s*,?\s+not\s+that\s+"#
+                + NSRegularExpression.escapedPattern(for: relation) + #"[.!?]*$"#
+            if let tail = payload.range(of: role, options: .regularExpression) {
+                payload = String(payload[..<tail.lowerBound])
+            }
+        }
+        guard payload.range(of: #"(?i)\b(?:alarm|timer|remind|every|each|whether|how|what|which|where|why|\#(ConditionalIntentScope.opener))\b"#,
+                            options: .regularExpression) == nil,
+              payload.range(of: #"(?i)\d{1,2}:\d{2}|\b(?:at|around)\s+\#(RuleBasedThoughtExtractor.clockExpression)\b|\b\#(RuleBasedThoughtExtractor.clockExpression)\s*(?:a\.?m\.?|p\.?m\.?)\b"#,
+                            options: .regularExpression) == nil,
+              !ThoughtOrganizer.statesAClock(payload) else { return nil }
+        payload = payload.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines.union(
+            CharacterSet(charactersIn: ".!?")))
+        if let day = payload.range(
+            of: #"(?i)\b(?:today|tomorrow|tonight|(?:(?:on|next|this)\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))$"#,
+            options: .regularExpression),
+           !hasNonContactDayModifier(String(payload[..<day.lowerBound])) {
+            return String(payload[day])
+        }
+        guard ThoughtOrganizer.namesAMonthAndDay(payload) else { return nil }
+        // A whole suffix must be the existing calendar grammar. A date buried
+        // inside another finite message never becomes a contact schedule.
+        for start in payload.indices where start == payload.startIndex
+            || payload[payload.index(before: start)].isWhitespace {
+            let suffix = String(payload[start...])
+            if let day = RuleBasedThoughtExtractor.leadingTemporalContext(in: suffix),
+               day.caseInsensitiveCompare(suffix) == .orderedSame,
+               !hasNonContactDayModifier(String(payload[..<start])) { return day }
+        }
+        return nil
+    }
+
+    private static func hasNonContactDayModifier(_ prefix: String) -> Bool {
+        prefix.range(of: #"(?i)\b(?:before|by|until|till|after|from|since|through)\s*$"#,
+                     options: .regularExpression) != nil
     }
 
     /// What the speaker is doing with the matrix clause.
@@ -1010,6 +2033,20 @@ enum ClauseScope {
 
     private static let delegatedProposition =
         #"(?i)^(?:(?:not|never)\s+to|to)\s+(?:(?:not|never|just|please|[\p{L}]+ly)\s+)*\#(ActionabilityReader.actionVerb)\b"#
+
+    /// An explicit tell/ask matrix may also own a recognised head-only
+    /// imperative. Unknown and noun-first stems retain the ordinary reading;
+    /// call/email purpose clauses keep the existing known-stem contract.
+    private static func licensesDelegated(_ complement: String, matrix: String, recipient: String?) -> Bool {
+        if complement.range(of: delegatedProposition, options: .regularExpression) != nil { return true }
+        guard let recipient,
+              matrix.range(of: #"(?i)\b(?:tell|ask)\s+"#
+                + NSRegularExpression.escapedPattern(for: recipient) + #"$"#,
+                options: .regularExpression) != nil else { return false }
+        let infinitive = #"(?i)^(?:(?:not|never)\s+to|to)\s+(?:(?:not|never|just|please|[\p{L}]+ly)\s+)*"#
+        return complement.range(of: infinitive + ActionabilityReader.headOnlyImperativeVerb + #"\b"#,
+                                options: .regularExpression) != nil
+    }
 
     /// The complementizers English uses to open a reported proposition, plus the
     /// zero complementizer that speech drops constantly ("she said Ø it's off").
@@ -1151,7 +2188,12 @@ enum ClauseScope {
     /// of a matching reported instruction; several reported actions leave the
     /// referent unresolved. Later independent speech keeps its own scope.
     static func explicitAdoption(in source: String) -> Adoption? {
-        let markerPattern = #"(?i)[.!?;]['’\"”]?\s*((?:i|we)\s+(?:agree|commit)\s*(?::\s*|and\s+)(?:(?:i|we)\s+)?)(?=(?:will|shall|must|am\s+going\s+to|are\s+going\s+to)\s+(?!be\b)[\p{L}'’-]+\b)"#
+        let finiteCommitment = #"(?:will|shall|must|am\s+going\s+to|are\s+going\s+to)\s+(?!be\b)[\p{L}'’-]+\b"#
+        let imperative = #"(?:please\s+)?(?:\#(ActionabilityReader.actionVerb)|\#(ActionabilityReader.headOnlyImperativeVerb))\b(?=\s+\S)"#
+        // The colon can introduce either an own finite commitment or a bare
+        // command. A finite first-person subject is not an imperative, and
+        // agreement alone cannot adopt a quoted or conditional proposition.
+        let markerPattern = #"(?i)[.!?;]['’\"”]?\s*((?:i|we)\s+(?:agree|commit)\s*(?:(?::\s*|and\s+)(?:(?:i|we)\s+)?(?=\#(finiteCommitment))|:\s*(?=\#(imperative))))"#
         guard let regex = NSRegularExpression.speakItCached(markerPattern) else { return nil }
         for match in regex.matches(in: source, range: NSRange(source.startIndex..., in: source)) {
             guard let marker = Range(match.range(at: 1), in: source),
@@ -1174,18 +2216,25 @@ enum ClauseScope {
             let quotedReport = QuotedSpeechScope.matrixVoice(in: report) == .reported
                 && !QuotedSpeechScope.ranges(in: report).isEmpty
             guard reading.act == .reporting || quotedReport else { continue }
-            let complement = reading.complement
-                ?? QuotedSpeechScope.ranges(in: report).first.map { String(report[$0]) }
-                ?? ""
+            let quotedSpans = QuotedSpeechScope.ranges(in: report)
+            // A reported quote owns its exact payload. The reporting reader
+            // may retain the comma before it; that comma is not part of the
+            // object inherited by an explicit own "photograph it" adoption.
+            let complement = quotedReport && quotedSpans.count == 1
+                ? String(report[quotedSpans[0]])
+                : (reading.complement ?? quotedSpans.first.map { String(report[$0]) } ?? "")
             let actionStart = marker.upperBound
             let tail = String(source[actionStart...])
             let stop = tail.range(of: #"[.!?](?=\s|$)"#, options: .regularExpression)
             let actionEnd = stop.map { source.index(actionStart, offsetBy: tail.distance(
                 from: tail.startIndex, to: $0.upperBound
             )) } ?? source.endIndex
-            var action = "I " + String(source[actionStart..<actionEnd])
+            let spokenAction = String(source[actionStart..<actionEnd])
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            let pronounPattern = #"(?i)^(?:i|we)\s+(?:will|shall|must|am\s+going\s+to|are\s+going\s+to)\s+(\#(ActionabilityReader.actionVerb))\s+(it|that)\b"#
+            let isBareCommand = spokenAction.range(of: "(?i)^" + imperative,
+                                                    options: .regularExpression) != nil
+            var action = isBareCommand ? spokenAction : "I " + spokenAction
+            let pronounPattern = #"(?i)^(?:(?:i|we)\s+(?:will|shall|must|am\s+going\s+to|are\s+going\s+to)\s+|please\s+)?(\#(ActionabilityReader.actionVerb)|\#(ActionabilityReader.headOnlyImperativeVerb))\s+(it|that)\b"#
             if let pronounRegex = NSRegularExpression.speakItCached(pronounPattern),
                let pronoun = pronounRegex.firstMatch(in: action, range: NSRange(action.startIndex..., in: action)),
                let verbRange = Range(pronoun.range(at: 1), in: action),
@@ -1348,6 +2397,13 @@ enum ClauseScope {
         else { return nil }
 
         let subject = String(text[subjectRange])
+        // A subordinator plus its nominal subject is not a reporter name:
+        // “If Pat confirms, buy wine” must retain its unsupported condition,
+        // rather than let a fabricated speaker “If Pat” turn it into Memory.
+        // Reuse the existing opener grammar and require a whole token plus
+        // another subject word; names such as Tillie/Whenna are unaffected.
+        guard subject.range(of: "(?i)^" + ConditionalIntentScope.opener + #"\s+\S"#,
+                            options: .regularExpression) == nil else { return nil }
         // First person is the speaker talking about themselves, and "the" or a
         // determiner opens a described thing rather than a speaker.
         guard subject.range(
@@ -1395,38 +2451,742 @@ enum ClauseScope {
         )
     }
 
+    /// Literal recipient/body candidates only. `readCommunication` retains
+    /// authority to decide whether the body is message content or an object.
+    struct CommunicationArgumentCandidate {
+        let matrixRange: Range<String.Index>
+        let recipientRange: Range<String.Index>
+        let bodyRange: Range<String.Index>
+    }
+
+    /// One contact's stated timing preference qualifies this same call.
+    /// This preserves literal context, not a new deadline/condition or clock.
+    struct ContactTimingPreference {
+        let recipientRange: Range<String.Index>
+        let executionRange: Range<String.Index>
+        let boundaryRange: Range<String.Index>
+        let preferenceRange: Range<String.Index>
+
+        func executionText(in source: String) -> String { String(source[executionRange]) }
+        func matchesOriginal(_ original: Self, normalizedSource: String, originalSource: String) -> Bool {
+            func words(_ text: String) -> [String] { SourceUnitLedger(text).words.map(\.text) }
+            guard words(normalizedSource) == words(originalSource) else { return false }
+            return zip([recipientRange, executionRange, boundaryRange, preferenceRange],
+                [original.recipientRange, original.executionRange, original.boundaryRange, original.preferenceRange])
+                .allSatisfy { words(String(normalizedSource[$0.0])) == words(String(originalSource[$0.1])) }
+        }
+    }
+
+    static func contactTimingPreference(in source: String) -> ContactTimingPreference? {
+        guard source.count <= 2_000,
+              source.range(of: #"(?i)^(?:please\s+)?(?:call|phone)\s+"#, options: .regularExpression) != nil,
+              let boundary = source.range(of: #"(?i)\s+and\s+"#, options: .regularExpression),
+              QuotedSpeechScope.ranges(in: source).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(source),
+              !SelfCorrectionResolver.hasCorrectionJunction(in: source) else { return nil }
+        let head = String(source[..<boundary.lowerBound])
+        guard let arguments = communicationArgumentCandidate(in: head),
+              read(head).act == .direct,
+              let recipient = Range(NSRange(arguments.recipientRange, in: head), in: source),
+              let bodyRange = Range(NSRange(arguments.bodyRange, in: head), in: source) else { return nil }
+        let body = String(source[bodyRange])
+        guard let ownTiming = RuleBasedThoughtExtractor.leadingTemporalContext(in: body),
+              let timing = body.range(of: ownTiming, options: [.anchored, .caseInsensitive]),
+              let originalTiming = Range(NSRange(location: NSRange(bodyRange, in: source).location,
+                  length: NSRange(timing, in: body).length), in: source) else { return nil }
+        let remainder = String(source[originalTiming.upperBound..<boundary.lowerBound])
+            .trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: ",")))
+        // A bounded possessive reason remains literal context. Known person
+        // or relation mentions veto this envelope; unknown words are not a
+        // universal noun/actor proof and grant no new metadata authority.
+        var possessor: String?
+        if !remainder.isEmpty {
+            let pattern = #"(?i)^because\s+(?:it['’]s|it\s+is)\s+(his|her|their)\s+([\p{L}\p{M}-]+(?:\s+[\p{L}\p{M}-]+){0,2})$"#
+            guard let regex = NSRegularExpression.speakItCached(pattern),
+                  let match = regex.firstMatch(in: remainder, range: NSRange(remainder.startIndex..., in: remainder)),
+                  let owner = Range(match.range(at: 1), in: remainder),
+                  let reason = Range(match.range(at: 2), in: remainder) else { return nil }
+            let literalReason = String(remainder[reason])
+            guard !literalReason.contains(where: \.isUppercase),
+                  !PersonMentionResolver.communicationContextContainsPerson(in: literalReason),
+                  literalReason.range(of: #"(?i)\b(?:and|or|but|so|then|if|unless|when|that|who|which|to|not|never|is|are|was|were|has|have|will|would|can|could|should|must|\#(reportingVerb)|\#(ActionabilityReader.actionVerb))\b"#,
+                    options: .regularExpression) == nil else { return nil }
+            possessor = String(remainder[owner]).lowercased()
+        }
+        let tail = String(source[boundary.upperBound...])
+        let preference = #"(?i)^(?<subject>(?:[\p{L}\p{M}'’-]+\s+){0,2}[\p{L}\p{M}'’-]+)\s+(?<verb>likes?|prefers?)\s+(?:a|the)\s+(?:phone\s+)?call\s+(?:before|after)\s+\#(RuleBasedThoughtExtractor.clockExpression)\s*[.!?]*$"#
+        guard let regex = NSRegularExpression.speakItCached(preference),
+              let match = regex.firstMatch(in: tail, range: NSRange(tail.startIndex..., in: tail)),
+              let subject = Range(match.range(withName: "subject"), in: tail),
+              let verb = Range(match.range(withName: "verb"), in: tail) else { return nil }
+        let subjectWords = SourceUnitLedger(String(tail[subject])).words.map(\.text)
+        let named = SourceUnitLedger(String(source[recipient])).words.map(\.text)
+        let subjectText = subjectWords.joined(separator: " ")
+        let finite = String(tail[verb]).lowercased()
+        if ["he", "she", "they"].contains(subjectText) {
+            guard PersonMentionResolver.communicationRelationSupportsPronoun(subjectText,
+                recipient: String(source[recipient])) else { return nil }
+            let expectedPossessor = ["he": "his", "she": "her", "they": "their"][subjectText]
+            guard possessor == nil || possessor == expectedPossessor,
+                  (subjectText == "they" ? ["like", "prefer"].contains(finite)
+                    : ["likes", "prefers"].contains(finite)) else { return nil }
+        } else {
+            guard subjectWords == named, ["likes", "prefers"].contains(finite) else { return nil }
+        }
+        return .init(recipientRange: recipient, executionRange: source.startIndex..<originalTiming.upperBound,
+            boundaryRange: boundary, preferenceRange: boundary.upperBound..<source.endIndex)
+    }
+
+    /// A literal Call/Phone purpose whose finite proposition is addressed
+    /// content. This proof supplies only source ownership and a timing
+    /// projection; it creates no action, recipient, date or operation.
+    struct FiniteContactPurpose {
+        let recipientRange: Range<String.Index>
+        let executionRange: Range<String.Index>
+        let complementRange: Range<String.Index>
+        let purposeRange: Range<String.Index>
+
+        func executionText(in source: String) -> String {
+            String(source[executionRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        func matchesOriginal(_ original: Self, normalizedSource: String,
+                             originalSource: String) -> Bool {
+            func words(_ text: String) -> [String] { SourceUnitLedger(text).words.map(\.text) }
+            return words(executionText(in: normalizedSource))
+                    == words(original.executionText(in: originalSource))
+                && words(String(normalizedSource[purposeRange]))
+                    == words(String(originalSource[original.purposeRange]))
+        }
+
+        /// Timing-only: each source independently proves addressed content.
+        /// Identical execution-prefix and purpose-marker words keep all call-
+        /// owned clocks outside the body, even if body values were normalized.
+        /// This grants no title, action, recipient or source-word permission.
+        func sameExecutionScope(_ original: Self, normalizedSource: String,
+                                originalSource: String) -> Bool {
+            func words(_ text: Substring) -> [String] {
+                SourceUnitLedger(String(text)).words.map(\.text)
+            }
+            return words(normalizedSource[executionRange])
+                    == words(originalSource[original.executionRange])
+                && words(normalizedSource[purposeRange.lowerBound..<complementRange.lowerBound])
+                    == words(originalSource[original.purposeRange.lowerBound..<original.complementRange.lowerBound])
+        }
+    }
+
+    static func finiteContactPurpose(in source: String) -> FiniteContactPurpose? {
+        guard source.count <= 2_000,
+              source.range(of: #"(?i)^(?:please\s+)?(?:call|phone)\s+"#,
+                           options: .regularExpression) != nil,
+              source.range(of: #"(?i)\s+to\s+(?:confirm|check)\b"#,
+                           options: .regularExpression) != nil,
+              QuotedSpeechScope.ranges(in: source).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(source),
+              !SelfCorrectionResolver.hasCorrectionJunction(in: source),
+              source.range(of: #"[;!?\n\r]|\.\s+[\p{L}]"#,
+                           options: .regularExpression) == nil,
+              let arguments = communicationArgumentCandidate(in: source),
+              let markers = NSRegularExpression.speakItCached(
+                #"(?i)\s+to\s+(?:confirm|check)(?:\s+(?:that|whether|if))?\s+"#)
+        else { return nil }
+        let matches = markers.matches(in: source,
+            range: NSRange(arguments.recipientRange.upperBound..<source.endIndex, in: source))
+        guard matches.count == 1, let match = matches.first,
+              let marker = Range(match.range, in: source) else { return nil }
+        let gap = String(source[arguments.recipientRange.upperBound..<marker.lowerBound])
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        // The gap is retained literally, including any own clock. Closed
+        // finite/function heads only refuse a gap; no native noun tag grants
+        // authority to a description such as "the tile guy".
+        let gapWords = SourceUnitLedger(gap).words
+        guard gapWords.count <= 6,
+              gap.range(of: #"[^\p{L}\p{N}\s:.'’-]"#, options: .regularExpression) == nil,
+              gap.range(of: #"(?i)\b(?:to|that|whether|if|unless|when|once|after|before|until|while|because|who|which|whose|and|or|but|then|not|never|no|is|are|am|was|were|be|been|being|has|have|had|do|does|did|will|would|can|could|should|shall|may|might|must|\#(reportingVerb)|\#(ActionabilityReader.actionVerb)(?:s|es)?)\b|['’](?:s|ll|d|re|ve|m)\b|n['’]t\b"#,
+                options: .regularExpression) == nil else { return nil }
+        let finiteRange = marker.upperBound..<source.endIndex
+        let finite = String(source[finiteRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+        // At most one existing anaphoric question may continue the payload.
+        // An independent command, a second act, or an asking-time adjunct
+        // declines this proof; none is clipped out of the source.
+        let coordinators = NSRegularExpression.speakItCached(#"(?i),?\s+(?:and|or|but|then)\s+"#)!
+            .matches(in: source, range: NSRange(finiteRange, in: source))
+        guard coordinators.count <= 1 else { return nil }
+        var proposition = finite
+        if let coordination = coordinators.first,
+           let boundary = Range(coordination.range, in: source) {
+            guard String(source[boundary]).range(of: #"(?i)\band\s+$"#,
+                    options: .regularExpression) != nil,
+                  RuleBasedThoughtExtractor.isAnaphoricCommunicationQuestion(
+                    String(source[boundary.upperBound...])),
+                  !QuotedSpeechScope.protects(boundary, in: source) else { return nil }
+            proposition = String(source[finiteRange.lowerBound..<boundary.lowerBound])
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        let finiteHead = beginsExplicitFiniteCommunicationBody(proposition)
+            || proposition.range(of: #"(?i)^(?:he|she|it)['’]s\s+[\p{L}\p{N}]"#,
+                                 options: .regularExpression) != nil
+        guard finiteHead,
+              proposition.range(of: #"[,;!?\n\r]|\.\s+[\p{L}]"#,
+                options: .regularExpression) == nil,
+              proposition.range(of: #"(?i)\b(?:to|at|on|in|by|for|with|from|about|of|and|or|but|then|is|are|am|was|were|has|have|had|will|would|can|could|should|must)\s*[.!?]*$"#,
+                options: .regularExpression) == nil else { return nil }
+        return .init(recipientRange: arguments.recipientRange,
+            executionRange: source.startIndex..<marker.lowerBound,
+            complementRange: finiteRange, purposeRange: marker.lowerBound..<source.endIndex)
+    }
+
+
+    /// Literal THAT introduces a complete descriptive schedule as message
+    /// content. This owns timing only, never an action, person or item kind.
+    struct DescriptiveMessageTiming {
+        let executionRange: Range<String.Index>
+        let recipientRange: Range<String.Index>
+        let contentRange: Range<String.Index>
+
+        func executionText(in source: String) -> String {
+            String(source[executionRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+
+        func matchesOriginal(_ original: Self, normalizedSource: String, originalSource: String) -> Bool {
+            let current = SourceUnitLedger(normalizedSource), raw = SourceUnitLedger(originalSource)
+            return current.words.map(\.text) == raw.words.map(\.text)
+                && current.ids(in: executionRange) == raw.ids(in: original.executionRange)
+                && current.ids(in: recipientRange) == raw.ids(in: original.recipientRange)
+                && current.ids(in: contentRange) == raw.ids(in: original.contentRange)
+        }
+    }
+
+    static func descriptiveMessageTiming(in source: String) -> DescriptiveMessageTiming? {
+        guard source.count <= 2_000,
+              QuotedSpeechScope.ranges(in: source).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(source),
+              !SelfCorrectionResolver.hasCorrectionJunction(in: source),
+              source.range(of: #"[;!?\n\r]|\.\s+[\p{L}]"#, options: .regularExpression) == nil else { return nil }
+        let body = ActionabilityReader.actionBody(source)
+        guard let bodyRange = source.range(of: body, options: [.caseInsensitive, .backwards]),
+              let arguments = communicationArgumentCandidate(in: body),
+              let head = body.range(of: "(?i)^(?:please\\s+)?" + communicationVerb + "\\s+", options: .regularExpression),
+              body[head].range(of: #"(?i)\b(?:remind|ask)\b"#, options: .regularExpression) == nil,
+              body[arguments.recipientRange].range(
+                of: #"(?i)\b(?:\#(ThoughtOrganizer.namedDeadlineCalendarDayPattern))\b"#,
+                options: .regularExpression) == nil else { return nil }
+        let prefix = String(source[..<bodyRange.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines)
+        if !prefix.isEmpty {
+            guard let calendar = RuleBasedThoughtExtractor.leadingTemporalContext(in: source),
+                  SourceUnitLedger(prefix).words.map(\.text) == SourceUnitLedger(calendar).words.map(\.text)
+            else { return nil }
+        }
+        let marker = arguments.recipientRange.upperBound..<arguments.bodyRange.lowerBound
+        guard body[marker].range(of: #"(?i)^\s+that\s+$"#, options: .regularExpression) != nil else { return nil }
+        let content = String(body[arguments.bodyRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let words = SourceUnitLedger(content).words
+        // Reuse the existing closed descriptive predicate vocabulary on the
+        // exact predicate token, never the broad whole-body contains reading.
+        // A bounded determined subject and immediate optional ONLY precede it.
+        let predicates = words.indices.filter {
+            words[$0].text.hasSuffix("s") && ActionabilityReader.isDescriptiveSchedule(words[$0].text)
+        }
+        guard predicates.count == 1, let predicate = predicates.first, predicate > 0 else { return nil }
+        var subjectEnd = words[predicate].range.lowerBound
+        if words[predicate - 1].text == "only" { subjectEnd = words[predicate - 1].range.lowerBound }
+        let subject = String(content[..<subjectEnd]).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let nominal = openDeterminerNominalSpan(in: subject), nominal == subject.startIndex..<subject.endIndex,
+              hasOnlyReferenceNominalModifiers(subject.split(whereSeparator: \.isWhitespace).dropFirst().joined(separator: " "))
+        else { return nil }
+        let tail = String(content[words[predicate].range.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        let clock = RuleBasedThoughtExtractor.clockExpression
+        let day = ThoughtOrganizer.namedDeadlineCalendarDayPattern
+        guard tail.range(of: "(?i)^(?:at|after|before)\\s+" + clock
+                + "(?:\\s+on\\s+" + day + ")?\\s*[.]?\\s*$", options: .regularExpression) != nil else { return nil }
+        let offset = source[..<bodyRange.lowerBound].utf16.count
+        func originalRange(_ local: Range<String.Index>) -> Range<String.Index>? {
+            let span = NSRange(local, in: body)
+            return Range(NSRange(location: offset + span.location, length: span.length), in: source)
+        }
+        guard let recipient = originalRange(arguments.recipientRange),
+              let literalContent = originalRange(arguments.bodyRange),
+              let literalMarker = originalRange(marker) else { return nil }
+        return .init(executionRange: source.startIndex..<literalMarker.lowerBound,
+            recipientRange: recipient, contentRange: literalContent)
+    }
+
+    struct NominalCommunicationArtifact {
+        let matrixRange: Range<String.Index>
+        let objectRange: Range<String.Index>
+        let headRange: Range<String.Index>
+    }
+
+    /// The existing open determiner span is candidate nominal structure, not
+    /// permission to consume arbitrary predicates or an independent command.
+    static func openDeterminerNominalSpan(in text: String) -> Range<String.Index>? {
+        text.range(of: #"(?i)\b(?:the|a|an|my|our|your|his|her|their|this|that)\s+(?:(?!(?:that|which|who|and|or|but|to|is|are|was|were|has|have|had|will|can|could)\b)[\p{L}'’-]+\s*){0,3}\s*$"#,
+                   options: .regularExpression)
+    }
+
+    /// A nominal communication object can end in an artifact/action homograph.
+    /// Only an existing singular event-head compound or immediate possessive
+    /// supplies nominal ownership. An open determiner and calendar adjunct
+    /// alone cannot distinguish a collective finite subject from an artifact.
+    /// An independent object/clausal argument, or an explicit separator before
+    /// the head, declines this proof. No source text is removed or rewritten.
+    static func nominalCommunicationArtifact(in text: String) -> NominalCommunicationArtifact? {
+        guard QuotedSpeechScope.ranges(in: text).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(text),
+              let arguments = communicationArgumentCandidate(in: text),
+              String(text[arguments.matrixRange]).range(
+                of: #"(?i)\b(?:that|how|whether|if)\s*$"#, options: .regularExpression) == nil,
+              !beginsExplicitFiniteCommunicationBody(String(text[arguments.bodyRange])),
+              let words = NSRegularExpression.speakItCached(#"[\p{L}'’-]+"#) else { return nil }
+        for match in words.matches(in: text, range: NSRange(arguments.bodyRange, in: text)) {
+            guard let head = Range(match.range, in: text),
+                  ThoughtCompletion.requiresNominalImperativeObject(String(text[head])) else { continue }
+            let prefix = String(text[arguments.bodyRange.lowerBound..<head.lowerBound])
+            guard let open = openDeterminerNominalSpan(in: prefix),
+                  open.lowerBound == prefix.startIndex, open.upperBound == prefix.endIndex else { continue }
+            let prefixWords = prefix.split(whereSeparator: \.isWhitespace).map(String.init)
+            // A discourse linker cannot be an interior noun modifier. Reuse
+            // the existing closed discourse-only reading without changing the
+            // shared determiner span or admitting any new nominal vocabulary.
+            guard !prefixWords.dropFirst().contains(where: {
+                RuleBasedThoughtExtractor.consistsOnlyOfDiscourseWords($0.lowercased())
+            }) else { continue }
+            // Keep the shared determiner reader unchanged. These local vetoes
+            // prevent a finite auxiliary/clitic or a punctuation-only token
+            // from becoming an artifact modifier; possessive 's stays eligible.
+            let finitePrefixToken = #"(?i)^(?:is|are|am|was|were|be|been|being|has|have|had|do|does|did|will|would|can|could|should|shall|may|might|must|not|never)$|n['’]t$|['’](?:ll|d|re|ve|m)$"#
+            guard prefixWords.allSatisfy({ word in
+                word.range(of: #"^\p{L}[\p{L}'’-]*$"#, options: .regularExpression) != nil
+                    && word.range(of: finitePrefixToken, options: .regularExpression) == nil
+                    && word.range(of: #"(?i)^\#(ActionabilityReader.nonPossessiveSHead)['’]s$"#,
+                                  options: .regularExpression) == nil
+            }), let owner = prefixWords.last else { continue }
+            let immediatePossessive = owner.range(of: #"(?i)^\p{L}[\p{L}'’-]*['’]s$"#,
+                                                  options: .regularExpression) != nil
+            // This deliberately declines plural finals/midterms and ambiguous
+            // class, as well as unknown collective heads such as staff. It does
+            // not turn the whole scheduled-noun vocabulary into noun authority.
+            let singularEventHead = !owner.lowercased().hasSuffix("s")
+                && ActionabilityReader.hasScheduledNominalHead(owner)
+            guard immediatePossessive || singularEventHead,
+                  !SentenceContextCache.context(for: text).hasSubjectPredicate(
+                    in: arguments.bodyRange.lowerBound..<head.lowerBound) else { continue }
+            let remainder = text[head.upperBound..<arguments.bodyRange.upperBound]
+            let end = remainder.firstIndex(where: { ",;!?\n\r".contains($0) }) ?? remainder.endIndex
+            let timing = String(remainder[..<end])
+                .trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: ".!?")))
+            guard isPureTemporalMatrixPrefix(timing) else { continue }
+            return .init(matrixRange: arguments.matrixRange,
+                         objectRange: arguments.bodyRange.lowerBound..<head.upperBound,
+                         headRange: head)
+        }
+        return nil
+    }
+
+    static func beginsExplicitFiniteCommunicationBody(_ body: String) -> Bool {
+        // Closed pronominal contractions already contain the same finite
+        // am/are/have/will heads read below. Require a remaining word without
+        // expanding names/possessives or rewriting any original body range.
+        if body.range(
+            of: #"(?i)^(?:i['’]m|(?:we|you|they)['’]re|(?:i|we|you|they)['’]ve|(?:i|we|you|he|she|it|they)['’]ll)\s+[\p{L}\p{N}]"#,
+            options: .regularExpression) != nil { return true }
+        return body.range(
+            of: "(?i)^(?:" + PersonMentionResolver.communicationRelationPhrasePattern
+                + #"|(?:[\p{L}\p{M}'’-]+['’]s\s+)+[\p{L}\p{M}'’-]+|(?:i|we|you|he|she|they|it|this|that|there)|(?:the|a|an|my|our|your)\s+\p{L}[\p{L}'’-]*|(?!the\b|a\b|an\b|my\b|our\b|your\b|his\b|her\b|their\b|its\b|these\b|those\b|some\b|each\b)\p{L}[\p{L}'’-]*)\s+(?:is|are|was|were|am|has|have|had|will|would|can|could|should|must|did|does|do|leaves|arrives|departs|starts|ends|runs|goes|\#(reportingVerb)|\#(ActionabilityReader.pastReportVerb)|\#(ActionabilityReader.actionVerb)(?:s|es)?)\b"#,
+            options: .regularExpression
+        ) != nil
+    }
+
+    /// Bounded nominal modifier slots share the same closed structural veto.
+    /// A caller must separately prove the complete nominal head and relation.
+    private static func hasOnlyReferenceNominalModifiers(_ literal: String) -> Bool {
+        let structural = #"(?i)\b(?:i|we|you|he|she|it|they|who|which|whose|where|whether|if|unless|when|once|after|before|until|while|because|and|or|but|then|also|so|to|for|from|with|at|on|by|in|is|are|am|was|were|be|been|being|has|have|had|do|does|did|will|would|can|could|should|shall|may|might|must|not|never|no|every|each|\#(reportingVerb)|\#(ActionabilityReader.pastReportVerb)|\#(ActionabilityReader.actionVerb)(?:s|es)?|\#(ActionabilityReader.headOnlyImperativeVerb)(?:s|es)?)\b|n['’]t\b|['’](?:ll|d|re|ve|m)\b|\b\#(ActionabilityReader.nonPossessiveSHead)['’]s\b"#
+        return literal.range(of: structural, options: .regularExpression) == nil
+    }
+
+    /// One complete untimed follow-up: the WITH endpoint owns the action,
+    /// ABOUT owns one document matter, and an optional identifier-location
+    /// clause supplies reference context for that same matter. Unknown tails
+    /// never become another action or an independently discarded Memory.
+    struct CompleteFollowUpReference {
+        let endpointRange: Range<String.Index>
+        let executionRange: Range<String.Index>
+        let topicRange: Range<String.Index>
+        let contextRange: Range<String.Index>?
+        let storageRange: Range<String.Index>?
+    }
+
+    /// These are singular forms of the existing document-topic heads. They
+    /// prove a nominal only inside the determined/genitive complete subtree;
+    /// they supply no person identity, action, calendar or payable authority.
+    static func completeReferenceMatterNominal(_ literal: String) -> Bool {
+        completeReferenceNominal(literal,
+            heads: #"(?:application|claim|invoice|assignment|note|document|form|result|receipt|expense|letter|report|ticket)"#,
+            allowsGenitive: true)
+    }
+
+    private static func completeReferenceNominal(
+        _ literal: String, heads: String, allowsGenitive: Bool
+    ) -> Bool {
+        let word = #"\p{L}[\p{L}\p{M}]*(?:['’-][\p{L}\p{M}]+)*"#
+        let determined = #"(?:the|a|an|my|our|your|this|that)\s+"#
+            + #"(?<modifiers>(?:\#(word)\s+){0,2})(?:\#(heads))"#
+        let genitive = #"(?:(?:the|my|our|your|this|that)\s+)?"#
+            + #"(?<owner>(?:\#(word)\s+){0,2}\#(word)['’]s)\s+"#
+            + #"(?<modifiers>(?:\#(word)\s+){0,2})(?:\#(heads))"#
+        for pattern in allowsGenitive ? [genitive, determined] : [determined] {
+            guard let regex = NSRegularExpression.speakItCached("(?i)^(?:" + pattern + ")$"),
+                  let match = regex.firstMatch(in: literal,
+                    range: NSRange(literal.startIndex..., in: literal)),
+                  match.range == NSRange(literal.startIndex..., in: literal),
+                  let modifierRange = Range(match.range(withName: "modifiers"), in: literal)
+            else { continue }
+            let modifiers = String(literal[modifierRange])
+            guard hasOnlyReferenceNominalModifiers(modifiers),
+                  modifiers.range(of: #"['’]s\b"#, options: .regularExpression) == nil else { continue }
+            if allowsGenitive, pattern == genitive {
+                guard let ownerRange = Range(match.range(withName: "owner"), in: literal) else { continue }
+                let owner = String(literal[ownerRange])
+                guard hasOnlyReferenceNominalModifiers(owner),
+                      owner.dropLast(2).range(of: #"['’]s\b"#, options: .regularExpression) == nil
+                else { continue }
+            }
+            return true
+        }
+        return false
+    }
+
+    static func completeFollowUpReference(in source: String) -> CompleteFollowUpReference? {
+        let head = #"(?i)^(?:please\s+)?follow\s+up\s+with\s+"#
+        guard source.range(of: head, options: .regularExpression) != nil,
+              QuotedSpeechScope.ranges(in: source).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(source),
+              !SelfCorrectionResolver.hasCorrectionJunction(in: source),
+              let arguments = communicationArgumentCandidate(in: source, matrixLead: head)
+        else { return nil }
+        let gap = arguments.recipientRange.upperBound..<arguments.bodyRange.lowerBound
+        guard source[gap].allSatisfy(\.isWhitespace) else { return nil }
+        let word = #"\p{L}[\p{L}\p{M}]*(?:['’-][\p{L}\p{M}]+)*"#
+        let topic = #"(?:(?:the|a|an|my|our|your|this|that)\s+(?:\#(word)\s+){0,2}|(?:(?:the|my|our|your|this|that)\s+)?(?:\#(word)\s+){0,2}\#(word)['’]s\s+(?:\#(word)\s+){0,2})"#
+            + #"(?:application|claim|invoice|assignment|note|document|form|result|receipt|expense|letter|report|ticket)"#
+        let storage = #"(?:the|a|an|my|our|your|this|that)\s+(?:\#(word)\s+){0,2}(?:file|folder)"#
+        let pattern = #"(?i)^about\s+(?<topic>\#(topic))(?:,\s*(?<context>the\s+reference\s+number\s+is\s+(?:in|on|under|inside)\s+(?<storage>\#(storage))))?[.!?]?\s*$"#
+        let body = String(source[arguments.bodyRange])
+        guard let regex = NSRegularExpression.speakItCached(pattern),
+              let match = regex.firstMatch(in: body, range: NSRange(body.startIndex..., in: body)),
+              match.range == NSRange(body.startIndex..., in: body) else { return nil }
+        func capture(_ name: String) -> Range<String.Index>? {
+            let local = match.range(withName: name)
+            guard local.location != NSNotFound else { return nil }
+            let base = NSRange(arguments.bodyRange, in: source).location
+            return Range(NSRange(location: base + local.location, length: local.length), in: source)
+        }
+        guard let topicRange = capture("topic"),
+              completeReferenceMatterNominal(String(source[topicRange])) else { return nil }
+        let context = capture("context"), storageRange = capture("storage")
+        if let storageRange {
+            guard completeReferenceNominal(String(source[storageRange]),
+                heads: #"(?:file|folder)"#, allowsGenitive: false) else { return nil }
+        }
+        return .init(endpointRange: arguments.recipientRange,
+            executionRange: source.startIndex..<arguments.bodyRange.lowerBound,
+            topicRange: topicRange, contextRange: context, storageRange: storageRange)
+    }
+
+    /// One literal payment object followed by one calendar-only BEFORE
+    /// deadline. The document subtree proves its shape, not payability or
+    /// permission to move money; the existing Pay object/metadata guards
+    /// remain independently required by the complete source certificate.
+    struct CompletePaymentBeforeDay {
+        let objectRange: Range<String.Index>
+        let deadlineRange: Range<String.Index>
+        let calendarRange: Range<String.Index>
+    }
+
+    static func completePaymentBeforeDay(in source: String) -> CompletePaymentBeforeDay? {
+        let head = #"(?i)^(?:please\s+)?pay\s+"#
+        guard source.range(of: head, options: .regularExpression) != nil,
+              QuotedSpeechScope.ranges(in: source).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(source),
+              !SelfCorrectionResolver.hasCorrectionJunction(in: source) else { return nil }
+        let day = ThoughtOrganizer.namedDeadlineCalendarDayPattern
+        let pattern = head + #"(?<object>[\p{L}\p{M}'’ -]+?)\s+(?<deadline>before\s+(?<calendar>\#(day)))[.!?]?\s*$"#
+        guard let regex = NSRegularExpression.speakItCached(pattern),
+              let match = regex.firstMatch(in: source, range: NSRange(source.startIndex..., in: source)),
+              match.range == NSRange(source.startIndex..., in: source),
+              let object = Range(match.range(withName: "object"), in: source),
+              let deadline = Range(match.range(withName: "deadline"), in: source),
+              let calendar = Range(match.range(withName: "calendar"), in: source),
+              completeReferenceMatterNominal(String(source[object])) else { return nil }
+        return .init(objectRange: object, deadlineRange: deadline, calendarRange: calendar)
+    }
+
+    /// One phone-order goal. AND REORDER is a local transaction relation,
+    /// not a new global imperative. The complete product/distribution and
+    /// optional inventory-depletion slots must all be proved; none is residue.
+    struct CompletePhoneReorder {
+        let recipientRange: Range<String.Index>
+        let productRange: Range<String.Index>
+        let quantityRange: Range<String.Index>
+        let containerRange: Range<String.Index>
+        let sizeRanges: [Range<String.Index>]
+        let stockContextRange: Range<String.Index>?
+        let stockContainerRange: Range<String.Index>?
+    }
+
+    static func completePhoneReorder(in source: String) -> CompletePhoneReorder? {
+        let head = #"(?i)^(?:please\s+)?call\s+"#
+        guard source.range(of: head, options: .regularExpression) != nil,
+              QuotedSpeechScope.ranges(in: source).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(source),
+              !SelfCorrectionResolver.hasCorrectionJunction(in: source),
+              let arguments = communicationArgumentCandidate(in: source, matrixLead: head),
+              source[arguments.recipientRange.upperBound..<arguments.bodyRange.lowerBound]
+                .allSatisfy(\.isWhitespace) else { return nil }
+        let word = #"\p{L}[\p{L}\p{M}]*(?:[-][\p{L}\p{M}]+)*"#
+        let product = #"(?:(?:the|a|an|some|more)\s+)?(?<modifiers>(?:\#(word)\s+){0,2})\#(word)"#
+        let number = ThoughtOrganizer.numberedWorkLabelPattern
+        let size = ShoppingGroupParser.productSizeValuePattern
+        let pattern = #"(?i)^and\s+reorder\s+(?<product>\#(product)),\s*(?<quantity>\#(number))\s+(?<container>\#(word))\s+each\s+(?:of\s+)?(?<firstSize>\#(size))\s+and\s+(?<secondSize>\#(size))(?:,\s*(?<stock>we(?:['’]re|\s+are)\s+down\s+to\s+the\s+last\s+(?<stockContainer>\#(word))))?[.!?]?\s*$"#
+        let body = String(source[arguments.bodyRange])
+        guard let regex = NSRegularExpression.speakItCached(pattern),
+              let match = regex.firstMatch(in: body, range: NSRange(body.startIndex..., in: body)),
+              match.range == NSRange(body.startIndex..., in: body) else { return nil }
+        func capture(_ name: String) -> Range<String.Index>? {
+            let local = match.range(withName: name)
+            guard local.location != NSNotFound else { return nil }
+            let base = NSRange(arguments.bodyRange, in: source).location
+            return Range(NSRange(location: base + local.location, length: local.length), in: source)
+        }
+        guard let productRange = capture("product"), let modifiers = capture("modifiers"),
+              let quantity = capture("quantity"), let container = capture("container"),
+              let first = capture("firstSize"), let second = capture("secondSize"),
+              hasOnlyReferenceNominalModifiers(String(source[modifiers])),
+              ThoughtOrganizer.isPositiveLiteralNumber(String(source[quantity])),
+              ShoppingGroupParser.isProductContainer(String(source[container])) else { return nil }
+        let productText = String(source[productRange])
+        let core = ShoppingGroupParser.productIdentity(productText)
+            .split(whereSeparator: \.isWhitespace).map(String.init)
+        // A known whole compound keeps its internal noun heads. Otherwise a
+        // second known product head is not an opaque modifier of this family.
+        guard ShoppingGroupParser.namesOneProduct(productText)
+            || core.dropLast().allSatisfy({ !ShoppingGroupParser.namesProductHead($0) })
+        else { return nil }
+        // Known head evidence does not collapse adjacent known products.
+        // The complete existing list reader must not find multiple families.
+        guard ShoppingGroupParser.hasKnownProductCore(productText),
+              !ShoppingGroupParser.namesOnlyProducts(productText)
+                || ShoppingGroupParser.namesOneProduct(productText),
+              ShoppingGroupParser.acceptsProductSize(String(source[first]), product: productText),
+              ShoppingGroupParser.acceptsProductSize(String(source[second]), product: productText),
+              ShoppingGroupParser.normalizedProductSize(source[first].lowercased())
+                != ShoppingGroupParser.normalizedProductSize(source[second].lowercased()) else { return nil }
+        let stock = capture("stock"), stockContainer = capture("stockContainer")
+        if let stockContainer {
+            let package = String(source[stockContainer])
+            // The definite LAST package is the sole packaged product family's
+            // inventory, inside the fully consumed own reorder transaction.
+            // No named other product, owner or arbitrary factual tail fits.
+            guard ShoppingGroupParser.isProductContainer(package),
+                  !package.lowercased().hasSuffix("s") else { return nil }
+        }
+        return .init(recipientRange: arguments.recipientRange, productRange: productRange,
+            quantityRange: quantity, containerRange: container, sizeRanges: [first, second],
+            stockContextRange: stock, stockContainerRange: stockContainer)
+    }
+
+    /// One complete addressed event-date choice. Every payload word belongs
+    /// to a finite selection, its explicit alternative, or the same subject's
+    /// closed decision-authority context. This is not a general finite-prefix
+    /// or opaque-topic proof, and it grants no contact identity or calendar.
+    struct CompleteAddressedChoiceQuestion {
+        let recipientRange: Range<String.Index>
+        let executionRange: Range<String.Index>
+        let matrixTimingRange: Range<String.Index>?
+        let questionRange: Range<String.Index>
+        let subjectRange: Range<String.Index>
+        let alternativeRanges: [Range<String.Index>]
+        let decisionContextRange: Range<String.Index>?
+    }
+
+    static func completeAddressedChoiceQuestion(in source: String) -> CompleteAddressedChoiceQuestion? {
+        let head = #"(?i)^(?:please\s+)?(?:can\s+you\s+)?(?:ask|check\s+with)\s+"#
+        guard source.range(of: head, options: .regularExpression) != nil,
+              QuotedSpeechScope.ranges(in: source).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(source),
+              !SelfCorrectionResolver.hasCorrectionJunction(in: source),
+              let arguments = communicationArgumentCandidate(in: source, matrixLead: head)
+        else { return nil }
+
+        // All captures below are projected from exact unmodified substrings
+        // back into this source's UTF-16 coordinates.
+        func match(_ pattern: String, in range: Range<String.Index>) -> (NSTextCheckingResult, String)? {
+            let literal = String(source[range])
+            guard let regex = NSRegularExpression.speakItCached("(?i)^(?:" + pattern + ")$"),
+                  let result = regex.firstMatch(in: literal, range: NSRange(literal.startIndex..., in: literal)),
+                  result.range == NSRange(literal.startIndex..., in: literal) else { return nil }
+            return (result, literal)
+        }
+        func capture(_ result: NSTextCheckingResult, _ name: String,
+                     in range: Range<String.Index>) -> Range<String.Index>? {
+            let local = result.range(withName: name)
+            guard local.location != NSNotFound else { return nil }
+            let base = NSRange(range, in: source).location
+            return Range(NSRange(location: base + local.location, length: local.length), in: source)
+        }
+        func trimmed(_ range: Range<String.Index>) -> Range<String.Index> {
+            var lower = range.lowerBound, upper = range.upperBound
+            while lower < upper, source[lower].isWhitespace { lower = source.index(after: lower) }
+            while lower < upper, source[source.index(before: upper)].isWhitespace { upper = source.index(before: upper) }
+            return lower..<upper
+        }
+        let gap = arguments.recipientRange.upperBound..<arguments.bodyRange.lowerBound
+        guard let (matrix, _) = match(#"\s+(?:(?<day>\#(communicationMatrixDayPattern))\s+)?(?<opener>whether|if)\s+"#, in: gap),
+              let opener = capture(matrix, "opener", in: gap) else { return nil }
+        let matrixTiming = capture(matrix, "day", in: gap)
+        var payload = trimmed(arguments.bodyRange)
+        if let last = source[payload].last, ".!?".contains(last) {
+            payload = trimmed(payload.lowerBound..<source.index(before: payload.upperBound))
+        }
+        guard !payload.isEmpty,
+              source[payload].range(of: #"[;:.!?\n\r]"#, options: .regularExpression) == nil else { return nil }
+        let commas = source[payload].indices.filter { source[$0] == "," }
+        guard commas.count <= 1 else { return nil }
+        let question = trimmed(payload.lowerBound..<(commas.first ?? payload.upperBound))
+        let decision = commas.first.map { trimmed(source.index(after: $0)..<payload.upperBound) }
+        let subject = #"(?:i|we|you|he|she|it|they)"#
+        let topic = #"(?:the|a|an|my|our|your|his|her|their|this|that)\s+(?:[\p{L}\p{M}'’-]+\s+){0,2}[\p{L}\p{M}'’-]+"#
+        let day = ThoughtOrganizer.namedDeadlineCalendarDayPattern
+        let clause = #"(?<subject>\#(subject))\s+(?:wants?|needs?)\s+(?<topic>\#(topic))\s+on\s+(?<day>\#(day))"#
+        func completeEventTopic(_ range: Range<String.Index>) -> Bool {
+            let literal = String(source[range])
+            guard let open = openDeterminerNominalSpan(in: literal),
+                  open == literal.startIndex..<literal.endIndex,
+                  let head = literal.split(whereSeparator: \.isWhitespace).last,
+                  ActionabilityReader.hasScheduledNominalHead(String(head)) else { return false }
+            // A determined, bounded event noun is the positive subtree. Known
+            // finite/function/action words cannot occupy its modifier slots.
+            // No native noun vote or unknown predicate expands this grammar.
+            let modifiers = literal.split(whereSeparator: \.isWhitespace).dropFirst().dropLast().joined(separator: " ")
+            return hasOnlyReferenceNominalModifiers(modifiers)
+        }
+        let choices = NSRegularExpression.speakItCached(#"(?i)\s+or\s+"#)!
+            .matches(in: source, range: NSRange(question, in: source))
+        guard choices.count == 1, let choice = choices.first,
+              let coordinator = Range(choice.range, in: source) else { return nil }
+        let first = trimmed(question.lowerBound..<coordinator.lowerBound)
+        let second = trimmed(coordinator.upperBound..<question.upperBound)
+        guard let (left, _) = match(clause, in: first),
+              let questionSubject = capture(left, "subject", in: first),
+              let leftTopic = capture(left, "topic", in: first),
+              let leftDay = capture(left, "day", in: first),
+              completeEventTopic(leftTopic) else { return nil }
+        if let (right, _) = match(#"(?:(?:whether|if)\s+)?\#(clause)"#, in: second) {
+            guard let rightSubject = capture(right, "subject", in: second),
+                  let rightTopic = capture(right, "topic", in: second),
+                  source[rightSubject].lowercased() == source[questionSubject].lowercased(),
+                  completeEventTopic(rightTopic) else { return nil }
+        } else if match(#"(?:on\s+)?\#(day)"#, in: second) == nil {
+            // An ordinal may elide only a month explicitly present in the
+            // first complete named date. It remains literal question data;
+            // no month/day is synthesized and no alternative is scheduled.
+            let ordinal = #"(?:\d{1,2}(?:st|nd|rd|th)|\#(ActionabilityReader.ordinalWord))"#
+            guard source[leftDay].range(of: #"\s+\#(ordinal)$"#, options: [.regularExpression, .caseInsensitive]) != nil,
+                  match(#"(?:on\s+)?the\s+\#(ordinal)"#, in: second) != nil else { return nil }
+        }
+        if let decision {
+            let repeatedSubject = NSRegularExpression.escapedPattern(for: String(source[questionSubject]))
+            let predicate = ["he", "she", "it"].contains(source[questionSubject].lowercased())
+                ? #"(?:has|gets)"# : #"(?:have|get)"#
+            guard match(repeatedSubject + #"\s+\#(predicate)\s+the\s+final\s+say"#, in: decision) != nil else { return nil }
+        }
+        return .init(recipientRange: arguments.recipientRange,
+            executionRange: source.startIndex..<opener.lowerBound,
+            matrixTimingRange: matrixTiming, questionRange: question,
+            subjectRange: questionSubject, alternativeRanges: [first, second],
+            decisionContextRange: decision)
+    }
+
+    private static let communicationMatrixDayPattern = #"(?:today|tomorrow|tonight|(?:on|next|this)\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))"#
+
+    static func communicationArgumentCandidate(in text: String) -> CommunicationArgumentCandidate? {
+        let firstPersonCommitment =
+            #"i\s+(?:should|must|will|need\s+to|have\s+to|am\s+going\s+to)\s+"#
+        let matrixLead = #"(?i)^(?:please\s+)?(?:can\s+you\s+)?"#
+            + #"(?:\#(firstPersonCommitment)|(?:while|as|when)\b[^.!?]{0,70}?\b\#(firstPersonCommitment))?"#
+            + #"\#(communicationVerb)\s+"#
+        return communicationArgumentCandidate(in: text, matrixLead: matrixLead)
+    }
+
+    /// Share only the existing argument-slot syntax. A local complete role may
+    /// supply its own anchored head without expanding communicationVerb.
+    private static func communicationArgumentCandidate(
+        in text: String, matrixLead: String
+    ) -> CommunicationArgumentCandidate? {
+        // "about" introduces a topic as often as a proposition. Leave it in
+        // the body so an open noun phrase cannot masquerade as a finite message.
+        let messageComplementizer = #"(?:that|how|whether|if)"#
+        // Coordinated asking shares this literal addressee only when it
+        // opens a question clause. "ask Alex" starts a separate commitment.
+        let coordinatedQuestion = #"(?:and\s+ask(?:\s+(?:him|her|them))?\s+(?=(?:if|whether|how)\b))?"#
+        // A day between the addressee and an explicit clausal opener belongs
+        // to the asking/sending action. Its complement starts after that
+        // opener, so a clock inside the question cannot schedule the action.
+        // Without a clausal opener, "text Sam tomorrow at five" remains an
+        // ordinary timed errand rather than a message-content reading.
+        let matrixDay = communicationMatrixDayPattern
+        let bodySuffix = #"\s+(?:\#(matrixDay)\s+(?=\#(coordinatedQuestion)\#(messageComplementizer)\b))?"#
+            + #"\#(coordinatedQuestion)(?:to\s+say\s+)?(?:\#(messageComplementizer)\b\s*)?(.+)$"#
+        // A complete titled name precedes a bare relation such as Professor.
+        // Reuse the identical suffix grammar; only the proved recipient range
+        // changes. Possessed names decline in the helper and keep relations.
+        if let lead = text.range(of: matrixLead, options: .regularExpression),
+           let recipient = PersonMentionResolver.communicationTitledRecipientRange(
+            in: text, startingAt: lead.upperBound),
+           let suffix = NSRegularExpression.speakItCached("(?i)" + bodySuffix),
+           let match = suffix.firstMatch(in: text, options: .anchored,
+            range: NSRange(recipient.upperBound..<text.endIndex, in: text)),
+           let body = Range(match.range(at: 1), in: text) {
+            return .init(matrixRange: text.startIndex..<body.lowerBound,
+                recipientRange: recipient, bodyRange: body)
+        }
+        let pattern = matrixLead
+            // Whole relations precede the short proper-name fallback. Every
+            // group in the shared phrase is noncapturing, so recipient/body
+            // source ranges remain the same exact occurrence fields.
+            + "(" + PersonMentionResolver.communicationRelationPhrasePattern + "|"
+            + #"(?!me\b)(?:the\s+)?(?:(?:mr|mrs|ms|dr|prof)\.?\s+)?[\p{L}\p{M}'’-]+(?:\s+(?![\p{L}\p{M}'’-]+['’]s\b)(?!(?:i|we|you|he|she|it|they|not|never|and|but|then|also|for|with|regarding|concerning|a|an|the|some|my|your|our|their|his|her|its|another|each|these|those|to|that|about|how|whether|if|every|today|tomorrow|tonight|next|this|on|at|in|by|before|after|during|until|around|is|are|was|were|has|have)\b)(?![\p{L}\p{M}'’-]+\s+(?:is|are|was|were|has|have)\b)[\p{L}\p{M}'’-]+)?)"#
+            + bodySuffix
+        guard let regex = NSRegularExpression.speakItCached(pattern),
+              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let recipientRange = Range(match.range(at: 1), in: text),
+              let bodyRange = Range(match.range(at: 2), in: text)
+        else { return nil }
+        return .init(matrixRange: text.startIndex..<bodyRange.lowerBound, recipientRange: recipientRange, bodyRange: bodyRange)
+    }
+
     /// "Text Mike that the deal is off", "tell Priya I'll be late".
     ///
     /// A direct communication commitment with an addressee. Everything after
     /// the addressee is the message, which is why an action or clock inside it
     /// must not become a separate operation or the message's due time.
     private static func readCommunication(_ text: String) -> Reading? {
-        let firstPersonCommitment =
-            #"i\s+(?:should|must|will|need\s+to|have\s+to|am\s+going\s+to)\s+"#
-        // "about" introduces a topic as often as a proposition. Leave it in
-        // the body so an open noun phrase cannot masquerade as a finite message.
-        let messageComplementizer = #"(?:that|how|whether|if)"#
-        // A day between the addressee and an explicit clausal opener belongs
-        // to the asking/sending action. Its complement starts after that
-        // opener, so a clock inside the question cannot schedule the action.
-        // Without a clausal opener, "text Sam tomorrow at five" remains an
-        // ordinary timed errand rather than a message-content reading.
-        let matrixDay = #"(?:today|tomorrow|tonight|(?:on|next|this)\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))"#
-        let pattern = #"(?i)^(?:please\s+)?(?:can\s+you\s+)?"#
-            + #"(?:\#(firstPersonCommitment)|(?:while|as|when)\b[^.!?]{0,70}?\b\#(firstPersonCommitment))?"#
-            + #"\#(communicationVerb)\s+"#
-            // Whole relations precede the short proper-name fallback. Every
-            // group in the shared phrase is noncapturing, so recipient/body
-            // source ranges remain the same exact occurrence fields.
-            + "(" + PersonMentionResolver.communicationRelationPhrasePattern + "|"
-            + #"(?!me\b)(?:the\s+)?[\p{L}\p{M}'’-]+(?:\s+(?![\p{L}\p{M}'’-]+['’]s\b)(?!(?:i|we|you|he|she|it|they|not|never|and|but|then|also|for|with|regarding|concerning|a|an|the|some|my|your|our|their|his|her|its|another|each|these|those|to|that|about|how|whether|if|every|today|tomorrow|tonight|next|this|on|at|in|by|before|after|during|until|around|is|are|was|were|has|have)\b)(?![\p{L}\p{M}'’-]+\s+(?:is|are|was|were|has|have)\b)[\p{L}\p{M}'’-]+)?)"#
-            + #"\s+(?:\#(matrixDay)\s+(?=\#(messageComplementizer)\b))?"#
-            + #"(?:to\s+say\s+)?(?:\#(messageComplementizer)\b\s*)?(.+)$"#
-        guard let regex = NSRegularExpression.speakItCached(pattern),
-              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
-              let recipientRange = Range(match.range(at: 1), in: text),
-              let bodyRange = Range(match.range(at: 2), in: text)
-        else { return nil }
+        // The same source-only finite purpose proof owns its proposition in
+        // every splitter, including when lexical assets are unavailable.
+        // Its exact matrix/addressee/body ranges do not promote an embedded
+        // command, report or conditional to a new speaker commitment.
+        if let purpose = finiteContactPurpose(in: text) {
+            return Reading(act: .communicating,
+                matrix: String(text[..<purpose.complementRange.lowerBound])
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                complement: String(text[purpose.complementRange]),
+                complementRange: purpose.complementRange, speaker: nil,
+                recipient: String(text[purpose.recipientRange]),
+                recipientRange: purpose.recipientRange, actor: .unresolved)
+        }
+        guard let arguments = communicationArgumentCandidate(in: text) else { return nil }
+        let recipientRange = arguments.recipientRange
+        let bodyRange = arguments.bodyRange
 
         let recipient = String(text[recipientRange])
         let body = String(text[bodyRange]).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1473,11 +3233,7 @@ enum ClauseScope {
         // adjunct such as "tomorrow at five" still has no subject/predicate.
         // A determiner is not a bare subject: "the invoice Tuesday" has
         // no finite predicate merely because "invoice" is also an action verb.
-        let explicitFinite = body.range(
-            of: "(?i)^(?:" + PersonMentionResolver.communicationRelationPhrasePattern
-                + #"|(?:[\p{L}\p{M}'’-]+['’]s\s+)+[\p{L}\p{M}'’-]+|(?:i|we|you|he|she|they|it|this|that|there)|(?:the|a|an|my|our|your)\s+\p{L}[\p{L}'’-]*|(?!the\b|a\b|an\b|my\b|our\b|your\b|his\b|her\b|their\b|its\b|these\b|those\b|some\b|each\b)\p{L}[\p{L}'’-]*)\s+(?:is|are|was|were|am|has|have|had|will|would|can|could|should|must|did|does|do|leaves|arrives|departs|starts|ends|runs|goes|\#(reportingVerb)|\#(ActionabilityReader.actionVerb)(?:s|es)?)\b"#,
-            options: .regularExpression
-        ) != nil
+        let explicitFinite = beginsExplicitFiniteCommunicationBody(body)
         // A later subordinate clause can contain a subject and predicate
         // without turning the opening time adjunct into message content:
         // "Call Mom every Sunday, except when I'm travelling" still schedules
@@ -1501,11 +3257,52 @@ enum ClauseScope {
         let firstCoordination = text[bodyRange].range(
             of: #"(?i)\s+and\s+"#, options: .regularExpression
         )
-        let initialBody = bodyRange.lowerBound..<(firstCoordination?.lowerBound ?? bodyRange.upperBound)
+        var initialBody = bodyRange.lowerBound..<(firstCoordination?.lowerBound ?? bodyRange.upperBound)
+        // A complete contact-time adjunct before a separately framed dated
+        // command is not a finite message subject. Limit the native predicate
+        // evidence to that adjunct; the ordinary comma splitter retains the
+        // following command's actual calendar words and source occurrences.
+        // Explicit message/finite roots and nonliteral matrices keep full scope.
+        if !hasExplicitMessageMarker, !explicitFinite,
+           text[..<recipientRange.lowerBound].range(
+                of: #"(?i)^\s*(?:please\s+)?(?:can\s+you\s+)?\#(communicationVerb)\s+$"#,
+                options: .regularExpression) != nil,
+           let boundary = text.range(
+                of: #"(?i),\s*(?=actually\s+(?:(?:on|by|before|at)\s+)?\#(SelfCorrectionResolver.datePattern)\s+\#(ActionabilityReader.actionVerb)\b)"#,
+                options: .regularExpression, range: initialBody),
+           isPureTemporalMatrixPrefix(String(text[initialBody.lowerBound..<boundary.lowerBound])) {
+            initialBody = initialBody.lowerBound..<boundary.lowerBound
+        }
+        // An artifact followed by a scheduling condition is still the
+        // message's object: "email June the rota once Priya has approved it".
+        // Read finite-message evidence before that condition, not from the
+        // subordinate actor's predicate. The pure condition grammar here does
+        // not call dependency()/instructionText(), which would recurse into
+        // this communication reader. Explicit markers and finite roots retain
+        // their complete proposition and all original source ranges.
+        if !hasExplicitMessageMarker, !explicitFinite,
+           let boundary = text.range(of: #"(?i)\s+\#(ConditionalIntentScope.opener)\b"#,
+                                     options: .regularExpression, range: initialBody) {
+            let object = initialBody.lowerBound..<boundary.lowerBound
+            let condition = boundary.lowerBound..<initialBody.upperBound
+            if context.isVerbless(in: object),
+               context.tokens(in: object).last?.lexicalClass == .noun,
+               ConditionalIntentScope.isStandaloneCondition(String(text[condition])),
+               context.hasSubjectPredicate(in: condition),
+               !QuotedSpeechScope.protects(boundary, in: text) {
+                initialBody = object
+            }
+        }
+        // A complete nominal artifact and its matrix calendar adjunct do
+        // not become message content because a later explanation is finite.
+        // Explicit message markers/finite roots retain their existing scope.
+        let nominalArtifact = !hasExplicitMessageMarker && !explicitFinite
+            ? nominalCommunicationArtifact(in: text) : nil
         guard (!opensAsAdjunctOrTopic || hasExplicitMessageMarker)
             && (!QuotedSpeechScope.ranges(in: body).isEmpty
-                || body.range(of: delegatedProposition, options: .regularExpression) != nil
-                || explicitFinite || opensConditionalMessage || (context.hasOwnSubject(in: initialBody)
+                || licensesDelegated(body, matrix: matrixPrefix.trimmingCharacters(in: .whitespacesAndNewlines), recipient: recipient)
+                || explicitFinite || opensConditionalMessage || (nominalArtifact == nil
+                && context.hasOwnSubject(in: initialBody)
                 && context.hasSubjectPredicate(in: initialBody))) else {
             // The message test decides complement ownership, not whether
             // the command has an addressee. Preserve the already located
@@ -1588,6 +3385,15 @@ enum ClauseScope {
         reading: Reading
     ) -> Bool {
         guard let complement = reading.complementRange else { return true }
+        // The coordinator introducing an addressed question is in the
+        // communication matrix, just before its finite body. All splitters
+        // must use this ownership decision, including list/conjunction
+        // splitting after the first clause pass.
+        if reading.act == .communicating, let recipient = reading.recipientRange,
+           boundary.lowerBound >= recipient.upperBound,
+           boundary.upperBound <= complement.lowerBound,
+           isCoordinatedAskQuestionGap(
+            String(context.text[boundary.upperBound..<complement.lowerBound])) { return false }
         // Outside the complement the ordinary rules apply untouched.
         guard boundary.lowerBound >= complement.lowerBound,
               boundary.upperBound <= complement.upperBound else { return true }
@@ -1649,6 +3455,20 @@ enum ClauseScope {
             options: .regularExpression
            ) != nil { return true }
 
+        if hasCoordinatedQuestionCommandBoundary(boundary, rightConjunct: rightConjunct,
+            in: context, reading: reading) { return true }
+
+        // A complete source-proved purpose owns this exact anaphoric Ask
+        // boundary. A fallible native verb vote cannot release its payload.
+        if let purpose = finiteContactPurpose(in: context.text),
+           boundary.lowerBound >= purpose.complementRange.lowerBound,
+           rightConjunct.lowerBound == boundary.upperBound,
+           rightConjunct.upperBound <= purpose.complementRange.upperBound,
+           String(context.text[boundary]).range(of: #"(?i)^\s*,?\s*and\s+$"#,
+                options: .regularExpression) != nil,
+           RuleBasedThoughtExtractor.isAnaphoricCommunicationQuestion(String(context.text[rightConjunct])) {
+            return false
+        }
         let words = context.tokens(in: rightConjunct)
         guard let first = words.first, first.isVerb else { return false }
         // A bare coordinated verb inside somebody else's reported words has
@@ -1663,6 +3483,59 @@ enum ClauseScope {
             options: .regularExpression
         ) != nil { return false }
         return !context.hasOwnSubject(in: rightConjunct)
+    }
+
+    private static func isCoordinatedAskQuestionGap(_ text: String) -> Bool {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+            .range(of: #"(?i)^ask(?:\s+(?:him|her|them))?\s+(?:if|whether|how)$"#,
+                   options: .regularExpression) != nil
+    }
+
+    /// A comma closes a completed coordinated outgoing question before a
+    /// separate known noncommunication command. This is a source boundary,
+    /// not a general license to extract imperatives from message content.
+    static func hasCoordinatedQuestionCommandBoundary(
+        _ boundary: Range<String.Index>, rightConjunct: Range<String.Index>,
+        in context: SentenceContext, reading: Reading
+    ) -> Bool {
+        let source = context.text
+        guard reading.act == .communicating,
+              let recipient = reading.recipientRange, let complement = reading.complementRange,
+              recipient.upperBound <= complement.lowerBound,
+              source[..<recipient.lowerBound].range(
+                of: #"(?i)^(?:please\s+)?(?:can\s+you\s+)?\#(communicationVerb)\s+$"#,
+                options: .regularExpression) != nil,
+              boundary.lowerBound >= complement.lowerBound,
+              boundary.upperBound <= complement.upperBound,
+              String(source[boundary]).range(of: #"(?i)\band\s*$"#,
+                  options: .regularExpression) != nil,
+              source[boundary].contains(",") || source[..<boundary.lowerBound].last == ",",
+              QuotedSpeechScope.ranges(in: source).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(source),
+              !SelfCorrectionResolver.hasCorrectionJunction(in: source) else { return false }
+        let gap = String(source[recipient.upperBound..<complement.lowerBound])
+        guard let and = gap.range(of: #"(?i)^\s+and\s+"#, options: .regularExpression),
+              isCoordinatedAskQuestionGap(String(gap[and.upperBound...])) else { return false }
+        let question = String(source[complement.lowerBound..<boundary.lowerBound])
+            .trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: ",")))
+        let command = String(source[rightConjunct]).trimmingCharacters(in: .whitespacesAndNewlines)
+        // These are pure source guards. Do not call dependency()/instructionText()
+        // while deciding a boundary inside the communication reader's scope.
+        let conditional = #"(?i)\b\#(ConditionalIntentScope.opener)\b"#
+        guard beginsExplicitFiniteCommunicationBody(question),
+              question.range(of: conditional, options: .regularExpression) == nil,
+              question.range(of: #"(?i)\b\#(reportingVerb)\b"#,
+                  options: .regularExpression) == nil,
+              let action = command.range(of: #"(?i)^\#(ActionabilityReader.actionVerb)(?=\s)"#,
+                  options: .regularExpression),
+              command.range(of: #"(?i)^\#(communicationVerb)(?=\s|$)"#,
+                  options: .regularExpression) == nil,
+              command.range(of: conditional, options: .regularExpression) == nil,
+              ThoughtCompletion.unfinished(in: question) == nil,
+              ThoughtCompletion.unfinished(in: command) == nil else { return false }
+        let argument = String(command[action.upperBound...])
+            .trimmingCharacters(in: .whitespacesAndNewlines.union(CharacterSet(charactersIn: ".!?")))
+        return !argument.isEmpty && !isPureTemporalMatrixPrefix(argument)
     }
 
     /// Whose action a direct clause describes.
@@ -1748,7 +3621,13 @@ enum TemporalCommitment {
 
     /// The reason a time in this clause is not settled, or nil when it is.
     static func unsettled(in text: String) -> Unsettled? {
-        let value = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let source = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        // A complete addressed choice owns its alternatives as content. Read
+        // commitment from the same proved matrix span used for timing; every
+        // unsupported source still receives the unchanged whole-text checks.
+        let value = ClauseScope.completeAddressedChoiceQuestion(in: source).map {
+            String(source[$0.executionRange]).trimmingCharacters(in: .whitespacesAndNewlines)
+        } ?? source
         guard !value.isEmpty else { return nil }
 
         // A day modifying a placeholder is a topic, not a schedule. Match the
@@ -1854,6 +3733,13 @@ enum TemporalCommitment {
 enum ThoughtCompletion {
     private static let objectTakingAction = #"(?:buy|order|call|phone|ask|text|email|message|contact|send|submit|pick\s+up|drop\s+off)"#
 
+    /// This transitive necessity is used only to distinguish an artifact head
+    /// from a fresh imperative with merely a calendar adjunct. "Call tonight"
+    /// may be complete; "schedule tonight" supplied no event to schedule.
+    static func requiresNominalImperativeObject(_ stem: String) -> Bool {
+        stem.caseInsensitiveCompare("schedule") == .orderedSame
+    }
+
     /// Why the utterance reads as unfinished. Named for the same reason
     /// `TemporalCommitment.Unsettled` is: the behaviour has to be explainable.
     enum Unfinished: String, Equatable, Sendable, CaseIterable {
@@ -1868,6 +3754,57 @@ enum ThoughtCompletion {
         /// All three are the same gap seen from three angles: a frame was
         /// opened and its content never came.
         var gap: SemanticGap { .incompleteThought }
+    }
+
+    /// A terminal preposition can have its object at the head of an embedded
+    /// question. Prove that entire local clause and its lexical predicate;
+    /// an earlier wh word cannot complete a later dangling request.
+    private static func hasCompleteTerminalWhObjectGap(
+        in text: String, context: SentenceContext
+    ) -> Bool {
+        guard QuotedSpeechScope.ranges(in: text).isEmpty,
+              !QuotedSpeechScope.hasUnclosedQuote(text),
+              let regex = NSRegularExpression.speakItCached(
+                #"(?i)\b(?:who|whom)\s+((?:i|we)\s+[^,;:.!?\n\r]+?)\s+to\s*[.!?]*$"#),
+              let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+              let whole = Range(match.range, in: text),
+              let clause = Range(match.range(at: 1), in: text) else { return false }
+        func lexicalPredicate(_ token: SentenceContext.Token) -> Bool {
+            let verb = token.text.lowercased()
+            return token.isVerb
+                && !["be", "am", "is", "are", "was", "were", "been", "being", "have", "has", "had", "do", "does", "did"].contains(verb)
+                && [verb, verb + " to"].allSatisfy { value in
+                    value.range(of: #"^\#(ActionabilityReader.obligationLead)$"#,
+                        options: [.regularExpression, .caseInsensitive]) == nil
+                }
+        }
+        func hasNoNewClause(_ tokens: ArraySlice<SentenceContext.Token>) -> Bool {
+            tokens.allSatisfy { token in
+                !token.isConjunction
+                    && !["i", "we", "you", "he", "she", "they", "it", "who", "whom"].contains(token.text.lowercased())
+            }
+        }
+        // Check every preceding clause with the existing unfinished reader.
+        // Each is strictly shorter than text, so this cannot revisit this input.
+        // A complete own matrix is also required; discourse after an open
+        // request cannot borrow the later question's predicate.
+        let preceding = String(text[..<whole.lowerBound])
+            .components(separatedBy: CharacterSet(charactersIn: ",;:.!?"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard let matrix = preceding.last,
+              preceding.allSatisfy({ unfinished(in: $0) == nil }) else { return false }
+        let matrixTokens = SentenceContextCache.context(for: matrix).tokens
+        guard let subject = matrixTokens.first,
+              ["i", "we"].contains(subject.text.lowercased()),
+              hasNoNewClause(matrixTokens.dropFirst()),
+              matrixTokens.dropFirst().contains(where: lexicalPredicate) else { return false }
+        let inner = context.tokens(in: clause)
+        guard inner.count >= 4, let predicate = inner.last, lexicalPredicate(predicate),
+              hasNoNewClause(inner.dropFirst().dropLast()),
+              ObligationFrame.peeled(String(text[clause]), using: ObligationFrame.actionable)
+                  .caseInsensitiveCompare(predicate.text) == .orderedSame else { return false }
+        return true
     }
 
     /// The reason this text reads as unfinished, or `nil` when it does not.
@@ -1924,7 +3861,18 @@ enum ThoughtCompletion {
             return .trailingFunctionWord
         }
 
+        // Only a whole request head can leave this object unstated. A timing
+        // statement such as "Tomorrow is when I want to ask" contains the same
+        // suffix without making another request. Explicit clause starts keep
+        // a later unfinished own request held.
+        func hasFramedMissingObject(_ value: String) -> Bool {
+            value.range(
+                of: #"(?:^|(?:[,;.!?]|\b(?:and|but|also|separately|or|so|then|plus))\s*)\#(ActionabilityReader.obligationLead)\s+(?:probably\s+|really\s+)?\#(objectTakingAction)\s*[.!?]*$"#,
+                options: [.regularExpression, .caseInsensitive]
+            ) != nil
+        }
         var body = trimmed
+        var framedMissingObject = hasFramedMissingObject(body)
         // A day can surround an obligation frame or sit inside it. Peel the
         // same structural layers to a fixed point before judging its object.
         for _ in 0..<3 {
@@ -1932,15 +3880,28 @@ enum ThoughtCompletion {
                 .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
             if next == body { break }
             body = next
+            // Include the final changed layer; an unchanged body is not read twice.
+            framedMissingObject = framedMissingObject || hasFramedMissingObject(body)
+        }
+        // An explicit current scheduling action still needs its object when
+        // it follows a separator or a reminder frame. A calendar adjunct is
+        // not that object. Denials/reports retain their existing readings.
+        if let head = body.range(of: #"^[\p{L}'’-]+"#, options: .regularExpression),
+           requiresNominalImperativeObject(String(body[head])),
+           ActionabilityReader.read(trimmed).belongsOnToday {
+            let argument = String(body[head.upperBound...])
+                .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+            let forTiming = argument.range(of: #"(?i)^for\s+"#, options: .regularExpression)
+                .map { String(argument[$0.upperBound...]) }
+            if argument.isEmpty || ClauseScope.isPureTemporalMatrixPrefix(argument)
+                || forTiming.map(ClauseScope.isPureTemporalMatrixPrefix) == true {
+                return .missingObject
+            }
         }
         // The one-word limitation above remains deliberate. Here the speaker
         // supplied a request frame, and the required target never arrived.
         let bareObjectTakingAction = body != trimmed && body.range(
             of: #"^\#(objectTakingAction)$"#, options: [.regularExpression, .caseInsensitive]
-        ) != nil
-        let framedMissingObject = trimmed.range(
-            of: #"\b\#(ActionabilityReader.obligationLead)\s+(?:probably\s+|really\s+)?\#(objectTakingAction)\s*[.!?]*$"#,
-            options: [.regularExpression, .caseInsensitive]
         ) != nil
         if bareObjectTakingAction || framedMissingObject {
             return .missingObject
@@ -1984,6 +3945,7 @@ enum ThoughtCompletion {
             // the clause would have stopped there instead.
             let markers = tokens.filter { $0.text.lowercased() == "to" }
             if markers.count == 1 { return .danglingInfinitive }
+            if hasCompleteTerminalWhObjectGap(in: trimmed, context: context) { return nil }
             if case .named("")? = LocationIntentParser.parse(trimmed)?.place { return nil }
             return .trailingFunctionWord
         }
@@ -2130,9 +4092,9 @@ enum SemanticState: Equatable, Sendable {
     }
 }
 
-/// What specifically could not be determined. One case per structural question
-/// the pipeline actually asks, so a reason always points at a rule that can be
-/// read.
+/// What could not be determined, or why organization has not finished.
+/// A reason points at the pipeline decision rather than guessing from the
+/// saved item's shape.
 /// The raw values are persisted in `CapturedItem.semanticGapRawValue`, so a
 /// case may be added and none may ever be renamed.
 enum SemanticGap: String, Equatable, Sendable, CaseIterable {
@@ -2158,6 +4120,10 @@ enum SemanticGap: String, Equatable, Sendable, CaseIterable {
     /// is a *complete* sentence that happens to name no action ("remind me
     /// about the thing"). This one is a sentence that stopped.
     case incompleteThought
+    /// The complete original words were retained because organization did not
+    /// produce a verified result. This says nothing about the speaker's words
+    /// being incomplete or containing two thoughts.
+    case organizationIncomplete
 }
 
 /// Explicit capture framing owns its complement. Verbs and dates inside a

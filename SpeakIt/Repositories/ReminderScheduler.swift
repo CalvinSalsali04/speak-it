@@ -32,6 +32,7 @@ struct ReminderScheduleRequest: Hashable, Sendable {
         // Keep that clock for editing, but never deliver an unresolved thought.
         guard item.captureSession?.captureSource != .tutorial,
               !item.needsClarification,
+              item.temporalIntent?.clockBoundary == nil,
               let fireDate = item.reminderDate, fireDate > ReminderSchedulingClock.now else { return nil }
         let originalText = item.originalTextSegment
         // The same memoized reading the rows render from. Today rebuilds these

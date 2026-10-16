@@ -225,6 +225,77 @@ final class ThoughtCompletionTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testMissingObjectBelongsToTheMatrixRequestRatherThanTimingCommentary() {
+        let previousTaggerMode = SentenceContext.taggerDisabledForEvaluation
+        defer {
+            SentenceContext.taggerDisabledForEvaluation = previousTaggerMode
+            SentenceContextCache.invalidate()
+        }
+        for disabled in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disabled
+            SentenceContextCache.invalidate()
+            for text in ["Tomorrow is when I want to ask",
+                         "Friday is when I should probably call",
+                         "Tomorrow is when I think I need to email",
+                         "She said I want to ask"] {
+                XCTAssertNil(ThoughtCompletion.unfinished(in: text),
+                    "taggerDisabled=\(disabled): \(text)")
+            }
+            for text in ["I want to ask", "Tomorrow I want to ask",
+                         "Tomorrow I should probably call",
+                         "This morning I really need to buy",
+                         "Friday I should really call", "Call Mom and I want to ask",
+                         "I think I need to email", "Okay, I need to email",
+                         "Tomorrow I think I need to email",
+                         "Call Mom or I want to ask", "Call Mom so I need to email",
+                         "Call Mom then I need to email", "Call Mom plus I need to email"] {
+                XCTAssertEqual(ThoughtCompletion.unfinished(in: text), .missingObject,
+                    "taggerDisabled=\(disabled): \(text)")
+            }
+            XCTAssertEqual(ThoughtCompletion.unfinished(in: "Remind me to"), .danglingInfinitive)
+            for text in ["Return that tomorrow.", "Bring the same folder Friday."] {
+                let held = ThoughtExtractionEngine.extractWithRules(text).items
+                XCTAssertTrue(held.contains { $0.needsReview
+                    && $0.organization.state.gap == .ambiguousObject },
+                    "taggerDisabled=\(disabled): \(text)")
+            }
+        }
+    }
+
+    @MainActor
+    func testTerminalWhObjectGapDoesNotCompleteAnotherDanglingRequest() {
+        let previousTaggerMode = SentenceContext.taggerDisabledForEvaluation
+        defer {
+            SentenceContext.taggerDisabledForEvaluation = previousTaggerMode
+            SentenceContextCache.invalidate()
+        }
+        let complete = "About the community telescope, I keep mixing up who I need to speak to."
+        for disabled in [false, true] {
+            SentenceContext.taggerDisabledForEvaluation = disabled
+            SentenceContextCache.invalidate()
+            if disabled {
+                XCTAssertNotNil(ThoughtCompletion.unfinished(in: complete),
+                    "An unavailable predicate proof must keep safe review")
+            } else {
+                let context = SentenceContextCache.context(for: complete)
+                XCTAssertTrue(context.tokens.contains { $0.text.lowercased() == "speak" && $0.isVerb },
+                    "This positive requires the native predicate proof")
+                XCTAssertNil(ThoughtCompletion.unfinished(in: complete))
+            }
+            for text in ["Who I need to", "I keep mixing up who I need to",
+                         "I need to speak to", "Who I need to want to", "Who I need to be to",
+                         "I keep mixing up who I need to speak to and I need to",
+                         "About who I need to speak to, remind me to",
+                         "I need to, who I need to speak to",
+                         "I need to, also who I need to speak to",
+                         "I need to; also who I need to speak to"] {
+                XCTAssertNotNil(ThoughtCompletion.unfinished(in: text),
+                    "taggerDisabled=\(disabled): \(text)")
+            }
+        }
+    }
+
     func testRequestFramesNeedTheirObjectsAndCoordinatorsNeedAContinuation() {
         for text in ["I need to go to", "This morning I need to buy", "I should probably call",
                      "I need to text Layla about", "I need to get soap from",
