@@ -1,6 +1,84 @@
 import SwiftUI
 import UIKit
 
+/// Which items a capture filed since the person last looked at Today or
+/// Memory, so each can carry a small dot until it has been seen.
+///
+/// An item counts as seen once the person has arrived at its destination
+/// after it was filed and then left again. Leaving alone is not enough: a
+/// capture that files tasks into Today and then opens Memory leaves Today
+/// without anyone having looked at those tasks, so a visit only clears what
+/// existed when it began. Per device and never synced, so it lives in user
+/// defaults rather than in the store. A destination with no stored value
+/// starts from the moment it is first loaded, so an upgrade does not mark the
+/// whole library as new.
+struct NewItemBaseline: Equatable {
+    enum Place: String, CaseIterable {
+        case today
+        case memory
+    }
+
+    private(set) var seenThrough: [Place: Date] = [:]
+    private var arrivals: [Place: Date] = [:]
+
+    /// Marks nothing as new. The environment's default, so a screen built
+    /// without a baseline (a preview, a sheet in isolation) draws no dots.
+    static let none = NewItemBaseline()
+
+    func isNew(_ item: CapturedItem, in place: Place) -> Bool {
+        isNew(createdAt: item.createdAt, in: place)
+    }
+
+    func isNew(createdAt: Date, in place: Place) -> Bool {
+        guard let seen = seenThrough[place] else { return false }
+        return createdAt > seen
+    }
+
+    static func storageKey(for place: Place) -> String {
+        "SpeakIt.newItems.\(place.rawValue).seenThrough"
+    }
+
+    static func load(from defaults: UserDefaults = .standard, now: Date = .now) -> NewItemBaseline {
+        var baseline = NewItemBaseline()
+        for place in Place.allCases {
+            let key = storageKey(for: place)
+            let stored = defaults.double(forKey: key)
+            if stored > 0 {
+                baseline.seenThrough[place] = Date(timeIntervalSinceReferenceDate: stored)
+            } else {
+                baseline.seenThrough[place] = now
+                defaults.set(now.timeIntervalSinceReferenceDate, forKey: key)
+            }
+        }
+        return baseline
+    }
+
+    /// The destination came on screen.
+    mutating func arrive(_ place: Place, at now: Date = .now) {
+        arrivals[place] = now
+    }
+
+    /// The destination left the screen: everything that was there when this
+    /// visit began has now been seen.
+    mutating func leave(_ place: Place, defaults: UserDefaults = .standard) {
+        guard let arrived = arrivals.removeValue(forKey: place) else { return }
+        if let seen = seenThrough[place], seen >= arrived { return }
+        seenThrough[place] = arrived
+        defaults.set(arrived.timeIntervalSinceReferenceDate, forKey: Self.storageKey(for: place))
+    }
+}
+
+private struct NewItemBaselineKey: EnvironmentKey {
+    static let defaultValue = NewItemBaseline.none
+}
+
+extension EnvironmentValues {
+    var newItemBaseline: NewItemBaseline {
+        get { self[NewItemBaselineKey.self] }
+        set { self[NewItemBaselineKey.self] = newValue }
+    }
+}
+
 struct CapturedItemRow: View {
     /// How the row states its timing. Today groups its tasks under day
     /// headers, so a row there shows only the time and its title is never cut
@@ -24,6 +102,8 @@ struct CapturedItemRow: View {
     /// Ticked but not yet written: Today holds a completed row on screen for
     /// a moment before it leaves, and the row draws as done during it.
     let isCompletionPending: Bool
+    /// Filed by a capture since the person last looked at this destination.
+    let isNew: Bool
     let trailingDetail: String?
     let onTrailingDetailTap: (() -> Void)?
     let onToggleCompleted: () -> Void
@@ -40,6 +120,7 @@ struct CapturedItemRow: View {
         isCompletionPending: Bool = false,
         trailingDetail: String? = nil,
         onTrailingDetailTap: (() -> Void)? = nil,
+        isNew: Bool = false,
         onToggleCompleted: @escaping () -> Void,
         onEdit: @escaping () -> Void
     ) {
@@ -51,6 +132,7 @@ struct CapturedItemRow: View {
         self.showsFullTitle = showsFullTitle
         self.timingPlacement = timingPlacement
         self.isCompletionPending = isCompletionPending
+        self.isNew = isNew
         self.trailingDetail = trailingDetail
         self.onTrailingDetailTap = onTrailingDetailTap
         self.onToggleCompleted = onToggleCompleted
@@ -78,6 +160,12 @@ struct CapturedItemRow: View {
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
+                // In the gutter beside the circle, level with it.
+                .overlay(alignment: .leading) {
+                    if isNew {
+                        newDot.offset(x: -9)
+                    }
+                }
                 .buttonStyle(.speakIt)
                 .accessibilityLabel(drawsCompleted ? "Mark \(item.displayTitle) incomplete" : "Complete \(item.displayTitle)")
                 .accessibilityIdentifier("item.complete.\(item.displayTitle)")
@@ -93,6 +181,14 @@ struct CapturedItemRow: View {
                             .background(Color.speakSurface, in: Circle())
                             .overlay {
                                 Circle().stroke(Color.speakDivider, lineWidth: 1)
+                            }
+                            .overlay(alignment: .topLeading) {
+                                if isNew {
+                                    newDot
+                                        .padding(1.5)
+                                        .background(Color.speakBackground, in: Circle())
+                                        .offset(x: -3, y: -3)
+                                }
                             }
                             .accessibilityHidden(true)
                     }
@@ -145,6 +241,7 @@ struct CapturedItemRow: View {
                     .compactMap { $0 }
                     .joined(separator: ". ")
             )
+            .accessibilityValue(isNew ? "New" : "")
             .accessibilityIdentifier("item.edit.\(item.displayTitle)")
 
             if let trailingDetail, let onTrailingDetailTap {
@@ -165,6 +262,13 @@ struct CapturedItemRow: View {
             }
         }
         .padding(.vertical, 4)
+    }
+
+    private var newDot: some View {
+        Circle()
+            .fill(Color.speakInk)
+            .frame(width: 6, height: 6)
+            .accessibilityHidden(true)
     }
 
     private func passiveTrailingContent(_ presentation: ItemPresentation) -> some View {

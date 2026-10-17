@@ -1273,3 +1273,72 @@ final class EveningSplitTests: XCTestCase {
         XCTAssertFalse(TodayActionTiming.isEvening(undated, calendar: toronto))
     }
 }
+
+/// The dot on items a capture filed since the person last looked.
+final class NewItemBaselineTests: XCTestCase {
+    private var defaults: UserDefaults!
+    private let suite = "NewItemBaselineTests"
+    private let start = Date(timeIntervalSinceReferenceDate: 800_000_000)
+
+    override func setUp() {
+        super.setUp()
+        defaults = UserDefaults(suiteName: suite)
+        defaults.removePersistentDomain(forName: suite)
+    }
+
+    override func tearDown() {
+        defaults.removePersistentDomain(forName: suite)
+        super.tearDown()
+    }
+
+    private func at(_ seconds: TimeInterval) -> Date { start.addingTimeInterval(seconds) }
+
+    func testFirstLoadMarksNothingExistingAsNew() {
+        let baseline = NewItemBaseline.load(from: defaults, now: at(0))
+        XCTAssertFalse(baseline.isNew(createdAt: at(-60), in: .today), "An upgrade must not dot the whole library")
+        XCTAssertTrue(baseline.isNew(createdAt: at(1), in: .today))
+        XCTAssertTrue(baseline.isNew(createdAt: at(1), in: .memory))
+    }
+
+    func testAnItemFiledDuringAVisitKeepsItsDotUntilTheNextVisitEnds() {
+        var baseline = NewItemBaseline.load(from: defaults, now: at(0))
+        baseline.arrive(.today, at: at(10))
+        let filedWhileLooking = at(20)
+        baseline.leave(.today, defaults: defaults)
+        XCTAssertTrue(baseline.isNew(createdAt: filedWhileLooking, in: .today),
+                      "A capture that files into Today and then opens Memory has not been seen in Today")
+
+        baseline.arrive(.today, at: at(30))
+        baseline.leave(.today, defaults: defaults)
+        XCTAssertFalse(baseline.isNew(createdAt: filedWhileLooking, in: .today))
+    }
+
+    func testPlacesAreIndependent() {
+        var baseline = NewItemBaseline.load(from: defaults, now: at(0))
+        baseline.arrive(.today, at: at(30))
+        baseline.leave(.today, defaults: defaults)
+        XCTAssertFalse(baseline.isNew(createdAt: at(20), in: .today))
+        XCTAssertTrue(baseline.isNew(createdAt: at(20), in: .memory), "Looking at Today says nothing about Memory")
+    }
+
+    func testLeavingWithoutArrivingChangesNothing() {
+        var baseline = NewItemBaseline.load(from: defaults, now: at(0))
+        baseline.leave(.memory, defaults: defaults)
+        XCTAssertTrue(baseline.isNew(createdAt: at(1), in: .memory))
+    }
+
+    func testSeenStatePersistsAcrossLaunches() {
+        var baseline = NewItemBaseline.load(from: defaults, now: at(0))
+        baseline.arrive(.memory, at: at(50))
+        baseline.leave(.memory, defaults: defaults)
+
+        let relaunched = NewItemBaseline.load(from: defaults, now: at(500))
+        XCTAssertFalse(relaunched.isNew(createdAt: at(40), in: .memory))
+        XCTAssertTrue(relaunched.isNew(createdAt: at(60), in: .memory),
+                      "A relaunch must not clear what has not been seen")
+    }
+
+    func testTheEnvironmentDefaultDrawsNoDots() {
+        XCTAssertFalse(NewItemBaseline.none.isNew(createdAt: .distantFuture, in: .today))
+    }
+}

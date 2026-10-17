@@ -361,6 +361,7 @@ struct TodayView: View {
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.newItemBaseline) private var newItemBaseline
     @EnvironmentObject private var subscriptionStore: SubscriptionStore
     @Query(
         filter: #Predicate<CapturedItem> { $0.isArchived == false },
@@ -1572,6 +1573,7 @@ struct TodayView: View {
                             showsCreatedDate: false,
                             timingPlacement: .underDayHeader,
                             isCompletionPending: completionGrace.isPending(item.id),
+                            isNew: newItemBaseline.isNew(item, in: .today),
                             onToggleCompleted: { toggleCompleted(item) },
                             onEdit: { openItem(item) }
                         )
