@@ -7,6 +7,10 @@ Entries before September 2026 were reconstructed from the commit history and
 
 ## Unreleased — capture accounting, lists and message ownership
 
+- Ticking a Today task fills its circle and strikes the title at once, then holds the row for a beat before it slides away; a second tap in that beat takes it back.
+- Today has a This evening section for tasks due today at 5 PM or later.
+- Items a capture filed since you last looked at Today or Memory carry a small dot until you have seen them.
+- Tapping a Today task opens it in place, showing the words you said, with Edit one tap further.
 - Split every spoken list into one row per item, including lists tied to a place ("when I get to Costco, get milk, eggs and cheese") and lists said with "go get"; a place list still sends one alert.
 - Type a note straight into Ideas, People, Reference or one person's page with the plus beside the microphone; it is filed where you added it.
 - Today lists its tasks under day headers, with each row showing only its time and a full, uncut title; the next task is an ordinary row instead of a large inverted card.
