@@ -1160,7 +1160,33 @@ enum DictationPunctuationRepair {
         + #"|don'?t\s+(?:forget|let\s+me\s+forget)\b"#
         + #")"#
 
+    /// A spoken day or clock that can sit between "remind me" and the pause.
+    private static let requestTiming = #"(?:today|tonight|tomorrow(?:\s+(?:morning|afternoon|evening|night))?"#
+        + #"|(?:(?:on|next|this)\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)(?:\s+(?:morning|afternoon|evening|night))?"#
+        + #"|at\s+\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?"#
+        + #"|in\s+(?:\d+|an?|one|two|three|four|five|six|seven|eight|nine|ten|twenty|thirty)\s+(?:minutes?|hours?|days?))"#
+
+    /// The pause dictation writes between a reminder request and its action.
+    ///
+    /// "Remind me, call the bank on Monday at 9" is one request: the comma is
+    /// where the speaker breathed, not where one thought ended. The clause
+    /// splitter read it as a boundary, so the capture became a bare "Remind
+    /// me" row (titled "Your reminder", no date) beside "Call the bank on
+    /// Monday at 9" with no alert at all. The pause comes off only when an
+    /// action verb follows it directly, so "Remind me about the dentist, call
+    /// Mom" (two thoughts) and "Remind me, I have a midterm" (a fact the
+    /// title stripper reads) keep their commas. Words are never added or
+    /// removed here, only the punctuation mark.
+    static func joiningReminderPause(_ text: String) -> String {
+        text.replacingOccurrences(
+            of: #"(?i)((?:^|[.!?;]\s+)(?:please\s+)?(?:remind|notify|alert)\s+(?:me|us)(?:\s+"# + requestTiming + #")?)\s*[,:;—–]\s*(?=(?:please\s+)?"# + ActionabilityReader.actionVerb + #"\b)"#,
+            with: "$1 ",
+            options: .regularExpression
+        )
+    }
+
     static func repaired(_ text: String) -> String {
+        let text = joiningReminderPause(text)
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.hasSuffix("?") else { return text }
         let body = String(trimmed.dropLast())
