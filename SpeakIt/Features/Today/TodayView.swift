@@ -208,6 +208,25 @@ enum TodayActionTiming: Hashable {
     private static func isBefore(_ lhs: CalendarDay, _ rhs: CalendarDay) -> Bool {
         (lhs.year, lhs.month, lhs.day) < (rhs.year, rhs.month, rhs.day)
     }
+
+    /// The hour Today's evening begins. "Tonight" already resolves to an
+    /// evening hour, so a spoken evening task lands under This evening.
+    static let eveningStartHour = 17
+
+    /// Whether a task due today belongs under This evening rather than Rest
+    /// of today. Only an item with a stated time of day can be in the evening:
+    /// a bare day ("today"), a span, or a deadline ("before 8 PM", "by the
+    /// end of the day") is something to fit into the day, not an evening
+    /// appointment. Presentation only; nothing about the item is stored.
+    static func isEvening(_ item: CapturedItem, calendar: Calendar = .autoupdatingCurrent) -> Bool {
+        guard !item.isDateOnly, let dueDate = item.dueDate else { return false }
+        if let kind = item.temporalKind, !kind.carriesTimeOfDay { return false }
+        if let intent = item.temporalIntent,
+           intent.clockBoundary != nil || intent.deadlineBoundary != nil {
+            return false
+        }
+        return calendar.component(.hour, from: dueDate) >= eveningStartHour
+    }
 }
 
 /// A completion is an event, not the number of completed rows. Remembering
@@ -240,6 +259,71 @@ enum CompletedTodayBannerHistory {
 
     static func eventID(itemID: UUID, completedAt: Date) -> String {
         "\(itemID.uuidString):\(completedAt.timeIntervalSinceReferenceDate)"
+    }
+}
+
+/// The beat between ticking a task and the task leaving Today.
+///
+/// A tap fills the circle and strikes the title at once, but the row stays
+/// where it is for `hold` before the completion is written, so the person
+/// sees what they finished and a mis-tap is one more tap away from undone.
+/// Nothing is stored until the hold ends: a second tap cancels without a
+/// write, and `flush()` writes every pending completion immediately when Today
+/// stops being on screen, so leaving the app never drops one.
+@MainActor
+final class CompletionGrace: ObservableObject {
+    static let defaultHold: Duration = .milliseconds(600)
+
+    @Published private(set) var pendingIDs: Set<UUID> = []
+    private var commits: [UUID: () -> Void] = [:]
+    private var timers: [UUID: Task<Void, Never>] = [:]
+    private let hold: Duration
+
+    init(hold: Duration = CompletionGrace.defaultHold) {
+        self.hold = hold
+    }
+
+    func isPending(_ id: UUID) -> Bool {
+        pendingIDs.contains(id)
+    }
+
+    /// Starts the hold for `id`, or cancels it when one is already running.
+    /// Returns whether the item is pending afterwards.
+    @discardableResult
+    func toggle(_ id: UUID, commit: @escaping () -> Void) -> Bool {
+        if pendingIDs.contains(id) {
+            cancel(id)
+            return false
+        }
+        pendingIDs.insert(id)
+        commits[id] = commit
+        let hold = hold
+        timers[id] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: hold)
+            guard !Task.isCancelled else { return }
+            self?.fire(id)
+        }
+        return true
+    }
+
+    func cancel(_ id: UUID) {
+        timers.removeValue(forKey: id)?.cancel()
+        commits.removeValue(forKey: id)
+        pendingIDs.remove(id)
+    }
+
+    /// Writes every pending completion now, in no particular order.
+    func flush() {
+        for id in pendingIDs {
+            fire(id)
+        }
+    }
+
+    private func fire(_ id: UUID) {
+        timers.removeValue(forKey: id)?.cancel()
+        guard let commit = commits.removeValue(forKey: id) else { return }
+        pendingIDs.remove(id)
+        commit()
     }
 }
 
@@ -277,6 +361,7 @@ struct TodayView: View {
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.newItemBaseline) private var newItemBaseline
     @EnvironmentObject private var subscriptionStore: SubscriptionStore
     @Query(
         filter: #Predicate<CapturedItem> { $0.isArchived == false },
@@ -315,6 +400,9 @@ struct TodayView: View {
     @State private var recoveryAudioDrafts: [CaptureDraftStore.Draft] = []
     @State private var reminderAccessStatus = ReminderAccessStatus.ready
     @State private var completionUndo: CompletionUndo?
+    @StateObject private var completionGrace = CompletionGrace()
+    /// The one Today task open in place, if any.
+    @State private var openedItemID: UUID?
     @State private var completionBannerID: UUID?
     @AppStorage("SpeakIt.completedTodayPresentedEvents")
     private var presentedCompletionEvents = "[]"
@@ -541,7 +629,9 @@ struct TodayView: View {
         let comingUp = (grouped[.comingUp] ?? []).sorted(by: chronologicalBefore)
         let noDate = (grouped[.noDate] ?? []).sorted(by: prioritizedBefore)
         let upNext = scheduledToday.first
-        let remainingToday = Array(scheduledToday.dropFirst())
+        let laterToday = scheduledToday.dropFirst()
+        let remainingToday = laterToday.filter { !TodayActionTiming.isEvening($0) }
+        let thisEvening = laterToday.filter { TodayActionTiming.isEvening($0) }
         let needsReview = self.needsReview
         let summaries = shoppingGroupSummaries
         let dueNowShoppingGroups = shoppingGroups(in: summaries) { $0 == .overdue || $0 == .today }
@@ -590,8 +680,19 @@ struct TodayView: View {
                     if !remainingToday.isEmpty {
                         thoughtSection(
                             title: "Rest of today",
-                            detail: "Scheduled before the day ends",
+                            detail: thisEvening.isEmpty
+                                ? "Scheduled before the day ends"
+                                : "Scheduled before \(eveningStartText)",
                             items: remainingToday
+                        )
+                    }
+
+                    if !thisEvening.isEmpty {
+                        thoughtSection(
+                            title: "This evening",
+                            systemImage: "moon",
+                            detail: "Scheduled from \(eveningStartText)",
+                            items: thisEvening
                         )
                     }
 
@@ -729,6 +830,11 @@ struct TodayView: View {
         .task {
             await subscriptionStore.prepare()
         }
+        // A held completion must not depend on Today staying on screen.
+        .onDisappear {
+            completionGrace.flush()
+            closeOpenInPlace()
+        }
         .onAppear {
             referenceNow = .now
             presentNewCompletionBanner()
@@ -779,7 +885,10 @@ struct TodayView: View {
             referenceNow = .now
         }
         .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else { return }
+            guard phase == .active else {
+                completionGrace.flush()
+                return
+            }
             referenceNow = .now
             // Notification permission can be revoked in Settings while Speak It
             // is suspended. Re-reading it here is what turns the permission card
@@ -1348,13 +1457,23 @@ struct TodayView: View {
         }
     }
 
+    /// "5 PM", or "17:00" where the person's clock is 24-hour.
+    private var eveningStartText: String {
+        let calendar = Calendar.autoupdatingCurrent
+        let start = calendar.date(
+            bySettingHour: TodayActionTiming.eveningStartHour, minute: 0, second: 0, of: referenceNow
+        ) ?? referenceNow
+        return start.formatted(.dateTime.hour(.defaultDigits(amPM: .abbreviated)))
+    }
+
     private func thoughtSection(
         title: String,
+        systemImage: String? = nil,
         detail: String? = nil,
         items: [CapturedItem]
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            sectionHeader(title, count: items.count, detail: detail)
+            sectionHeader(title, systemImage: systemImage, count: items.count, detail: detail)
 
             taskRows(items)
         }
@@ -1452,18 +1571,9 @@ struct TodayView: View {
                 }
 
                 ForEach(group.items) { item in
-                    completableRow(item, isEnabled: isEnabled) {
-                        CapturedItemRow(
-                            item: item,
-                            showsCompletionControl: spotlight(for: item) == nil,
-                            showsCreatedDate: false,
-                            timingPlacement: .underDayHeader,
-                            onToggleCompleted: { toggleCompleted(item) },
-                            onEdit: { openItem(item) }
-                        )
-                        .padding(.vertical, 12)
-                    }
+                    todayTaskRow(item, isEnabled: isEnabled)
                     .id(item.id)
+                    .transition(completedRowTransition)
                     // Every section that can hold the practice row has to be
                     // able to draw the teaching card on it, or the tutorial is
                     // left with nothing to continue from.
@@ -1474,6 +1584,41 @@ struct TodayView: View {
                     )
 
                     Divider().overlay(Color.speakDivider)
+                }
+            }
+        }
+    }
+
+    /// One Today task: the row, and the card it opens into in place.
+    @ViewBuilder
+    private func todayTaskRow(_ item: CapturedItem, isEnabled: Bool) -> some View {
+        let opensInPlace = spotlight(for: item) == nil
+        let isOpen = opensInPlace && openedItemID == item.id
+        completableRow(item, isEnabled: isEnabled) {
+            VStack(alignment: .leading, spacing: 0) {
+                CapturedItemRow(
+                    item: item,
+                    showsCompletionControl: spotlight(for: item) == nil,
+                    showsCreatedDate: false,
+                    timingPlacement: .underDayHeader,
+                    isCompletionPending: completionGrace.isPending(item.id),
+                    isNew: newItemBaseline.isNew(item, in: .today),
+                    isOpenInPlace: opensInPlace ? isOpen : nil,
+                    onToggleCompleted: { toggleCompleted(item) },
+                    // The practice row keeps opening the editor:
+                    // the tutorial's next step is in there.
+                    onEdit: { opensInPlace ? toggleOpenInPlace(item) : openItem(item) }
+                )
+                .padding(.vertical, 12)
+
+                if isOpen {
+                    openInPlaceDetails(item)
+                        .transition(.opacity)
+                }
+            }
+            .background {
+                if isOpen {
+                    openInPlaceCard
                 }
             }
         }
@@ -1520,13 +1665,21 @@ struct TodayView: View {
 
     private func sectionHeader(
         _ title: String,
+        systemImage: String? = nil,
         count: Int,
         detail: String? = nil
     ) -> some View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(SpeakItTypography.sectionTitle)
+                HStack(spacing: 6) {
+                    if let systemImage {
+                        Image(systemName: systemImage)
+                            .font(SpeakItTypography.sectionTitle.weight(.regular))
+                            .accessibilityHidden(true)
+                    }
+                    Text(title)
+                        .font(SpeakItTypography.sectionTitle)
+                }
 
                 if let detail {
                     Text(detail)
@@ -1552,8 +1705,84 @@ struct TodayView: View {
     }
 
     private func openItem(_ item: CapturedItem) {
+        closeOpenInPlace()
         tutorialOpenedEditor = tutorialSpotlight?.itemID == item.id
         selectedItem = item
+    }
+
+    // MARK: Open in place
+
+    /// A tap on a Today task lifts it into a card where it sits, with the
+    /// words that made it, rather than jumping to the full editor. One card
+    /// at a time; the editor is one more tap away.
+    private func toggleOpenInPlace(_ item: CapturedItem) {
+        let next = openedItemID == item.id ? nil : item.id
+        withAnimation(accessibilityReduceMotion ? nil : .snappy(duration: 0.24)) {
+            openedItemID = next
+        }
+    }
+
+    /// Closes the card before anything can move its row to another section
+    /// or out of Today, so no card is left open on a row that is not there.
+    private func closeOpenInPlace() {
+        guard openedItemID != nil else { return }
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            openedItemID = nil
+        }
+    }
+
+    /// Drawn behind the row and its details and reaching past them into the
+    /// side margin, so the row's text does not shift when it opens.
+    private var openInPlaceCard: some View {
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .fill(Color.speakSurface)
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.speakDivider, lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.08), radius: 14, y: 6)
+            .padding(.horizontal, -12)
+            .accessibilityHidden(true)
+    }
+
+    private func openInPlaceDetails(_ item: CapturedItem) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("You said")
+                    .font(SpeakItTypography.metadata)
+                    .foregroundStyle(Color.speakMuted)
+                Text("“\(item.originalTextSegment)”")
+                    .font(SpeakItTypography.sectionDetail)
+                    .italic()
+                    .foregroundStyle(Color.speakInk)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("item.card.said.\(item.displayTitle)")
+
+            Button {
+                openItem(item)
+            } label: {
+                HStack(spacing: 4) {
+                    Text("Edit")
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                }
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color.speakInk)
+                .frame(minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.speakIt)
+            .accessibilityLabel("Edit \(item.displayTitle)")
+            .accessibilityIdentifier("item.card.edit.\(item.displayTitle)")
+        }
+        // Under the title: the 44-point circle plus the row's 13-point gap.
+        .padding(.leading, 57)
+        .padding(.bottom, 6)
     }
 
     private func tutorialEditorDidDismiss() {
@@ -1705,22 +1934,59 @@ struct TodayView: View {
         onDockVisibilityChange(visible)
     }
 
+    /// The circle is a two-step gesture: the tap shows the task as done and
+    /// confirms it with the haptic straight away, and the row leaves Today
+    /// once the short hold ends. Tapping again during the hold takes it back
+    /// without anything having been written.
     private func toggleCompleted(_ item: CapturedItem) {
+        if openedItemID == item.id { closeOpenInPlace() }
         if item.isCompleted {
             performCompletionChange(item, completed: false, offersUndo: false)
-        } else {
-            complete(item)
+            return
+        }
+        let isPending = withAnimation(accessibilityReduceMotion ? nil : .easeOut(duration: 0.2)) {
+            completionGrace.toggle(item.id) { [item] in
+                commitHeldCompletion(item)
+            }
+        }
+        if isPending {
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
     }
 
+    private func commitHeldCompletion(_ item: CapturedItem) {
+        // The hold outlives the tap: in that time the task can be deleted,
+        // completed from elsewhere, or edited into another section. Writing
+        // a completion to a deleted model would fail, and a second write
+        // would stack a second undo for one task.
+        guard item.modelContext != nil, !item.isDeleted, !item.isCompleted else { return }
+        performCompletionChange(item, completed: true, offersUndo: true, playsFeedback: false)
+    }
+
+    /// The long-press "Done" action has already been confirmed in its menu,
+    /// so it completes at once.
     private func complete(_ item: CapturedItem) {
+        if openedItemID == item.id { closeOpenInPlace() }
+        completionGrace.cancel(item.id)
         performCompletionChange(item, completed: true, offersUndo: true)
+    }
+
+    /// Rows leave Today by sliding toward the trailing edge as they fade,
+    /// and only fade when Reduce Motion is on.
+    private var completedRowTransition: AnyTransition {
+        accessibilityReduceMotion
+            ? .opacity
+            : .asymmetric(
+                insertion: .opacity,
+                removal: .move(edge: .trailing).combined(with: .opacity)
+            )
     }
 
     private func performCompletionChange(
         _ item: CapturedItem,
         completed: Bool,
-        offersUndo: Bool
+        offersUndo: Bool,
+        playsFeedback: Bool = true
     ) {
         guard let repository else {
             errorMessage = "Local storage is unavailable."
@@ -1732,7 +1998,9 @@ struct TodayView: View {
                 try repository.setCompleted(item, completed: completed)
             }
             SpeakItAnalytics.track(.taskCompletionChanged(completed: completed))
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            if playsFeedback {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            }
             if offersUndo { showCompletionUndo(for: item) }
         } catch {
             errorMessage = error.localizedDescription

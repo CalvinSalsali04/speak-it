@@ -226,7 +226,7 @@ final class SpeakItUITests: XCTestCase {
         let saved = app.buttons["item.edit.Room and garden window"]
         for _ in 0..<6 where !saved.isHittable { app.swipeUp() }
         XCTAssertTrue(saved.waitForExistence(timeout: 5), app.debugDescription)
-        saved.tap()
+        openEditor(from: saved, in: app)
         XCTAssertFalse(keep.exists, "The saved grouping answer must not repeat after relaunch")
         let original = app.staticTexts["Original thought. A quiet room and a window over the garden."]
         for _ in 0..<6 where !original.isHittable { app.collectionViews.firstMatch.swipeUp() }
@@ -352,7 +352,7 @@ final class SpeakItUITests: XCTestCase {
         if receiptClose.waitForExistence(timeout: 2) { receiptClose.tap() }
         let edit = app.buttons["item.edit.Call John"]
         XCTAssertTrue(edit.waitForExistence(timeout: 8), app.debugDescription)
-        edit.tap()
+        openEditor(from: edit, in: app)
         XCTAssertFalse(app.buttons["editor.recognitionHint"].exists)
         func prepareHint() {
             let title = app.textFields["editor.title"]
@@ -391,7 +391,7 @@ final class SpeakItUITests: XCTestCase {
         app.navigationBars["Edit Thought"].buttons["Save"].tap()
         let corrected = app.buttons["item.edit.Call Joan"]
         XCTAssertTrue(corrected.waitForExistence(timeout: 6), app.debugDescription)
-        corrected.tap()
+        openEditor(from: corrected, in: app)
         let original = app.staticTexts["Original thought. Call John."]
         for _ in 0..<6 where !original.isHittable { app.swipeUp() }
         XCTAssertTrue(original.exists, app.debugDescription)
@@ -471,7 +471,7 @@ final class SpeakItUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Completed"].waitForExistence(timeout: 4), app.debugDescription)
         let saved = app.buttons["item.edit.Buy milk after work"]
         XCTAssertTrue(saved.waitForExistence(timeout: 4), "Remove must complete the saved item rather than delete it")
-        saved.tap()
+        openEditor(from: saved, in: app)
         let original = app.staticTexts["Original thought. Buy milk after work."]
         for _ in 0..<8 where !original.isHittable { app.collectionViews.firstMatch.swipeUp() }
         XCTAssertTrue(original.waitForExistence(timeout: 4), app.debugDescription)
@@ -691,7 +691,7 @@ final class SpeakItUITests: XCTestCase {
         // dock; scroll it clear so the edge tap cannot land on the dock.
         app.swipeUp()
         XCTAssertTrue(edit.waitForExistence(timeout: 4))
-        edit.coordinate(withNormalizedOffset: CGVector(dx: 0.94, dy: 0.5)).tap()
+        openEditor(from: edit, in: app, at: CGVector(dx: 0.94, dy: 0.5))
         XCTAssertTrue(app.navigationBars["Edit Thought"].waitForExistence(timeout: 4))
         app.navigationBars.buttons["Cancel"].tap()
     }
@@ -992,7 +992,7 @@ And email Jonah the final volunteer rota once Priya has approved it. She has loo
         let heldDuplicate = app.buttons.matching(NSPredicate(format: "label CONTAINS[c] 'Email June the final volunteer rota once Priya has approved it' AND label CONTAINS[c] 'Needs a person'"))
         XCTAssertEqual(heldDuplicate.count, 0, "A resolved recipient must not also survive as a held duplicate. \(app.debugDescription)")
         XCTAssertTrue(target.firstMatch.isHittable, app.debugDescription)
-        target.firstMatch.tap()
+        openEditor(from: target.firstMatch, in: app)
         XCTAssertTrue(app.navigationBars["Edit Thought"].waitForExistence(timeout: 5))
         let person = app.textFields["Person (optional)"]
         for _ in 0..<8 where !person.isHittable { app.swipeUp() }
@@ -1147,7 +1147,7 @@ And email Jonah the final volunteer rota once Priya has approved it. She has loo
         if comingUp.exists, (comingUp.value as? String) == "Collapsed" { comingUp.tap() }
         let edited = app.buttons["item.edit.Return the projector"]
         XCTAssertTrue(edited.waitForExistence(timeout: 8), app.debugDescription)
-        edited.tap()
+        openEditor(from: edited, in: app)
         XCTAssertTrue(app.textFields["editor.title"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.textFields["editor.title"].value as? String, "Return the projector")
         let after = XCTAttachment(screenshot: app.screenshot())
@@ -1219,7 +1219,7 @@ And email Jonah the final volunteer rota once Priya has approved it. She has loo
             let saved = app.buttons["item.edit.Send the form"]
             let row = unresolved.exists ? unresolved : saved
             XCTAssertTrue(row.waitForExistence(timeout: 8), app.debugDescription)
-            row.tap()
+            openEditor(from: row, in: app)
         }
         openForm()
         XCTAssertTrue(app.staticTexts["Was that 7 in the morning or evening?"]
@@ -1272,7 +1272,7 @@ And email Jonah the final volunteer rota once Priya has approved it. She has loo
         app.terminate(); app.launchArguments = ["--ui-testing","--ui-testing-skip-welcome"]
         app.launch(); waitForLaunchWorkToFinish(in: app)
         let saved = app.buttons["item.edit.Email Rowan about the panel"]
-        XCTAssertTrue(saved.waitForExistence(timeout: 8),app.debugDescription); saved.tap()
+        XCTAssertTrue(saved.waitForExistence(timeout: 8),app.debugDescription); openEditor(from: saved, in: app)
         XCTAssertTrue(app.navigationBars["Edit Thought"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["editor.confirmRequiredValue"].exists)
         XCTAssertEqual(app.textFields["Person (optional)"].value as? String,"Rowan")
@@ -1293,7 +1293,7 @@ And email Jonah the final volunteer rota once Priya has approved it. She has loo
         let coming = app.buttons["today.section.comingUp"]
         if coming.exists,(coming.value as? String) == "Collapsed" { coming.tap() }
         let saved = app.buttons["item.edit.Inspect the hinge"]
-        XCTAssertTrue(saved.waitForExistence(timeout: 8),app.debugDescription); saved.tap()
+        XCTAssertTrue(saved.waitForExistence(timeout: 8),app.debugDescription); openEditor(from: saved, in: app)
         XCTAssertTrue(app.navigationBars["Edit Thought"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["editor.confirmRequiredValue"].exists)
         let remind = app.switches["editor.remindAtTime"]
@@ -1718,7 +1718,7 @@ And email Jonah the final volunteer rota once Priya has approved it. She has loo
         XCTAssertTrue(reveal("Return the blue library book").isHittable)
         XCTAssertTrue(reveal("Water the parsley").isHittable)
         let final = reveal("Send Mina the monitor stand dimensions")
-        final.tap()
+        openEditor(from: final, in: app)
         XCTAssertTrue(app.navigationBars["Edit Thought"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.textFields["editor.title"].value as? String,
                        "Send Mina the monitor stand dimensions")
@@ -2844,6 +2844,21 @@ And email Jonah the final volunteer rota once Priya has approved it. She has loo
         ).tap()
     }
 
+    /// Opens the editor from a saved row. A Today task opens in place first,
+    /// with the editor one tap further; any other row opens the editor
+    /// directly, and then no card appears.
+    private func openEditor(from row: XCUIElement, in app: XCUIApplication, at offset: CGVector? = nil) {
+        if let offset {
+            row.coordinate(withNormalizedOffset: offset).tap()
+        } else {
+            row.tap()
+        }
+        let cardEdit = app.buttons[row.identifier.replacingOccurrences(of: "item.edit.", with: "item.card.edit.")]
+        if cardEdit.waitForExistence(timeout: 2) {
+            cardEdit.tap()
+        }
+    }
+
     private func assertMinimumTouchTarget(
         _ element: XCUIElement,
         file: StaticString = #filePath,
@@ -2979,7 +2994,7 @@ extension SpeakItUITests {
             captureFlowScreenshot("midnight-deadline-today-" + scenario)
             for _ in 0..<8 where !edit.isHittable { app.swipeDown() }
             assertMinimumTouchTarget(edit)
-            edit.tap()
+            openEditor(from: edit, in: app)
             XCTAssertTrue(app.navigationBars["Edit Thought"].waitForExistence(timeout: 5), scenario)
             let form = app.collectionViews.firstMatch
             XCTAssertTrue(form.waitForExistence(timeout: 5), scenario)

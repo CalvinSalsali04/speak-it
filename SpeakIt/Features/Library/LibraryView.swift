@@ -567,6 +567,7 @@ extension View {
 }
 
 struct LibraryView: View {
+    @Environment(\.newItemBaseline) private var newItemBaseline
     @Environment(\.dockScrollClearance) private var dockScrollClearance
     @Environment(\.thoughtRepository) private var repository
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -1034,6 +1035,7 @@ struct LibraryView: View {
             showsCompletionControl: false,
             showsPinnedIndicator: pinnedMemoryIDs.contains(item.id),
             showsPriorityIndicator: true,
+            isNew: newItemBaseline.isNew(item, in: .memory),
             onToggleCompleted: {},
             onEdit: { selectedItem = item }
         )
@@ -1248,6 +1250,7 @@ private struct IdeaStagePickerSheet: View {
 }
 
 private struct MemoryCollectionView: View {
+    @Environment(\.newItemBaseline) private var newItemBaseline
     @Environment(\.thoughtRepository) private var repository
     @Query(sort: \CapturedItem.createdAt, order: .reverse) private var allItems: [CapturedItem]
 
@@ -1696,6 +1699,7 @@ private struct MemoryCollectionView: View {
             showsPriorityIndicator: true,
             trailingDetail: collection == .ideas ? stage(for: item).title : nil,
             onTrailingDetailTap: collection == .ideas ? { openStagePicker(item) } : nil,
+            isNew: newItemBaseline.isNew(item, in: .memory),
             onToggleCompleted: {},
             onEdit: { selectedItem = item }
         )

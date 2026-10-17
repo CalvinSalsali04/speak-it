@@ -1128,3 +1128,217 @@ final class ClockBoundaryConsumerTests: XCTestCase {
         XCTAssertEqual(local.dueDate, item.dueDate)
     }
 }
+
+/// The hold between ticking a Today task and writing the completion.
+@MainActor
+final class CompletionGraceTests: XCTestCase {
+    private func pause(_ duration: Duration = .milliseconds(200)) async {
+        try? await Task.sleep(for: duration)
+    }
+
+    func testCompletionIsWrittenOnceAfterTheHold() async {
+        let grace = CompletionGrace(hold: .milliseconds(50))
+        let id = UUID()
+        var commits = 0
+
+        XCTAssertTrue(grace.toggle(id) { commits += 1 })
+        XCTAssertTrue(grace.isPending(id), "The row draws as done the moment it is tapped")
+        XCTAssertEqual(commits, 0, "Nothing is written before the hold ends")
+
+        await pause()
+        XCTAssertEqual(commits, 1)
+        XCTAssertFalse(grace.isPending(id))
+    }
+
+    func testSecondTapDuringTheHoldCancelsWithoutWriting() async {
+        let grace = CompletionGrace(hold: .milliseconds(50))
+        let id = UUID()
+        var commits = 0
+
+        grace.toggle(id) { commits += 1 }
+        XCTAssertFalse(grace.toggle(id) { commits += 1 }, "A second tap takes the tick back")
+        XCTAssertFalse(grace.isPending(id))
+
+        await pause()
+        XCTAssertEqual(commits, 0, "A cancelled hold must never write a completion")
+    }
+
+    func testFlushWritesEveryPendingCompletionImmediatelyAndOnlyOnce() async {
+        let grace = CompletionGrace(hold: .milliseconds(50))
+        let first = UUID()
+        let second = UUID()
+        var written: [UUID] = []
+
+        grace.toggle(first) { written.append(first) }
+        grace.toggle(second) { written.append(second) }
+        grace.flush()
+
+        XCTAssertEqual(Set(written), [first, second], "Leaving Today writes what was ticked")
+        XCTAssertTrue(grace.pendingIDs.isEmpty)
+
+        await pause()
+        XCTAssertEqual(written.count, 2, "The timer must not write a flushed completion again")
+    }
+
+    func testHoldsRunIndependently() async {
+        let grace = CompletionGrace(hold: .milliseconds(50))
+        let kept = UUID()
+        let cancelled = UUID()
+        var written: [UUID] = []
+
+        grace.toggle(kept) { written.append(kept) }
+        grace.toggle(cancelled) { written.append(cancelled) }
+        grace.cancel(cancelled)
+
+        await pause()
+        XCTAssertEqual(written, [kept])
+    }
+
+    func testRetickingAfterACancelStartsAFreshHold() async {
+        let grace = CompletionGrace(hold: .milliseconds(50))
+        let id = UUID()
+        var commits = 0
+
+        grace.toggle(id) { commits += 1 }
+        grace.toggle(id) { commits += 1 }
+        XCTAssertTrue(grace.toggle(id) { commits += 1 })
+
+        await pause()
+        XCTAssertEqual(commits, 1)
+    }
+}
+
+/// Which of today's tasks Today draws under This evening.
+final class EveningSplitTests: XCTestCase {
+    private let toronto: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Toronto")!
+        return calendar
+    }()
+
+    private func task(at hour: Int, minute: Int = 0, intent: TemporalIntent? = nil) -> CapturedItem {
+        let due = toronto.date(from: DateComponents(year: 2026, month: 10, day: 16, hour: hour, minute: minute))!
+        return CapturedItem(
+            originalTextSegment: "Call Mom",
+            displayTitle: "Call Mom",
+            itemType: .task,
+            dueDate: due,
+            temporalIntent: intent
+        )
+    }
+
+    private func timed(_ hour: Int, minute: Int = 0,
+                       clockBoundary: ClockBoundary? = nil,
+                       deadlineBoundary: DeadlineBoundary? = nil) -> TemporalIntent {
+        TemporalIntent(
+            kind: .exactDateTime,
+            day: CalendarDay(year: 2026, month: 10, day: 16),
+            time: WallClockTime(hour: hour, minute: minute),
+            timeZoneIdentifier: "America/Toronto",
+            timeZoneBehavior: .fixed,
+            sourceText: "today",
+            deadlineBoundary: deadlineBoundary,
+            clockBoundary: clockBoundary
+        )
+    }
+
+    func testEveningStartsAtFivePM() {
+        XCTAssertFalse(TodayActionTiming.isEvening(task(at: 16, minute: 59, intent: timed(16, minute: 59)), calendar: toronto))
+        XCTAssertTrue(TodayActionTiming.isEvening(task(at: 17, intent: timed(17)), calendar: toronto))
+        XCTAssertTrue(TodayActionTiming.isEvening(task(at: 21, minute: 30, intent: timed(21, minute: 30)), calendar: toronto))
+    }
+
+    func testATaskStoredBeforeTemporalIntentsUsesItsHour() {
+        XCTAssertTrue(TodayActionTiming.isEvening(task(at: 18), calendar: toronto))
+        XCTAssertFalse(TodayActionTiming.isEvening(task(at: 9), calendar: toronto))
+    }
+
+    func testABareDayIsNeverAnEveningTask() {
+        let intent = TemporalIntent(kind: .dateOnly, day: CalendarDay(year: 2026, month: 10, day: 16))
+        XCTAssertFalse(TodayActionTiming.isEvening(task(at: 0, intent: intent), calendar: toronto))
+    }
+
+    func testDeadlinesStayInTheDay() {
+        XCTAssertFalse(
+            TodayActionTiming.isEvening(task(at: 20, intent: timed(20, clockBoundary: .before)), calendar: toronto),
+            "\"Before 8 PM\" is something to fit into the day, not an evening appointment"
+        )
+        XCTAssertFalse(
+            TodayActionTiming.isEvening(task(at: 23, minute: 59, intent: timed(23, minute: 59, deadlineBoundary: .endOfNamedDay)), calendar: toronto)
+        )
+    }
+
+    func testAnUntimedTaskIsNotEvening() {
+        let undated = CapturedItem(originalTextSegment: "Book dentist", displayTitle: "Book dentist", itemType: .task)
+        XCTAssertFalse(TodayActionTiming.isEvening(undated, calendar: toronto))
+    }
+}
+
+/// The dot on items a capture filed since the person last looked.
+final class NewItemBaselineTests: XCTestCase {
+    private var defaults: UserDefaults!
+    private let suite = "NewItemBaselineTests"
+    private let start = Date(timeIntervalSinceReferenceDate: 800_000_000)
+
+    override func setUp() {
+        super.setUp()
+        defaults = UserDefaults(suiteName: suite)
+        defaults.removePersistentDomain(forName: suite)
+    }
+
+    override func tearDown() {
+        defaults.removePersistentDomain(forName: suite)
+        super.tearDown()
+    }
+
+    private func at(_ seconds: TimeInterval) -> Date { start.addingTimeInterval(seconds) }
+
+    func testFirstLoadMarksNothingExistingAsNew() {
+        let baseline = NewItemBaseline.load(from: defaults, now: at(0))
+        XCTAssertFalse(baseline.isNew(createdAt: at(-60), in: .today), "An upgrade must not dot the whole library")
+        XCTAssertTrue(baseline.isNew(createdAt: at(1), in: .today))
+        XCTAssertTrue(baseline.isNew(createdAt: at(1), in: .memory))
+    }
+
+    func testAnItemFiledDuringAVisitKeepsItsDotUntilTheNextVisitEnds() {
+        var baseline = NewItemBaseline.load(from: defaults, now: at(0))
+        baseline.arrive(.today, at: at(10))
+        let filedWhileLooking = at(20)
+        baseline.leave(.today, defaults: defaults)
+        XCTAssertTrue(baseline.isNew(createdAt: filedWhileLooking, in: .today),
+                      "A capture that files into Today and then opens Memory has not been seen in Today")
+
+        baseline.arrive(.today, at: at(30))
+        baseline.leave(.today, defaults: defaults)
+        XCTAssertFalse(baseline.isNew(createdAt: filedWhileLooking, in: .today))
+    }
+
+    func testPlacesAreIndependent() {
+        var baseline = NewItemBaseline.load(from: defaults, now: at(0))
+        baseline.arrive(.today, at: at(30))
+        baseline.leave(.today, defaults: defaults)
+        XCTAssertFalse(baseline.isNew(createdAt: at(20), in: .today))
+        XCTAssertTrue(baseline.isNew(createdAt: at(20), in: .memory), "Looking at Today says nothing about Memory")
+    }
+
+    func testLeavingWithoutArrivingChangesNothing() {
+        var baseline = NewItemBaseline.load(from: defaults, now: at(0))
+        baseline.leave(.memory, defaults: defaults)
+        XCTAssertTrue(baseline.isNew(createdAt: at(1), in: .memory))
+    }
+
+    func testSeenStatePersistsAcrossLaunches() {
+        var baseline = NewItemBaseline.load(from: defaults, now: at(0))
+        baseline.arrive(.memory, at: at(50))
+        baseline.leave(.memory, defaults: defaults)
+
+        let relaunched = NewItemBaseline.load(from: defaults, now: at(500))
+        XCTAssertFalse(relaunched.isNew(createdAt: at(40), in: .memory))
+        XCTAssertTrue(relaunched.isNew(createdAt: at(60), in: .memory),
+                      "A relaunch must not clear what has not been seen")
+    }
+
+    func testTheEnvironmentDefaultDrawsNoDots() {
+        XCTAssertFalse(NewItemBaseline.none.isNew(createdAt: .distantFuture, in: .today))
+    }
+}

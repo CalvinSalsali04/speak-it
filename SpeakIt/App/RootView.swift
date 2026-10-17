@@ -4,6 +4,13 @@ import SwiftUI
 private enum AppDestination: Hashable {
     case today
     case library
+
+    var newItemPlace: NewItemBaseline.Place {
+        switch self {
+        case .today: .today
+        case .library: .memory
+        }
+    }
 }
 
 private struct CaptureDockHeightKey: PreferenceKey {
@@ -78,6 +85,7 @@ struct RootView: View {
     @AppStorage("SpeakIt.appearance") private var appearanceRawValue = SpeakItAppearance.firstInstallDefault.rawValue
 
     @State private var selectedDestination: AppDestination = RootView.initialDestination
+    @State private var newItemBaseline = NewItemBaseline.load()
     @State private var isDockVisible = true
     @State private var captureDockHeight: CGFloat = DockScroll.clearance
     /// Bumped when the dock button for the destination already on screen is
@@ -265,6 +273,7 @@ struct RootView: View {
         // Keep the reserve stable while the dock retracts. The actual height
         // grows with text wrapping and a Memory badge at accessibility sizes.
         .environment(\.dockScrollClearance, max(DockScroll.clearance, captureDockHeight + 8))
+        .environment(\.newItemBaseline, newItemBaseline)
         .tint(.speakInk)
         .modifier(SpeakItAppearanceSync(rawValue: appearanceRawValue))
 
@@ -547,20 +556,25 @@ struct RootView: View {
         .onChange(of: quickActionRouter.pendingTodayRequest) { _, request in
             handleTodayRequest(request)
         }
-        .onChange(of: selectedDestination) { _, destination in
+        .onChange(of: selectedDestination) { previous, destination in
+            newItemBaseline.leave(previous.newItemPlace)
+            newItemBaseline.arrive(destination.newItemPlace)
             SpeakItAnalytics.track(.screenViewed(
                 destination == .today ? .today : .memory
             ))
         }
         .onOpenURL(perform: handleDeepLink)
+        .onAppear { newItemBaseline.arrive(selectedDestination.newItemPlace) }
         .onChange(of: scenePhase) { _, phase in
             // Going to the background is when the store is most recently
             // right, so the morning brief is re-planned from it here as well
             // as on the way back in.
             if phase == .background {
                 repository?.refreshMorningBrief()
+                newItemBaseline.leave(selectedDestination.newItemPlace)
             }
             guard phase == .active else { return }
+            newItemBaseline.arrive(selectedDestination.newItemPlace)
             // A moment whose sheet never reached the screen — SwiftUI refusing
             // to present over something a descendant screen already had up —
             // leaves the binding set and the store's moment unconsumed. Clear
