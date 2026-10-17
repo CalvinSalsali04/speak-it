@@ -243,6 +243,71 @@ enum CompletedTodayBannerHistory {
     }
 }
 
+/// The beat between ticking a task and the task leaving Today.
+///
+/// A tap fills the circle and strikes the title at once, but the row stays
+/// where it is for `hold` before the completion is written, so the person
+/// sees what they finished and a mis-tap is one more tap away from undone.
+/// Nothing is stored until the hold ends: a second tap cancels without a
+/// write, and `flush()` writes every pending completion immediately when Today
+/// stops being on screen, so leaving the app never drops one.
+@MainActor
+final class CompletionGrace: ObservableObject {
+    static let defaultHold: Duration = .milliseconds(600)
+
+    @Published private(set) var pendingIDs: Set<UUID> = []
+    private var commits: [UUID: () -> Void] = [:]
+    private var timers: [UUID: Task<Void, Never>] = [:]
+    private let hold: Duration
+
+    init(hold: Duration = CompletionGrace.defaultHold) {
+        self.hold = hold
+    }
+
+    func isPending(_ id: UUID) -> Bool {
+        pendingIDs.contains(id)
+    }
+
+    /// Starts the hold for `id`, or cancels it when one is already running.
+    /// Returns whether the item is pending afterwards.
+    @discardableResult
+    func toggle(_ id: UUID, commit: @escaping () -> Void) -> Bool {
+        if pendingIDs.contains(id) {
+            cancel(id)
+            return false
+        }
+        pendingIDs.insert(id)
+        commits[id] = commit
+        let hold = hold
+        timers[id] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: hold)
+            guard !Task.isCancelled else { return }
+            self?.fire(id)
+        }
+        return true
+    }
+
+    func cancel(_ id: UUID) {
+        timers.removeValue(forKey: id)?.cancel()
+        commits.removeValue(forKey: id)
+        pendingIDs.remove(id)
+    }
+
+    /// Writes every pending completion now, in no particular order.
+    func flush() {
+        for id in pendingIDs {
+            fire(id)
+        }
+    }
+
+    private func fire(_ id: UUID) {
+        timers.removeValue(forKey: id)?.cancel()
+        guard let commit = commits.removeValue(forKey: id) else { return }
+        pendingIDs.remove(id)
+        commit()
+    }
+}
+
 /// A run of consecutive Today tasks that fall on the same day.
 struct TodayDayGroup: Identifiable {
     let day: Date?
@@ -315,6 +380,7 @@ struct TodayView: View {
     @State private var recoveryAudioDrafts: [CaptureDraftStore.Draft] = []
     @State private var reminderAccessStatus = ReminderAccessStatus.ready
     @State private var completionUndo: CompletionUndo?
+    @StateObject private var completionGrace = CompletionGrace()
     @State private var completionBannerID: UUID?
     @AppStorage("SpeakIt.completedTodayPresentedEvents")
     private var presentedCompletionEvents = "[]"
@@ -729,6 +795,8 @@ struct TodayView: View {
         .task {
             await subscriptionStore.prepare()
         }
+        // A held completion must not depend on Today staying on screen.
+        .onDisappear { completionGrace.flush() }
         .onAppear {
             referenceNow = .now
             presentNewCompletionBanner()
@@ -779,7 +847,10 @@ struct TodayView: View {
             referenceNow = .now
         }
         .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else { return }
+            guard phase == .active else {
+                completionGrace.flush()
+                return
+            }
             referenceNow = .now
             // Notification permission can be revoked in Settings while Speak It
             // is suspended. Re-reading it here is what turns the permission card
@@ -1458,12 +1529,14 @@ struct TodayView: View {
                             showsCompletionControl: spotlight(for: item) == nil,
                             showsCreatedDate: false,
                             timingPlacement: .underDayHeader,
+                            isCompletionPending: completionGrace.isPending(item.id),
                             onToggleCompleted: { toggleCompleted(item) },
                             onEdit: { openItem(item) }
                         )
                         .padding(.vertical, 12)
                     }
                     .id(item.id)
+                    .transition(completedRowTransition)
                     // Every section that can hold the practice row has to be
                     // able to draw the teaching card on it, or the tutorial is
                     // left with nothing to continue from.
@@ -1705,22 +1778,57 @@ struct TodayView: View {
         onDockVisibilityChange(visible)
     }
 
+    /// The circle is a two-step gesture: the tap shows the task as done and
+    /// confirms it with the haptic straight away, and the row leaves Today
+    /// once the short hold ends. Tapping again during the hold takes it back
+    /// without anything having been written.
     private func toggleCompleted(_ item: CapturedItem) {
         if item.isCompleted {
             performCompletionChange(item, completed: false, offersUndo: false)
-        } else {
-            complete(item)
+            return
+        }
+        let isPending = withAnimation(accessibilityReduceMotion ? nil : .easeOut(duration: 0.2)) {
+            completionGrace.toggle(item.id) { [item] in
+                commitHeldCompletion(item)
+            }
+        }
+        if isPending {
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
     }
 
+    private func commitHeldCompletion(_ item: CapturedItem) {
+        // The hold outlives the tap: in that time the task can be deleted,
+        // completed from elsewhere, or edited into another section. Writing
+        // a completion to a deleted model would fail, and a second write
+        // would stack a second undo for one task.
+        guard item.modelContext != nil, !item.isDeleted, !item.isCompleted else { return }
+        performCompletionChange(item, completed: true, offersUndo: true, playsFeedback: false)
+    }
+
+    /// The long-press "Done" action has already been confirmed in its menu,
+    /// so it completes at once.
     private func complete(_ item: CapturedItem) {
+        completionGrace.cancel(item.id)
         performCompletionChange(item, completed: true, offersUndo: true)
+    }
+
+    /// Rows leave Today by sliding toward the trailing edge as they fade,
+    /// and only fade when Reduce Motion is on.
+    private var completedRowTransition: AnyTransition {
+        accessibilityReduceMotion
+            ? .opacity
+            : .asymmetric(
+                insertion: .opacity,
+                removal: .move(edge: .trailing).combined(with: .opacity)
+            )
     }
 
     private func performCompletionChange(
         _ item: CapturedItem,
         completed: Bool,
-        offersUndo: Bool
+        offersUndo: Bool,
+        playsFeedback: Bool = true
     ) {
         guard let repository else {
             errorMessage = "Local storage is unavailable."
@@ -1732,7 +1840,9 @@ struct TodayView: View {
                 try repository.setCompleted(item, completed: completed)
             }
             SpeakItAnalytics.track(.taskCompletionChanged(completed: completed))
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            if playsFeedback {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            }
             if offersUndo { showCompletionUndo(for: item) }
         } catch {
             errorMessage = error.localizedDescription

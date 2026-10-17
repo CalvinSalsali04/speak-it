@@ -21,6 +21,9 @@ struct CapturedItemRow: View {
     let showsCreatedDate: Bool
     let showsFullTitle: Bool
     let timingPlacement: TimingPlacement
+    /// Ticked but not yet written: Today holds a completed row on screen for
+    /// a moment before it leaves, and the row draws as done during it.
+    let isCompletionPending: Bool
     let trailingDetail: String?
     let onTrailingDetailTap: (() -> Void)?
     let onToggleCompleted: () -> Void
@@ -34,6 +37,7 @@ struct CapturedItemRow: View {
         showsCreatedDate: Bool = true,
         showsFullTitle: Bool = false,
         timingPlacement: TimingPlacement = .trailing,
+        isCompletionPending: Bool = false,
         trailingDetail: String? = nil,
         onTrailingDetailTap: (() -> Void)? = nil,
         onToggleCompleted: @escaping () -> Void,
@@ -46,6 +50,7 @@ struct CapturedItemRow: View {
         self.showsCreatedDate = showsCreatedDate
         self.showsFullTitle = showsFullTitle
         self.timingPlacement = timingPlacement
+        self.isCompletionPending = isCompletionPending
         self.trailingDetail = trailingDetail
         self.onTrailingDetailTap = onTrailingDetailTap
         self.onToggleCompleted = onToggleCompleted
@@ -61,18 +66,20 @@ struct CapturedItemRow: View {
             authorization: LocationReminderMonitor.shared.authorization
         )
         let isUnderDayHeader = timingPlacement == .underDayHeader
+        let drawsCompleted = item.isCompleted || isCompletionPending
 
         HStack(alignment: .top, spacing: 13) {
             if showsCompletionControl {
                 Button(action: onToggleCompleted) {
-                    Image(systemName: item.isCompleted ? "checkmark.circle.fill" : "circle")
+                    Image(systemName: drawsCompleted ? "checkmark.circle.fill" : "circle")
                         .font(.system(size: 24, weight: .regular))
-                        .foregroundStyle(item.isCompleted ? Color.speakInk : Color.speakMuted)
+                        .foregroundStyle(drawsCompleted ? Color.speakInk : Color.speakMuted)
+                        .contentTransition(.symbolEffect(.replace))
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.speakIt)
-                .accessibilityLabel(item.isCompleted ? "Mark \(item.displayTitle) incomplete" : "Complete \(item.displayTitle)")
+                .accessibilityLabel(drawsCompleted ? "Mark \(item.displayTitle) incomplete" : "Complete \(item.displayTitle)")
                 .accessibilityIdentifier("item.complete.\(item.displayTitle)")
             }
 
@@ -94,7 +101,7 @@ struct CapturedItemRow: View {
                         Text(item.displayTitle)
                             .font(SpeakItTypography.itemTitle)
                             .foregroundStyle(Color.speakInk)
-                            .strikethrough(item.isCompleted)
+                            .strikethrough(drawsCompleted)
                             .multilineTextAlignment(.leading)
                             .lineLimit(
                                 showsFullTitle || isUnderDayHeader || dynamicTypeSize.isAccessibilitySize ? nil : 2

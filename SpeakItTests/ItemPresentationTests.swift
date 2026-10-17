@@ -1128,3 +1128,82 @@ final class ClockBoundaryConsumerTests: XCTestCase {
         XCTAssertEqual(local.dueDate, item.dueDate)
     }
 }
+
+/// The hold between ticking a Today task and writing the completion.
+@MainActor
+final class CompletionGraceTests: XCTestCase {
+    private func pause(_ duration: Duration = .milliseconds(200)) async {
+        try? await Task.sleep(for: duration)
+    }
+
+    func testCompletionIsWrittenOnceAfterTheHold() async {
+        let grace = CompletionGrace(hold: .milliseconds(50))
+        let id = UUID()
+        var commits = 0
+
+        XCTAssertTrue(grace.toggle(id) { commits += 1 })
+        XCTAssertTrue(grace.isPending(id), "The row draws as done the moment it is tapped")
+        XCTAssertEqual(commits, 0, "Nothing is written before the hold ends")
+
+        await pause()
+        XCTAssertEqual(commits, 1)
+        XCTAssertFalse(grace.isPending(id))
+    }
+
+    func testSecondTapDuringTheHoldCancelsWithoutWriting() async {
+        let grace = CompletionGrace(hold: .milliseconds(50))
+        let id = UUID()
+        var commits = 0
+
+        grace.toggle(id) { commits += 1 }
+        XCTAssertFalse(grace.toggle(id) { commits += 1 }, "A second tap takes the tick back")
+        XCTAssertFalse(grace.isPending(id))
+
+        await pause()
+        XCTAssertEqual(commits, 0, "A cancelled hold must never write a completion")
+    }
+
+    func testFlushWritesEveryPendingCompletionImmediatelyAndOnlyOnce() async {
+        let grace = CompletionGrace(hold: .milliseconds(50))
+        let first = UUID()
+        let second = UUID()
+        var written: [UUID] = []
+
+        grace.toggle(first) { written.append(first) }
+        grace.toggle(second) { written.append(second) }
+        grace.flush()
+
+        XCTAssertEqual(Set(written), [first, second], "Leaving Today writes what was ticked")
+        XCTAssertTrue(grace.pendingIDs.isEmpty)
+
+        await pause()
+        XCTAssertEqual(written.count, 2, "The timer must not write a flushed completion again")
+    }
+
+    func testHoldsRunIndependently() async {
+        let grace = CompletionGrace(hold: .milliseconds(50))
+        let kept = UUID()
+        let cancelled = UUID()
+        var written: [UUID] = []
+
+        grace.toggle(kept) { written.append(kept) }
+        grace.toggle(cancelled) { written.append(cancelled) }
+        grace.cancel(cancelled)
+
+        await pause()
+        XCTAssertEqual(written, [kept])
+    }
+
+    func testRetickingAfterACancelStartsAFreshHold() async {
+        let grace = CompletionGrace(hold: .milliseconds(50))
+        let id = UUID()
+        var commits = 0
+
+        grace.toggle(id) { commits += 1 }
+        grace.toggle(id) { commits += 1 }
+        XCTAssertTrue(grace.toggle(id) { commits += 1 })
+
+        await pause()
+        XCTAssertEqual(commits, 1)
+    }
+}
