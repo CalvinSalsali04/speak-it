@@ -250,7 +250,9 @@ enum ReminderCopy {
         // is about telling Bob, and an unanchored match would retitle it "The
         // keys".
         if let haveConnector = original.range(
-            of: #"(?i)(?:\bthat\s+|\b(?:remind|notify|alert)\s+me\s+)(?:i|we)\s+(?:have|['’]ve\s+got|got)\s+(?:an?\s+|the\s+|my\s+)?"#,
+            // Dictation writes the pause after the command as punctuation —
+            // "Remind me, I have a midterm" — and it is the same sentence.
+            of: #"(?i)(?:\bthat\s+|\b(?:remind|notify|alert)\s+me\s*[,:;—–-]?\s+)(?:i|we)\s+(?:have|['’]ve\s+got|got)\s+(?:an?\s+|the\s+|my\s+)?"#,
             options: .regularExpression
         ) {
             candidate = String(original[haveConnector.upperBound...])
@@ -272,7 +274,14 @@ enum ReminderCopy {
             )
         }
 
-        candidate = withoutTrailingTiming(candidate)
+        // A day is timing the same way a clock is: "…a midterm next Wednesday
+        // at 2:30 PM" lost the clock and kept "next Wednesday". Either may come
+        // first, so both strips repeat until neither changes the text.
+        for _ in 0..<3 {
+            let before = candidate
+            candidate = withoutTrailingDay(withoutTrailingTiming(candidate), in: original)
+            if candidate == before { break }
+        }
 
         // A trailing place trigger is machinery the same way trailing timing
         // is: "buy cereal when I get to Costco" is about the cereal, and the
@@ -287,6 +296,15 @@ enum ReminderCopy {
             )
             if !normalized(withoutPlace).isEmpty { candidate = withoutPlace }
         }
+
+        // The command came off and left the pause that followed it: "Remind
+        // me, I have…" and "Remind me: call the bank" opened the title with
+        // the comma or colon. Nothing a title starts with is punctuation.
+        candidate = candidate.replacingOccurrences(
+            of: #"^[\s,:;—–-]+"#,
+            with: "",
+            options: .regularExpression
+        )
 
         // If no “to/about” connector was spoken, remove a leading interval.
         candidate = candidate.replacingOccurrences(
@@ -361,6 +379,42 @@ enum ReminderCopy {
             )
         }
         return result
+    }
+
+    /// A spoken day: "Wednesday", "next Wednesday", "this coming Friday",
+    /// "next week", "October 22nd", "the 15th".
+    private static let spokenDay = #"(?:(?:(?:this\s+)?coming|this|next)\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)"#
+        + #"|(?:this|next)\s+(?:week|weekend)|the\s+day\s+after\s+tomorrow"#
+        + #"|(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec)\.?\s+\d{1,2}(?:st|nd|rd|th)?"#
+        + #"|the\s+\d{1,2}(?:st|nd|rd|th)(?:\s+of\s+(?:january|february|march|april|may|june|july|august|september|october|november|december))?"#
+
+    /// Removes the day the reminder was scheduled on from the end of its title.
+    ///
+    /// Only the reminder's own day comes off, so the strip declines whenever
+    /// that is in doubt:
+    /// - the sentence names a second day ("Remind me Wednesday at 5 PM to
+    ///   finish the report Friday" — Friday is the deadline, not the alert);
+    /// - the day is the object of a deadline or scope word ("by Friday",
+    ///   "until next week", "for Saturday");
+    /// - the day is what the sentence asserts ("it's Monday", "her birthday
+    ///   is on Friday"), where the title means nothing without it.
+    /// The day is parsed and held on the item either way; only the derived
+    /// title changes, never the stored transcript.
+    private static func withoutTrailingDay(_ candidate: String, in original: String) -> String {
+        guard let regex = NSRegularExpression.speakItCached(
+            #"\b(?:"# + spokenDay + #"|today|tonight|tomorrow)\b"#, options: .caseInsensitive
+        ), regex.numberOfMatches(in: original, range: NSRange(original.startIndex..., in: original)) == 1,
+              let tail = candidate.range(
+                of: #"(?i)\s+(?:on\s+)?(?:"# + spokenDay + #")(?:\s+(?:morning|afternoon|evening|night))?\s*[.!?]*$"#,
+                options: .regularExpression
+              ) else { return candidate }
+        let kept = String(candidate[..<tail.lowerBound])
+        guard !normalized(kept).isEmpty,
+              kept.range(
+                of: #"(?i)(?:\b(?:by|before|until|till|til|after|from|since|due|for|is|are|was|were|be|been|being)|\b(?:it|that|what|he|she|there)['’]s)\s*$"#,
+                options: .regularExpression
+              ) == nil else { return candidate }
+        return kept
     }
 
     private static func normalized(_ value: String) -> String {

@@ -1569,6 +1569,53 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         )
     }
 
+    /// "Remind me, I have a midterm next Wednesday at 2:30 PM" was titled
+    /// ", I have a midterm next Wednesday": the comma dictation wrote for the
+    /// pause hid the have-frame and survived as the title's first character,
+    /// and only the clock came off the end. The pause is punctuation, not
+    /// words, and a day is timing exactly as a clock is.
+    func testReminderTitleDropsThePauseAfterTheCommandAndTheScheduledDay() {
+        let cases: [(String, String)] = [
+            ("Remind me, I have a midterm next Wednesday at 2:30 PM", "Midterm"),
+            ("Remind me: I have a dentist appointment on Friday", "Dentist appointment"),
+            ("Remind me — we have dinner with the Nguyens this Saturday at 7", "Dinner with the Nguyens"),
+            ("Remind me, call the bank on Monday at 9", "Call the bank"),
+            ("Remind me to call the bank next Wednesday at 2:30 PM", "Call the bank"),
+            ("Remind me to call the bank at 2:30 PM next Wednesday", "Call the bank"),
+            ("Remind me to pay rent on October 1st", "Pay rent"),
+            ("Remind me to renew my passport next week", "Renew my passport"),
+            ("Remind me to book the hotel this coming Thursday morning", "Book the hotel"),
+            ("Remind me to water the plants on the 15th", "Water the plants"),
+        ]
+        for (spoken, title) in cases {
+            XCTAssertEqual(ReminderCopy.action(from: spoken), title, spoken)
+        }
+    }
+
+    /// The opposite half: a day the title needs stays. Each of these names a
+    /// day that is not just the reminder's schedule — a deadline, a second
+    /// date, or the fact being remembered.
+    func testReminderTitleKeepsADayTheMeaningNeeds() {
+        let cases: [(String, String)] = [
+            ("Remind me Wednesday at 5 PM to finish the report Friday", "Finish the report Friday"),
+            ("Remind me tomorrow to finish the report by Friday", "Finish the report by Friday"),
+            ("Remind me to submit the essay by next Wednesday", "Submit the essay by next Wednesday"),
+            ("Remind me to stay off sugar until next week", "Stay off sugar until next week"),
+            ("Remind me to book a table for Saturday", "Book a table for Saturday"),
+            ("Remind me that it's Monday", "It's Monday"),
+            ("Remind me that my mom's birthday is on Friday", "My mom's birthday is on Friday"),
+            ("The report is due Friday but remind me Wednesday", "The report is due Friday"),
+        ]
+        for (spoken, title) in cases {
+            XCTAssertEqual(ReminderCopy.action(from: spoken), title, spoken)
+        }
+        // A comma inside the action is the person's own and stays.
+        XCTAssertEqual(
+            ReminderCopy.action(from: "Remind me to buy eggs, milk, and bread on Friday"),
+            "Buy eggs, milk, and bread"
+        )
+    }
+
     func testReminderKeepsRawTranscriptButOrganizesItsDisplayTitle() throws {
         let item = try repository.createCapture(
             text: "Remind me in 10 seconds to go get the laundry",
