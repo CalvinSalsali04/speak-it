@@ -208,6 +208,25 @@ enum TodayActionTiming: Hashable {
     private static func isBefore(_ lhs: CalendarDay, _ rhs: CalendarDay) -> Bool {
         (lhs.year, lhs.month, lhs.day) < (rhs.year, rhs.month, rhs.day)
     }
+
+    /// The hour Today's evening begins. "Tonight" already resolves to an
+    /// evening hour, so a spoken evening task lands under This evening.
+    static let eveningStartHour = 17
+
+    /// Whether a task due today belongs under This evening rather than Rest
+    /// of today. Only an item with a stated time of day can be in the evening:
+    /// a bare day ("today"), a span, or a deadline ("before 8 PM", "by the
+    /// end of the day") is something to fit into the day, not an evening
+    /// appointment. Presentation only; nothing about the item is stored.
+    static func isEvening(_ item: CapturedItem, calendar: Calendar = .autoupdatingCurrent) -> Bool {
+        guard !item.isDateOnly, let dueDate = item.dueDate else { return false }
+        if let kind = item.temporalKind, !kind.carriesTimeOfDay { return false }
+        if let intent = item.temporalIntent,
+           intent.clockBoundary != nil || intent.deadlineBoundary != nil {
+            return false
+        }
+        return calendar.component(.hour, from: dueDate) >= eveningStartHour
+    }
 }
 
 /// A completion is an event, not the number of completed rows. Remembering
@@ -607,7 +626,9 @@ struct TodayView: View {
         let comingUp = (grouped[.comingUp] ?? []).sorted(by: chronologicalBefore)
         let noDate = (grouped[.noDate] ?? []).sorted(by: prioritizedBefore)
         let upNext = scheduledToday.first
-        let remainingToday = Array(scheduledToday.dropFirst())
+        let laterToday = scheduledToday.dropFirst()
+        let remainingToday = laterToday.filter { !TodayActionTiming.isEvening($0) }
+        let thisEvening = laterToday.filter { TodayActionTiming.isEvening($0) }
         let needsReview = self.needsReview
         let summaries = shoppingGroupSummaries
         let dueNowShoppingGroups = shoppingGroups(in: summaries) { $0 == .overdue || $0 == .today }
@@ -656,8 +677,19 @@ struct TodayView: View {
                     if !remainingToday.isEmpty {
                         thoughtSection(
                             title: "Rest of today",
-                            detail: "Scheduled before the day ends",
+                            detail: thisEvening.isEmpty
+                                ? "Scheduled before the day ends"
+                                : "Scheduled before \(eveningStartText)",
                             items: remainingToday
+                        )
+                    }
+
+                    if !thisEvening.isEmpty {
+                        thoughtSection(
+                            title: "This evening",
+                            systemImage: "moon",
+                            detail: "Scheduled from \(eveningStartText)",
+                            items: thisEvening
                         )
                     }
 
@@ -1419,13 +1451,23 @@ struct TodayView: View {
         }
     }
 
+    /// "5 PM", or "17:00" where the person's clock is 24-hour.
+    private var eveningStartText: String {
+        let calendar = Calendar.autoupdatingCurrent
+        let start = calendar.date(
+            bySettingHour: TodayActionTiming.eveningStartHour, minute: 0, second: 0, of: referenceNow
+        ) ?? referenceNow
+        return start.formatted(.dateTime.hour(.defaultDigits(amPM: .abbreviated)))
+    }
+
     private func thoughtSection(
         title: String,
+        systemImage: String? = nil,
         detail: String? = nil,
         items: [CapturedItem]
     ) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            sectionHeader(title, count: items.count, detail: detail)
+            sectionHeader(title, systemImage: systemImage, count: items.count, detail: detail)
 
             taskRows(items)
         }
@@ -1593,13 +1635,21 @@ struct TodayView: View {
 
     private func sectionHeader(
         _ title: String,
+        systemImage: String? = nil,
         count: Int,
         detail: String? = nil
     ) -> some View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(SpeakItTypography.sectionTitle)
+                HStack(spacing: 6) {
+                    if let systemImage {
+                        Image(systemName: systemImage)
+                            .font(SpeakItTypography.sectionTitle.weight(.regular))
+                            .accessibilityHidden(true)
+                    }
+                    Text(title)
+                        .font(SpeakItTypography.sectionTitle)
+                }
 
                 if let detail {
                     Text(detail)

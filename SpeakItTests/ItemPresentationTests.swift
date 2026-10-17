@@ -1207,3 +1207,69 @@ final class CompletionGraceTests: XCTestCase {
         XCTAssertEqual(commits, 1)
     }
 }
+
+/// Which of today's tasks Today draws under This evening.
+final class EveningSplitTests: XCTestCase {
+    private let toronto: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "America/Toronto")!
+        return calendar
+    }()
+
+    private func task(at hour: Int, minute: Int = 0, intent: TemporalIntent? = nil) -> CapturedItem {
+        let due = toronto.date(from: DateComponents(year: 2026, month: 10, day: 16, hour: hour, minute: minute))!
+        return CapturedItem(
+            originalTextSegment: "Call Mom",
+            displayTitle: "Call Mom",
+            itemType: .task,
+            dueDate: due,
+            temporalIntent: intent
+        )
+    }
+
+    private func timed(_ hour: Int, minute: Int = 0,
+                       clockBoundary: ClockBoundary? = nil,
+                       deadlineBoundary: DeadlineBoundary? = nil) -> TemporalIntent {
+        TemporalIntent(
+            kind: .exactDateTime,
+            day: CalendarDay(year: 2026, month: 10, day: 16),
+            time: WallClockTime(hour: hour, minute: minute),
+            timeZoneIdentifier: "America/Toronto",
+            timeZoneBehavior: .fixed,
+            sourceText: "today",
+            deadlineBoundary: deadlineBoundary,
+            clockBoundary: clockBoundary
+        )
+    }
+
+    func testEveningStartsAtFivePM() {
+        XCTAssertFalse(TodayActionTiming.isEvening(task(at: 16, minute: 59, intent: timed(16, minute: 59)), calendar: toronto))
+        XCTAssertTrue(TodayActionTiming.isEvening(task(at: 17, intent: timed(17)), calendar: toronto))
+        XCTAssertTrue(TodayActionTiming.isEvening(task(at: 21, minute: 30, intent: timed(21, minute: 30)), calendar: toronto))
+    }
+
+    func testATaskStoredBeforeTemporalIntentsUsesItsHour() {
+        XCTAssertTrue(TodayActionTiming.isEvening(task(at: 18), calendar: toronto))
+        XCTAssertFalse(TodayActionTiming.isEvening(task(at: 9), calendar: toronto))
+    }
+
+    func testABareDayIsNeverAnEveningTask() {
+        let intent = TemporalIntent(kind: .dateOnly, day: CalendarDay(year: 2026, month: 10, day: 16))
+        XCTAssertFalse(TodayActionTiming.isEvening(task(at: 0, intent: intent), calendar: toronto))
+    }
+
+    func testDeadlinesStayInTheDay() {
+        XCTAssertFalse(
+            TodayActionTiming.isEvening(task(at: 20, intent: timed(20, clockBoundary: .before)), calendar: toronto),
+            "\"Before 8 PM\" is something to fit into the day, not an evening appointment"
+        )
+        XCTAssertFalse(
+            TodayActionTiming.isEvening(task(at: 23, minute: 59, intent: timed(23, minute: 59, deadlineBoundary: .endOfNamedDay)), calendar: toronto)
+        )
+    }
+
+    func testAnUntimedTaskIsNotEvening() {
+        let undated = CapturedItem(originalTextSegment: "Book dentist", displayTitle: "Book dentist", itemType: .task)
+        XCTAssertFalse(TodayActionTiming.isEvening(undated, calendar: toronto))
+    }
+}
