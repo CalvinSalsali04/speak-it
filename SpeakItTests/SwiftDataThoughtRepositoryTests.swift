@@ -1616,6 +1616,53 @@ final class SwiftDataThoughtRepositoryTests: XCTestCase {
         )
     }
 
+    /// "Remind me, call the bank on Monday at 9" saved two rows: a bare
+    /// "Your reminder" with no date, and "Call the bank on Monday at 9" with
+    /// no alert. The comma was the speaker's breath, not a second thought.
+    func testAPauseAfterRemindMeIsOneReminderNotTwoRows() throws {
+        for spoken in [
+            "Remind me, call the bank on Monday at 9",
+            "Remind me: pick up the dry cleaning tomorrow at 5",
+            "Remind me tomorrow, email the landlord at 10",
+            "Please remind me — book the dentist on Friday at 3",
+        ] {
+            let result = ThoughtExtractionEngine.extractWithRules(spoken)
+            XCTAssertEqual(result.items.count, 1, spoken)
+            let item = try XCTUnwrap(result.items.first, spoken)
+            XCTAssertNotNil(item.organization.reminderDate, spoken)
+            XCTAssertFalse(item.needsReview, spoken)
+        }
+        let item = try repository.createCapture(
+            text: "Remind me, call the bank on Monday at 9",
+            source: .shortcut,
+            createdAt: .now
+        )
+        XCTAssertEqual(item.displayTitle, "Call the bank")
+        XCTAssertEqual(
+            item.captureSession?.originalTranscription,
+            "Remind me, call the bank on Monday at 9"
+        )
+    }
+
+    /// The pause stays wherever it may end a thought: before a fact, after a
+    /// complete "remind me about X", before a negation, and mid-sentence
+    /// where "remind me" is not opening a clause.
+    func testThePauseAfterRemindMeStaysWhereItCanEndAThought() {
+        for spoken in [
+            "Remind me, I have a midterm next Wednesday at 2:30 PM",
+            "Remind me about the dentist, call Mom",
+            "Remind me, don't eat before the blood test",
+            "Remind me to buy milk, call Mom",
+            "Ask him to remind me, call Mom later",
+        ] {
+            XCTAssertEqual(DictationPunctuationRepair.joiningReminderPause(spoken), spoken, spoken)
+        }
+        XCTAssertEqual(
+            DictationPunctuationRepair.joiningReminderPause("Remind me, call the bank on Monday at 9"),
+            "Remind me call the bank on Monday at 9"
+        )
+    }
+
     func testReminderKeepsRawTranscriptButOrganizesItsDisplayTitle() throws {
         let item = try repository.createCapture(
             text: "Remind me in 10 seconds to go get the laundry",
