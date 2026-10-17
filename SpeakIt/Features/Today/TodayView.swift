@@ -401,6 +401,8 @@ struct TodayView: View {
     @State private var reminderAccessStatus = ReminderAccessStatus.ready
     @State private var completionUndo: CompletionUndo?
     @StateObject private var completionGrace = CompletionGrace()
+    /// The one Today task open in place, if any.
+    @State private var openedItemID: UUID?
     @State private var completionBannerID: UUID?
     @AppStorage("SpeakIt.completedTodayPresentedEvents")
     private var presentedCompletionEvents = "[]"
@@ -829,7 +831,10 @@ struct TodayView: View {
             await subscriptionStore.prepare()
         }
         // A held completion must not depend on Today staying on screen.
-        .onDisappear { completionGrace.flush() }
+        .onDisappear {
+            completionGrace.flush()
+            closeOpenInPlace()
+        }
         .onAppear {
             referenceNow = .now
             presentNewCompletionBanner()
@@ -1566,19 +1571,7 @@ struct TodayView: View {
                 }
 
                 ForEach(group.items) { item in
-                    completableRow(item, isEnabled: isEnabled) {
-                        CapturedItemRow(
-                            item: item,
-                            showsCompletionControl: spotlight(for: item) == nil,
-                            showsCreatedDate: false,
-                            timingPlacement: .underDayHeader,
-                            isCompletionPending: completionGrace.isPending(item.id),
-                            isNew: newItemBaseline.isNew(item, in: .today),
-                            onToggleCompleted: { toggleCompleted(item) },
-                            onEdit: { openItem(item) }
-                        )
-                        .padding(.vertical, 12)
-                    }
+                    todayTaskRow(item, isEnabled: isEnabled)
                     .id(item.id)
                     .transition(completedRowTransition)
                     // Every section that can hold the practice row has to be
@@ -1591,6 +1584,41 @@ struct TodayView: View {
                     )
 
                     Divider().overlay(Color.speakDivider)
+                }
+            }
+        }
+    }
+
+    /// One Today task: the row, and the card it opens into in place.
+    @ViewBuilder
+    private func todayTaskRow(_ item: CapturedItem, isEnabled: Bool) -> some View {
+        let opensInPlace = spotlight(for: item) == nil
+        let isOpen = opensInPlace && openedItemID == item.id
+        completableRow(item, isEnabled: isEnabled) {
+            VStack(alignment: .leading, spacing: 0) {
+                CapturedItemRow(
+                    item: item,
+                    showsCompletionControl: spotlight(for: item) == nil,
+                    showsCreatedDate: false,
+                    timingPlacement: .underDayHeader,
+                    isCompletionPending: completionGrace.isPending(item.id),
+                    isNew: newItemBaseline.isNew(item, in: .today),
+                    isOpenInPlace: opensInPlace ? isOpen : nil,
+                    onToggleCompleted: { toggleCompleted(item) },
+                    // The practice row keeps opening the editor:
+                    // the tutorial's next step is in there.
+                    onEdit: { opensInPlace ? toggleOpenInPlace(item) : openItem(item) }
+                )
+                .padding(.vertical, 12)
+
+                if isOpen {
+                    openInPlaceDetails(item)
+                        .transition(.opacity)
+                }
+            }
+            .background {
+                if isOpen {
+                    openInPlaceCard
                 }
             }
         }
@@ -1677,8 +1705,84 @@ struct TodayView: View {
     }
 
     private func openItem(_ item: CapturedItem) {
+        closeOpenInPlace()
         tutorialOpenedEditor = tutorialSpotlight?.itemID == item.id
         selectedItem = item
+    }
+
+    // MARK: Open in place
+
+    /// A tap on a Today task lifts it into a card where it sits, with the
+    /// words that made it, rather than jumping to the full editor. One card
+    /// at a time; the editor is one more tap away.
+    private func toggleOpenInPlace(_ item: CapturedItem) {
+        let next = openedItemID == item.id ? nil : item.id
+        withAnimation(accessibilityReduceMotion ? nil : .snappy(duration: 0.24)) {
+            openedItemID = next
+        }
+    }
+
+    /// Closes the card before anything can move its row to another section
+    /// or out of Today, so no card is left open on a row that is not there.
+    private func closeOpenInPlace() {
+        guard openedItemID != nil else { return }
+        var transaction = Transaction(animation: nil)
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            openedItemID = nil
+        }
+    }
+
+    /// Drawn behind the row and its details and reaching past them into the
+    /// side margin, so the row's text does not shift when it opens.
+    private var openInPlaceCard: some View {
+        RoundedRectangle(cornerRadius: 18, style: .continuous)
+            .fill(Color.speakSurface)
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.speakDivider, lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.08), radius: 14, y: 6)
+            .padding(.horizontal, -12)
+            .accessibilityHidden(true)
+    }
+
+    private func openInPlaceDetails(_ item: CapturedItem) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("You said")
+                    .font(SpeakItTypography.metadata)
+                    .foregroundStyle(Color.speakMuted)
+                Text("“\(item.originalTextSegment)”")
+                    .font(SpeakItTypography.sectionDetail)
+                    .italic()
+                    .foregroundStyle(Color.speakInk)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .textSelection(.enabled)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("item.card.said.\(item.displayTitle)")
+
+            Button {
+                openItem(item)
+            } label: {
+                HStack(spacing: 4) {
+                    Text("Edit")
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                }
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(Color.speakInk)
+                .frame(minHeight: 44, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.speakIt)
+            .accessibilityLabel("Edit \(item.displayTitle)")
+            .accessibilityIdentifier("item.card.edit.\(item.displayTitle)")
+        }
+        // Under the title: the 44-point circle plus the row's 13-point gap.
+        .padding(.leading, 57)
+        .padding(.bottom, 6)
     }
 
     private func tutorialEditorDidDismiss() {
@@ -1835,6 +1939,7 @@ struct TodayView: View {
     /// once the short hold ends. Tapping again during the hold takes it back
     /// without anything having been written.
     private func toggleCompleted(_ item: CapturedItem) {
+        if openedItemID == item.id { closeOpenInPlace() }
         if item.isCompleted {
             performCompletionChange(item, completed: false, offersUndo: false)
             return
@@ -1861,6 +1966,7 @@ struct TodayView: View {
     /// The long-press "Done" action has already been confirmed in its menu,
     /// so it completes at once.
     private func complete(_ item: CapturedItem) {
+        if openedItemID == item.id { closeOpenInPlace() }
         completionGrace.cancel(item.id)
         performCompletionChange(item, completed: true, offersUndo: true)
     }

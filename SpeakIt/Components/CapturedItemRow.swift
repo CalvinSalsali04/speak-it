@@ -68,6 +68,20 @@ struct NewItemBaseline: Equatable {
     }
 }
 
+/// Adds an accessibility value only when there is one to say. An empty
+/// explicit value would replace whatever value the row exposes on its own.
+private struct StatusAccessibilityValue: ViewModifier {
+    let value: String
+
+    func body(content: Content) -> some View {
+        if value.isEmpty {
+            content
+        } else {
+            content.accessibilityValue(value)
+        }
+    }
+}
+
 private struct NewItemBaselineKey: EnvironmentKey {
     static let defaultValue = NewItemBaseline.none
 }
@@ -104,6 +118,9 @@ struct CapturedItemRow: View {
     let isCompletionPending: Bool
     /// Filed by a capture since the person last looked at this destination.
     let isNew: Bool
+    /// Whether a tap opens the row in place instead of the editor, and if so
+    /// whether it is open now. `nil` for a row whose tap opens the editor.
+    let isOpenInPlace: Bool?
     let trailingDetail: String?
     let onTrailingDetailTap: (() -> Void)?
     let onToggleCompleted: () -> Void
@@ -121,6 +138,7 @@ struct CapturedItemRow: View {
         trailingDetail: String? = nil,
         onTrailingDetailTap: (() -> Void)? = nil,
         isNew: Bool = false,
+        isOpenInPlace: Bool? = nil,
         onToggleCompleted: @escaping () -> Void,
         onEdit: @escaping () -> Void
     ) {
@@ -133,6 +151,7 @@ struct CapturedItemRow: View {
         self.timingPlacement = timingPlacement
         self.isCompletionPending = isCompletionPending
         self.isNew = isNew
+        self.isOpenInPlace = isOpenInPlace
         self.trailingDetail = trailingDetail
         self.onTrailingDetailTap = onTrailingDetailTap
         self.onToggleCompleted = onToggleCompleted
@@ -237,11 +256,11 @@ struct CapturedItemRow: View {
             // own words rather than the verb is also the better reading order.
             .accessibilityLabel(spokenLabel(for: presentation))
             .accessibilityHint(
-                [alertAccessibilityHint(for: presentation), "Double tap to edit"]
+                [alertAccessibilityHint(for: presentation), tapHint]
                     .compactMap { $0 }
                     .joined(separator: ". ")
             )
-            .accessibilityValue(isNew ? "New" : "")
+            .modifier(StatusAccessibilityValue(value: accessibilityValue))
             .accessibilityIdentifier("item.edit.\(item.displayTitle)")
 
             if let trailingDetail, let onTrailingDetailTap {
@@ -262,6 +281,20 @@ struct CapturedItemRow: View {
             }
         }
         .padding(.vertical, 4)
+    }
+
+    private var tapHint: String {
+        switch isOpenInPlace {
+        case nil: "Double tap to edit"
+        case false?: "Double tap to show what you said"
+        case true?: "Double tap to close"
+        }
+    }
+
+    private var accessibilityValue: String {
+        [isNew ? "New" : nil, isOpenInPlace == true ? "Open" : nil]
+            .compactMap { $0 }
+            .joined(separator: ", ")
     }
 
     private var newDot: some View {
