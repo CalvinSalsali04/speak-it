@@ -929,6 +929,8 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         literal walk, not accuracy.
         12470 -> 12482 on 2026-10-17 after the completion-hold, evening-split
         and new-item tests; same literal walk, not accuracy.
+        12482 -> 12508 on 2026-10-17 after the reminder-title pause and
+        scheduled-day tests; same literal walk, not accuracy.
         The equality check and both counting rules remain unchanged.
         """
         root = pathlib.Path(self.rm.__file__).resolve().parents[2]
@@ -939,7 +941,7 @@ class WhatItReadsIsCheckedAgainstTheOneOwner(unittest.TestCase):
         space = {l for l in found if " " in l.strip()}
         split = {l for l in found if len(l.split()) > 1}
         self.assertEqual(space, split)
-        self.assertEqual(len(space), 12482)
+        self.assertEqual(len(space), 12508)
 
     def test_the_coverage_statement_carries_no_hand_typed_figure(self):
         """It says what is read, not how much. A count in there is one
